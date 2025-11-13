@@ -7,6 +7,7 @@ import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.domain.parser.BookParser
+import com.rifters.riftedreader.domain.parser.PageContent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,8 +22,8 @@ class ReaderViewModel(
     readerPreferences: ReaderPreferences
 ) : ViewModel() {
     
-    private val _content = MutableStateFlow("")
-    val content: StateFlow<String> = _content.asStateFlow()
+    private val _content = MutableStateFlow(PageContent.EMPTY)
+    val content: StateFlow<PageContent> = _content.asStateFlow()
     
     private val _currentPage = MutableStateFlow(0)
     val currentPage: StateFlow<Int> = _currentPage.asStateFlow()
@@ -74,7 +75,7 @@ class ReaderViewModel(
                 val pageContent = parser.getPageContent(bookFile, _currentPage.value)
                 _content.value = pageContent
             } catch (e: Exception) {
-                _content.value = "Error loading content: ${e.message}"
+                _content.value = PageContent(text = "Error loading content: ${e.message}")
                 e.printStackTrace()
             }
         }

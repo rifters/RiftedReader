@@ -30,9 +30,9 @@ class PdfParser : BookParser {
         )
     }
     
-    override suspend fun getPageContent(file: File, page: Int): String {
+    override suspend fun getPageContent(file: File, page: Int): PageContent {
         // PDF content extraction is complex and handled by the PDF viewer library
-        return ""
+        return PageContent.EMPTY
     }
     
     override suspend fun getPageCount(file: File): Int {
