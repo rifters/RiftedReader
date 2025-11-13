@@ -1,7 +1,10 @@
 package com.rifters.riftedreader.ui.reader
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.rifters.riftedreader.data.preferences.ReaderPreferences
+import com.rifters.riftedreader.data.preferences.ReaderSettings
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.domain.parser.BookParser
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,7 +17,8 @@ class ReaderViewModel(
     private val bookId: String,
     private val bookFile: File,
     private val parser: BookParser,
-    private val repository: BookRepository
+    private val repository: BookRepository,
+    readerPreferences: ReaderPreferences
 ) : ViewModel() {
     
     private val _content = MutableStateFlow("")
@@ -25,6 +29,24 @@ class ReaderViewModel(
     
     private val _totalPages = MutableStateFlow(0)
     val totalPages: StateFlow<Int> = _totalPages.asStateFlow()
+
+    val readerSettings: StateFlow<ReaderSettings> = readerPreferences.settings
+
+    class Factory(
+        private val bookId: String,
+        private val bookFile: File,
+        private val parser: BookParser,
+        private val repository: BookRepository,
+        private val readerPreferences: ReaderPreferences
+    ) : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            require(modelClass.isAssignableFrom(ReaderViewModel::class.java)) {
+                "Unknown ViewModel class ${modelClass.name}"
+            }
+            return ReaderViewModel(bookId, bookFile, parser, repository, readerPreferences) as T
+        }
+    }
     
     init {
         loadBookInfo()

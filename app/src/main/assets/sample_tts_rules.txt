@@ -1,0 +1,22 @@
+# Sample TTS replacement rules adapted from LibreraReader (docs/faq/tts-replacements)
+"Dr." "Doctor"
+"Mr." "Mister"
+"Mrs." "Misses"
+"Ms." "Miss"
+"Jr." "Junior"
+"Sr." "Senior"
+"PDF" "P D F"
+"HTML" "H T M L"
+"URL" "U R L"
+
+# Replace dash-like punctuation with a short pause
+"*[?!:;–—―]" ","
+
+# Remove bracketed footnotes
+"*\[(\d+)\]" "ttsSKIP"
+
+# Skip page labels
+"Page \d+" "ttsSKIP"
+
+# Stop when section end markers appear
+"End of Chapter" "ttsSTOP"
