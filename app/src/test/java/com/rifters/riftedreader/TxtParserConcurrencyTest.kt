@@ -52,8 +52,8 @@ class TxtParserConcurrencyTest {
         val jobs = List(10) {
             launch(Dispatchers.IO) {
                 val content = parser.getPageContent(testFile, 0)
-                assertTrue(content.isNotEmpty())
-                assertTrue(content.contains("This is a test file"))
+                assertTrue(content.text.isNotEmpty())
+                assertTrue(content.text.contains("This is a test file"))
             }
         }
         
@@ -94,7 +94,7 @@ class TxtParserConcurrencyTest {
                     
                     assertTrue(metadata.title.startsWith("test"))
                     assertTrue(pageCount > 0)
-                    assertTrue(content.isNotEmpty())
+                    assertTrue(content.text.isNotEmpty())
                 }
             }
         }

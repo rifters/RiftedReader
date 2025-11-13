@@ -12,12 +12,14 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.text.HtmlCompat
 import androidx.core.view.doOnLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.rifters.riftedreader.BuildConfig
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.database.BookDatabase
 import com.rifters.riftedreader.data.preferences.ReaderPreferences
@@ -43,6 +45,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var tapActions: Map<ReaderTapZone, ReaderTapAction> = ReaderPreferences.defaultTapActions()
     private lateinit var ttsPreferences: TTSPreferences
     private var currentPageText: String = ""
+    private var currentPageHtml: String? = null
     private var sentenceBoundaries: List<IntRange> = emptyList()
     private var highlightedSentenceIndex: Int = -1
     private val ttsStatusIntentFilter = IntentFilter(TTSService.ACTION_STATUS)
@@ -121,6 +124,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     
     private fun setupControls(bookTitle: String) {
         controlsManager = ReaderControlsManager(binding.controlsContainer, lifecycleScope)
+        if (BuildConfig.DEBUG) {
+            controlsManager.setAutoHideEnabled(false)
+        }
 
         binding.topBar.title = bookTitle.ifBlank { getString(R.string.reader_title_placeholder) }
         binding.topBar.setNavigationOnClickListener { finish() }
@@ -152,7 +158,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         
         binding.ttsButton.setOnClickListener {
             controlsManager.showControls()
-            TTSControlsBottomSheet.show(supportFragmentManager, viewModel.content.value)
+            TTSControlsBottomSheet.show(supportFragmentManager, viewModel.content.value.text)
         }
 
         binding.pageSlider.addOnChangeListener { _, value, fromUser ->
@@ -172,11 +178,17 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
-                    viewModel.content.collect { content ->
-                        currentPageText = content
-                        sentenceBoundaries = buildSentenceBoundaries(content)
+                    viewModel.content.collect { pageContent ->
+                        currentPageText = pageContent.text
+                        currentPageHtml = pageContent.html
+                        sentenceBoundaries = buildSentenceBoundaries(pageContent.text)
                         highlightedSentenceIndex = -1
-                        binding.contentTextView.text = content
+                        if (pageContent.html.isNullOrBlank()) {
+                            binding.contentTextView.text = pageContent.text
+                        } else {
+                            val spanned = HtmlCompat.fromHtml(pageContent.html, HtmlCompat.FROM_HTML_MODE_LEGACY)
+                            binding.contentTextView.text = spanned
+                        }
                     }
                 }
                 
@@ -274,7 +286,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             ReaderTapAction.START_TTS -> {
                 controlsManager.showControls()
                 controlsManager.onUserInteraction()
-                TTSControlsBottomSheet.show(supportFragmentManager, viewModel.content.value)
+                TTSControlsBottomSheet.show(supportFragmentManager, viewModel.content.value.text)
             }
             ReaderTapAction.NONE -> controlsManager.onUserInteraction()
         }
@@ -335,7 +347,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             return
         }
         highlightedSentenceIndex = -1
-        if (binding.contentTextView.text is Spanned) {
+        val html = currentPageHtml
+        if (!html.isNullOrBlank()) {
+            binding.contentTextView.text = HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_LEGACY)
+        } else {
             binding.contentTextView.text = currentPageText
         }
     }

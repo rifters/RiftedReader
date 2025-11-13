@@ -68,11 +68,11 @@ class EpubParser : BookParser {
         )
     }
     
-    override suspend fun getPageContent(file: File, page: Int): String {
+    override suspend fun getPageContent(file: File, page: Int): PageContent {
         ZipFile(file).use { zip ->
             val spine = getSpineItems(zip)
             if (page < 0 || page >= spine.size) {
-                return ""
+                return PageContent.EMPTY
             }
             
             val contentPath = spine[page]
@@ -80,10 +80,13 @@ class EpubParser : BookParser {
             if (entry != null) {
                 val content = zip.getInputStream(entry).bufferedReader().readText()
                 val doc = Jsoup.parse(content)
-                return doc.body()?.text() ?: ""
+                val body: Document? = doc.body()
+                val text = body?.text().orEmpty()
+                val html = body?.html()?.takeIf { it.isNotBlank() }
+                return PageContent(text = text, html = html)
             }
         }
-        return ""
+        return PageContent.EMPTY
     }
     
     override suspend fun getPageCount(file: File): Int {

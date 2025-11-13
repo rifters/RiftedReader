@@ -18,6 +18,7 @@ class ReaderControlsManager(
 ) {
 
     private var hideJob: Job? = null
+    private var autoHideEnabled: Boolean = true
 
     fun showControls() {
         hideJob?.cancel()
@@ -57,8 +58,20 @@ class ReaderControlsManager(
         }
     }
 
+    fun setAutoHideEnabled(enabled: Boolean) {
+        autoHideEnabled = enabled
+        if (!autoHideEnabled) {
+            hideJob?.cancel()
+        } else if (controlsContainer.isVisible) {
+            scheduleAutoHide()
+        }
+    }
+
     private fun scheduleAutoHide() {
         hideJob?.cancel()
+        if (!autoHideEnabled) {
+            return
+        }
         hideJob = scope.launch {
             delay(autoHideMillis)
             hideControls()

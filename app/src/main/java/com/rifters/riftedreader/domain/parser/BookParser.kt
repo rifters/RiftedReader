@@ -7,27 +7,27 @@ import java.io.File
  * Interface for parsing different book formats
  */
 interface BookParser {
-    
+
     /**
      * Check if this parser can handle the given file
      */
     fun canParse(file: File): Boolean
-    
+
     /**
      * Extract metadata from the book file
      */
     suspend fun extractMetadata(file: File): BookMeta
-    
+
     /**
      * Get the content of a specific page/chapter
      */
-    suspend fun getPageContent(file: File, page: Int): String
-    
+    suspend fun getPageContent(file: File, page: Int): PageContent
+
     /**
      * Get the total number of pages in the book
      */
     suspend fun getPageCount(file: File): Int
-    
+
     /**
      * Get the table of contents if available
      */
@@ -42,3 +42,15 @@ data class TocEntry(
     val pageNumber: Int,
     val level: Int = 0
 )
+
+/**
+ * Represents both the plain text and optional formatted HTML for a page.
+ */
+data class PageContent(
+    val text: String,
+    val html: String? = null
+) {
+    companion object {
+        val EMPTY = PageContent(text = "")
+    }
+}

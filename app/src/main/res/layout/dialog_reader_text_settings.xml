@@ -74,21 +74,29 @@
         <com.google.android.material.chip.Chip
             android:id="@+id/themeChipLight"
             style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:text="@string/reader_theme_light" />
 
         <com.google.android.material.chip.Chip
             android:id="@+id/themeChipDark"
             style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:text="@string/reader_theme_dark" />
 
         <com.google.android.material.chip.Chip
             android:id="@+id/themeChipSepia"
             style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:text="@string/reader_theme_sepia" />
 
         <com.google.android.material.chip.Chip
             android:id="@+id/themeChipBlack"
             style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:text="@string/reader_theme_black" />
 
     </com.google.android.material.chip.ChipGroup>

@@ -38,17 +38,27 @@ class TxtParser : BookParser {
         )
     }
     
-    override suspend fun getPageContent(file: File, page: Int): String {
+    override suspend fun getPageContent(file: File, page: Int): PageContent {
         val charset = getOrDetectCharset(file)
         val lines = file.readLines(charset)
         val startLine = page * LINES_PER_PAGE
         val endLine = minOf(startLine + LINES_PER_PAGE, lines.size)
         
         if (startLine >= lines.size) {
-            return ""
+            return PageContent.EMPTY
         }
         
-        return lines.subList(startLine, endLine).joinToString("\n")
+        val slice = lines.subList(startLine, endLine)
+        val text = slice.joinToString("\n")
+        val html = buildString {
+            append("<pre>")
+            slice.forEach { line ->
+                append(line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+                append("\n")
+            }
+            append("</pre>")
+        }
+        return PageContent(text = text, html = html)
     }
     
     override suspend fun getPageCount(file: File): Int {
