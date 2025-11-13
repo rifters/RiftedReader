@@ -144,18 +144,19 @@ class LibraryFragment : Fragment() {
     }
     
     private fun checkPermissionAndScan() {
+        // For Android 11+ (API 30+), we need MANAGE_EXTERNAL_STORAGE to scan for documents
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager()) {
                 showAllFilesAccessDialog()
                 return
             }
+            // Permission granted, proceed with scan
+            viewModel.scanForBooks()
+            return
         }
 
-        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Manifest.permission.READ_MEDIA_IMAGES
-        } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
-        }
+        // For Android 10 and below, use READ_EXTERNAL_STORAGE
+        val permission = Manifest.permission.READ_EXTERNAL_STORAGE
         
         when {
             ContextCompat.checkSelfPermission(
