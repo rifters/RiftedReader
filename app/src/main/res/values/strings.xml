@@ -94,11 +94,11 @@
     
     <!-- Permissions -->
     <string name="permission_storage_title">Storage Permission Required</string>
-    <string name="permission_storage_message">RiftedReader needs access to your storage to read ebook files.</string>
+    <string name="permission_storage_message">RiftedReader needs access to your storage to scan for ebook files (EPUB, PDF, TXT). You can also import books manually without granting this permission.</string>
     <string name="permission_grant">Grant Permission</string>
     <string name="permission_denied">Permission Denied</string>
     <string name="permission_all_files_title">Allow full storage access</string>
-    <string name="permission_all_files_message">RiftedReader needs "All files access" to scan your storage for books. You can also import books manually.</string>
+    <string name="permission_all_files_message">RiftedReader needs "All files access" permission to scan your storage for ebook files (EPUB, PDF, TXT). This is required on Android 11+ to access document files. You can also import books manually without this permission.</string>
     <string name="permission_open_settings">Open settings</string>
     
     <!-- Common -->
