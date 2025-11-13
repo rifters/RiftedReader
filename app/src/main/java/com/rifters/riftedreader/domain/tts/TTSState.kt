@@ -15,7 +15,8 @@ data class TTSConfiguration(
     val speed: Float = 1.0f,
     val pitch: Float = 1.0f,
     val autoScroll: Boolean = true,
-    val highlightSentence: Boolean = true
+    val highlightSentence: Boolean = true,
+    val languageTag: String? = null
 )
 
 data class TTSState(

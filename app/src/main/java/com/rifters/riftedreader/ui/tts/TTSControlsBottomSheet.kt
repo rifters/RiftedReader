@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import androidx.core.os.bundleOf
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.android.material.slider.Slider
@@ -12,7 +13,9 @@ import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.preferences.TTSPreferences
 import com.rifters.riftedreader.databinding.DialogTtsControlsBinding
 import com.rifters.riftedreader.domain.tts.TTSConfiguration
+import com.rifters.riftedreader.domain.tts.TTSEngine
 import com.rifters.riftedreader.domain.tts.TTSService
+import java.util.Locale
 
 class TTSControlsBottomSheet : BottomSheetDialogFragment() {
 
@@ -20,6 +23,9 @@ class TTSControlsBottomSheet : BottomSheetDialogFragment() {
     private val binding get() = _binding!!
 
     private lateinit var preferences: TTSPreferences
+    private var ttsEngine: TTSEngine? = null
+    private var voiceOptions: List<VoiceOption> = emptyList()
+    private var selectedLanguageTag: String? = null
 
     override fun onAttach(context: Context) {
         super.onAttach(context)
@@ -39,10 +45,14 @@ class TTSControlsBottomSheet : BottomSheetDialogFragment() {
         super.onViewCreated(view, savedInstanceState)
         val currentText = arguments?.getString(ARG_TEXT).orEmpty()
 
+        selectedLanguageTag = preferences.languageTag
         binding.speedSlider.value = preferences.speed
         binding.pitchSlider.value = preferences.pitch
         binding.highlightSwitch.isChecked = preferences.highlightSentence
         binding.autoScrollSwitch.isChecked = preferences.autoScroll
+        binding.voiceInputLayout.isEnabled = false
+
+        setupVoiceDropdown()
 
         setupSlider(binding.speedSlider) { value ->
             preferences.speed = value
@@ -86,11 +96,67 @@ class TTSControlsBottomSheet : BottomSheetDialogFragment() {
         }
     }
 
+    private fun setupVoiceDropdown() {
+        binding.voiceDropdown.apply {
+            keyListener = null
+            setOnClickListener { showDropDown() }
+            setOnFocusChangeListener { _, hasFocus ->
+                if (hasFocus) {
+                    showDropDown()
+                }
+            }
+        }
+        val engine = TTSEngine(requireContext())
+        ttsEngine = engine
+        engine.initialize { success ->
+            if (!isAdded) {
+                engine.shutdown()
+                return@initialize
+            }
+            val locales = if (success) engine.getAvailableLanguages().orEmpty() else emptySet()
+            val options = buildVoiceOptions(locales)
+            voiceOptions = options
+            val labels = options.map { it.displayName }
+            val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_list_item_1, labels)
+            binding.voiceDropdown.post {
+                binding.voiceDropdown.setAdapter(adapter)
+                val initialIndex = options.indexOfFirst { it.languageTag == selectedLanguageTag }
+                    .takeIf { it >= 0 } ?: 0
+                selectedLanguageTag = options.getOrNull(initialIndex)?.languageTag
+                binding.voiceDropdown.setText(options.getOrNull(initialIndex)?.displayName.orEmpty(), false)
+                binding.voiceInputLayout.isEnabled = options.size > 1
+            }
+            binding.voiceDropdown.setOnItemClickListener { _, _, position, _ ->
+                val option = options.getOrNull(position)
+                selectedLanguageTag = option?.languageTag
+                preferences.languageTag = selectedLanguageTag
+                notifyService()
+            }
+        }
+    }
+
+    private fun buildVoiceOptions(locales: Set<Locale>): List<VoiceOption> {
+        val options = mutableListOf(VoiceOption(null, getString(R.string.tts_voice_default)))
+        val seen = mutableSetOf<String>()
+        locales.sortedBy { it.getDisplayName(Locale.getDefault()).lowercase(Locale.getDefault()) }
+            .forEach { locale ->
+                val tag = locale.toLanguageTag()
+                if (seen.add(tag)) {
+                    val displayName = locale.getDisplayName(locale).replaceFirstChar { ch ->
+                        if (ch.isLowerCase()) ch.titlecase(locale) else ch.toString()
+                    }
+                    options += VoiceOption(tag, displayName)
+                }
+            }
+        return options
+    }
+
     private fun currentConfiguration(): TTSConfiguration = TTSConfiguration(
         speed = binding.speedSlider.value,
         pitch = binding.pitchSlider.value,
         autoScroll = binding.autoScrollSwitch.isChecked,
-        highlightSentence = binding.highlightSwitch.isChecked
+        highlightSentence = binding.highlightSwitch.isChecked,
+        languageTag = selectedLanguageTag
     )
 
     private fun setupSlider(slider: Slider, onValue: (Float) -> Unit) {
@@ -107,6 +173,8 @@ class TTSControlsBottomSheet : BottomSheetDialogFragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        ttsEngine?.shutdown()
+        ttsEngine = null
         _binding = null
     }
 
@@ -120,4 +188,6 @@ class TTSControlsBottomSheet : BottomSheetDialogFragment() {
             fragment.show(manager, TTSControlsBottomSheet::class.java.simpleName)
         }
     }
+
+    private data class VoiceOption(val languageTag: String?, val displayName: String)
 }

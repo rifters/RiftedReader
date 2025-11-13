@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+private const val DEFAULT_TEXT_SIZE_SP = 16f
+private const val DEFAULT_LINE_HEIGHT_MULTIPLIER = 1.3f
+
 data class ReaderSettings(
     val textSizeSp: Float = DEFAULT_TEXT_SIZE_SP,
     val lineHeightMultiplier: Float = DEFAULT_LINE_HEIGHT_MULTIPLIER,
@@ -93,9 +96,6 @@ class ReaderPreferences(context: Context) {
         private const val KEY_LINE_HEIGHT = "line_height_multiplier"
         private const val KEY_THEME = "reader_theme"
         private const val KEY_TAP_ACTIONS = "reader_tap_actions"
-
-        private const val DEFAULT_TEXT_SIZE_SP = 16f
-        private const val DEFAULT_LINE_HEIGHT_MULTIPLIER = 1.3f
 
         private const val ENTRY_SEPARATOR = "|"
         private const val VALUE_SEPARATOR = ":"
