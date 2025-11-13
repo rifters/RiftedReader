@@ -20,6 +20,63 @@
     <string name="chapter">Chapter %1$d</string>
     <string name="page_progress">Page %1$d of %2$d</string>
     <string name="reading_progress">%1$d%%</string>
+    <string name="reader_previous">Previous</string>
+    <string name="reader_next">Next</string>
+    <string name="reader_page_indicator">Page %1$d / %2$d</string>
+    <string name="reader_text_settings">Reading settings</string>
+    <string name="reader_title_placeholder">RiftedReader</string>
+    <string name="reader_tts">Listen</string>
+    <string name="reader_text_settings_title">Reading settings</string>
+    <string name="reader_text_size_label">Text size</string>
+    <string name="reader_text_size_value">%1$d sp</string>
+    <string name="reader_text_size_value_default">16 sp</string>
+    <string name="reader_line_height_label">Line spacing</string>
+    <string name="reader_line_height_value">×%1$.1f</string>
+    <string name="reader_line_height_value_default">×1.3</string>
+    <string name="reader_theme_label">Theme</string>
+    <string name="reader_theme_light">Light</string>
+    <string name="reader_theme_dark">Dark</string>
+    <string name="reader_theme_sepia">Sepia</string>
+    <string name="reader_theme_black">Black</string>
+    <string name="reader_tap_zones">Tap zones</string>
+    <string name="reader_tap_zones_title">Tap zones</string>
+    <string name="reader_tap_zones_description">Choose what each tap area does while reading.</string>
+    <string name="reader_zone_top_left">Top left</string>
+    <string name="reader_zone_top_center">Top center</string>
+    <string name="reader_zone_top_right">Top right</string>
+    <string name="reader_zone_middle_left">Middle left</string>
+    <string name="reader_zone_center">Center</string>
+    <string name="reader_zone_middle_right">Middle right</string>
+    <string name="reader_zone_bottom_left">Bottom left</string>
+    <string name="reader_zone_bottom_center">Bottom center</string>
+    <string name="reader_zone_bottom_right">Bottom right</string>
+    <string name="reader_tap_action_none">No action</string>
+    <string name="reader_tap_action_back">Back</string>
+    <string name="reader_tap_action_toggle_controls">Toggle controls</string>
+    <string name="reader_tap_action_next_page">Next page</string>
+    <string name="reader_tap_action_previous_page">Previous page</string>
+    <string name="reader_tap_action_open_settings">Open settings</string>
+    <string name="reader_tap_action_start_tts">Start Text-to-Speech</string>
+    <string name="reader_tap_reset">Reset to defaults</string>
+
+    <!-- TTS -->
+    <string name="tts_controls_title">Text-to-Speech</string>
+    <string name="tts_speed_label">Speed</string>
+    <string name="tts_pitch_label">Pitch</string>
+    <string name="tts_option_highlight">Highlight sentence during playback</string>
+    <string name="tts_option_auto_scroll">Auto-scroll to spoken sentence</string>
+    <string name="tts_status_ready">Ready to read this page.</string>
+    <string name="tts_status_empty_selection">Load a page before starting TTS.</string>
+    <string name="tts_action_play">Play</string>
+    <string name="tts_action_pause">Pause</string>
+    <string name="tts_action_stop">Stop</string>
+    <string name="tts_notification_title">RiftedReader is reading</string>
+    <string name="tts_notification_content">Sentence %1$d of %2$d</string>
+    <string name="tts_notification_paused">Reading paused</string>
+    <string name="tts_notification_channel_name">Text-to-Speech</string>
+    <string name="tts_notification_channel_description">Controls for background reading.</string>
+    <string name="tts_action_previous">Previous</string>
+
     
     <!-- Permissions -->
     <string name="permission_storage_title">Storage Permission Required</string>

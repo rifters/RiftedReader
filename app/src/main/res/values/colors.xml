@@ -32,7 +32,10 @@
     <color name="reader_background_light">#FFFFFF</color>
     <color name="reader_background_dark">#1C1B1F</color>
     <color name="reader_background_sepia">#F4ECD8</color>
+    <color name="reader_background_black">#000000</color>
     <color name="reader_text_light">#000000</color>
     <color name="reader_text_dark">#E6E1E5</color>
     <color name="reader_text_sepia">#5C4A2F</color>
+    <color name="reader_text_black">#E0E0E0</color>
+    <color name="reader_tts_highlight">#663B82F6</color>
 </resources>
