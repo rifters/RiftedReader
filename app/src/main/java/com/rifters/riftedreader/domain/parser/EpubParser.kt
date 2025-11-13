@@ -24,6 +24,7 @@ class EpubParser : BookParser {
         var title = file.nameWithoutExtension
         var author: String? = null
         var publisher: String? = null
+        var pageCount = 0
         
         ZipFile(file).use { zip ->
             // Parse metadata from OPF file
@@ -50,6 +51,9 @@ class EpubParser : BookParser {
                     }
                 }
             }
+            
+            // Get page count from the already-open ZipFile to avoid redundant I/O
+            pageCount = getSpineItems(zip).size
         }
         
         return BookMeta(
@@ -59,7 +63,7 @@ class EpubParser : BookParser {
             publisher = publisher,
             format = "EPUB",
             size = file.length(),
-            totalPages = getPageCount(file),
+            totalPages = pageCount,
             dateAdded = System.currentTimeMillis()
         )
     }
