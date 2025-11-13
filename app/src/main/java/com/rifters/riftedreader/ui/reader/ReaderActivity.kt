@@ -11,6 +11,7 @@ import android.text.style.BackgroundColorSpan
 import android.view.GestureDetector
 import android.view.MotionEvent
 import androidx.appcompat.app.AppCompatActivity
+import android.content.pm.ApplicationInfo
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
 import androidx.core.view.doOnLayout
@@ -19,7 +20,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import com.rifters.riftedreader.BuildConfig
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.database.BookDatabase
 import com.rifters.riftedreader.data.preferences.ReaderPreferences
@@ -124,7 +124,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     
     private fun setupControls(bookTitle: String) {
         controlsManager = ReaderControlsManager(binding.controlsContainer, lifecycleScope)
-        if (BuildConfig.DEBUG) {
+        if (isDebugBuild()) {
             controlsManager.setAutoHideEnabled(false)
         }
 
@@ -268,6 +268,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private fun openTapZones() {
         controlsManager.showControls()
         ReaderTapZonesBottomSheet.show(supportFragmentManager)
+    }
+
+    private fun isDebugBuild(): Boolean {
+        return (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     }
 
     private fun performTapAction(action: ReaderTapAction) {

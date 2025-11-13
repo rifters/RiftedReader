@@ -80,7 +80,7 @@ class EpubParser : BookParser {
             if (entry != null) {
                 val content = zip.getInputStream(entry).bufferedReader().readText()
                 val doc = Jsoup.parse(content)
-                val body: Document? = doc.body()
+                val body = doc.body()
                 val text = body?.text().orEmpty()
                 val html = body?.html()?.takeIf { it.isNotBlank() }
                 return PageContent(text = text, html = html)
