@@ -70,8 +70,8 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
         android:layout_margin="16dp"
-        android:contentDescription="@string/scan_books"
-        app:srcCompat="@android:drawable/ic_menu_search" />
+        android:contentDescription="@string/library_add_books_title"
+        app:srcCompat="@android:drawable/ic_input_add" />
 
     <com.google.android.material.progressindicator.LinearProgressIndicator
         android:id="@+id/progressIndicator"
