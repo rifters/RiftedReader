@@ -7,12 +7,20 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
+import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.util.Log
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.media.app.NotificationCompat as MediaNotificationCompat
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.preferences.TTSPreferences
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +29,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Locale
 import java.util.UUID
 
 class TTSService : Service() {
@@ -28,11 +37,52 @@ class TTSService : Service() {
     private lateinit var ttsEngine: TTSEngine
     private lateinit var replacementEngine: TTSReplacementEngine
     private lateinit var preferences: TTSPreferences
+    private lateinit var audioManager: AudioManager
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                hasAudioFocus = false
+                handleStop()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                if (playbackState == TTSPlaybackState.PLAYING) {
+                    shouldResumeAfterFocusGain = true
+                }
+                hasAudioFocus = false
+                pausePlayback(releaseFocus = false)
+            }
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                hasAudioFocus = true
+                if (shouldResumeAfterFocusGain) {
+                    shouldResumeAfterFocusGain = false
+                    handleResume()
+                }
+            }
+        }
+    }
+    private lateinit var mediaSession: MediaSessionCompat
+    private val playbackStateBuilder: PlaybackStateCompat.Builder by lazy {
+        PlaybackStateCompat.Builder()
+            .setActions(
+                PlaybackStateCompat.ACTION_PLAY or
+                    PlaybackStateCompat.ACTION_PAUSE or
+                    PlaybackStateCompat.ACTION_STOP or
+                    PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                    PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                    PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+            )
+    }
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
 
     private var sentences: List<String> = emptyList()
     private var currentSentenceIndex: Int = 0
     private var playbackState: TTSPlaybackState = TTSPlaybackState.IDLE
+    private var hasAudioFocus: Boolean = false
+    private var shouldResumeAfterFocusGain: Boolean = false
+    private var currentLanguageTag: String? = null
+    private var pendingLanguageTag: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -40,12 +90,55 @@ class TTSService : Service() {
         replacementEngine = TTSReplacementEngine()
         preferences.loadReplacementRules()?.let { replacementEngine.loadRulesFromText(it) }
 
+        audioManager = ContextCompat.getSystemService(this, AudioManager::class.java)
+            ?: throw IllegalStateException("AudioManager unavailable")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setAcceptsDelayedFocusGain(true)
+                .setOnAudioFocusChangeListener(audioFocusChangeListener)
+                .build()
+        }
+
+        mediaSession = MediaSessionCompat(this, MEDIA_SESSION_TAG).apply {
+            setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
+            setCallback(object : MediaSessionCompat.Callback() {
+                override fun onPlay() {
+                    handleResume()
+                }
+
+                override fun onPause() {
+                    pausePlayback()
+                }
+
+                override fun onStop() {
+                    handleStop()
+                }
+
+                override fun onSkipToNext() {
+                    handleNext()
+                }
+
+                override fun onSkipToPrevious() {
+                    handlePrevious()
+                }
+            })
+        }
+
         ttsEngine = TTSEngine(this)
         ttsEngine.initialize { success ->
             if (!success) {
                 stopSelf()
             } else {
                 setupUtteranceListener()
+                val tagToApply = pendingLanguageTag ?: preferences.languageTag
+                applyLanguage(tagToApply)
+                pendingLanguageTag = null
             }
         }
         createNotificationChannel()
@@ -59,6 +152,8 @@ class TTSService : Service() {
             ACTION_NEXT -> handleNext()
             ACTION_PREVIOUS -> handlePrevious()
             ACTION_UPDATE_CONFIG -> handleUpdateConfig(intent)
+            ACTION_RESUME -> handleResume()
+            ACTION_TOGGLE_PLAY_PAUSE -> handleTogglePlayPause()
         }
         return START_STICKY
     }
@@ -69,6 +164,8 @@ class TTSService : Service() {
         val pitch = intent.getFloatExtra(EXTRA_PITCH, preferences.pitch)
         val autoScroll = intent.getBooleanExtra(EXTRA_AUTO_SCROLL, preferences.autoScroll)
         val highlight = intent.getBooleanExtra(EXTRA_HIGHLIGHT, preferences.highlightSentence)
+        val languageExtra = intent.getStringExtra(EXTRA_LANGUAGE)
+        val requestedLanguageTag = languageExtra?.takeIf { it.isNotBlank() }
 
         if (!text.isNullOrBlank()) {
             sentences = splitIntoSentences(text)
@@ -88,21 +185,31 @@ class TTSService : Service() {
         preferences.highlightSentence = highlight
         ttsEngine.setSpeed(speed)
         ttsEngine.setPitch(pitch)
+        val languageTagToApply = requestedLanguageTag ?: preferences.languageTag
+        applyLanguage(languageTagToApply)
 
+        if (!ensureAudioFocus()) {
+            handleStop()
+            return
+        }
+
+        mediaSession.isActive = true
+        playbackState = TTSPlaybackState.PLAYING
+        updatePlaybackState(playbackState)
         startForeground(NOTIFICATION_ID, buildNotification())
         speakCurrentSentence()
     }
 
     private fun handlePause() {
-        ttsEngine.stop()
-        updateNotification(stateLabel = getString(R.string.tts_notification_paused))
-        broadcastStatus(TTSPlaybackState.PAUSED)
+        pausePlayback()
     }
 
     private fun handleStop() {
         ttsEngine.stop()
         currentSentenceIndex = -1
+        abandonAudioFocus()
         broadcastStatus(TTSPlaybackState.STOPPED)
+        mediaSession.isActive = false
         stopForeground(true)
         stopSelf()
     }
@@ -110,7 +217,11 @@ class TTSService : Service() {
     private fun handleNext() {
         if (currentSentenceIndex < sentences.lastIndex) {
             currentSentenceIndex++
-            speakCurrentSentence()
+            if (ensureAudioFocus()) {
+                speakCurrentSentence()
+            } else {
+                handleStop()
+            }
         } else {
             handleStop()
         }
@@ -119,9 +230,15 @@ class TTSService : Service() {
     private fun handlePrevious() {
         if (currentSentenceIndex > 0) {
             currentSentenceIndex--
-            speakCurrentSentence()
+            if (ensureAudioFocus()) {
+                speakCurrentSentence()
+            } else {
+                handleStop()
+            }
         } else {
-            speakCurrentSentence()
+            if (ensureAudioFocus()) {
+                speakCurrentSentence()
+            }
         }
     }
 
@@ -130,14 +247,74 @@ class TTSService : Service() {
         val pitch = intent.getFloatExtra(EXTRA_PITCH, preferences.pitch)
         val autoScroll = intent.getBooleanExtra(EXTRA_AUTO_SCROLL, preferences.autoScroll)
         val highlight = intent.getBooleanExtra(EXTRA_HIGHLIGHT, preferences.highlightSentence)
+        val languageExtra = intent.getStringExtra(EXTRA_LANGUAGE)
+        val requestedLanguageTag = languageExtra?.takeIf { it.isNotBlank() }
         preferences.speed = speed
         preferences.pitch = pitch
         preferences.autoScroll = autoScroll
         preferences.highlightSentence = highlight
         ttsEngine.setSpeed(speed)
         ttsEngine.setPitch(pitch)
+        if (languageExtra != null) {
+            val languageToApply = requestedLanguageTag ?: preferences.languageTag
+            applyLanguage(languageToApply)
+        }
         updateNotification()
         broadcastStatus(playbackState)
+    }
+
+    private fun handleResume() {
+        if (sentences.isEmpty()) return
+        if (currentSentenceIndex !in sentences.indices) {
+            currentSentenceIndex = sentences.lastIndex.coerceAtLeast(0)
+        }
+        if (!ensureAudioFocus()) {
+            return
+        }
+        speakCurrentSentence()
+    }
+
+    private fun handleTogglePlayPause() {
+        when (playbackState) {
+            TTSPlaybackState.PLAYING -> pausePlayback()
+            TTSPlaybackState.PAUSED -> handleResume()
+            else -> Unit
+        }
+    }
+
+    private fun applyLanguage(languageTag: String?) {
+        val normalizedTag = languageTag?.takeIf { it.isNotBlank() }
+        if (!ttsEngine.isReady()) {
+            pendingLanguageTag = normalizedTag
+            return
+        }
+
+        if (normalizedTag == currentLanguageTag) {
+            return
+        }
+
+        val locale = normalizedTag
+            ?.let(Locale::forLanguageTag)
+            ?.takeUnless { it == Locale.ROOT }
+            ?: Locale.getDefault()
+        val result = ttsEngine.setLanguage(locale)
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            if (normalizedTag != null) {
+                Log.w(TAG, "Language $normalizedTag not supported; reverting to default locale")
+                preferences.languageTag = null
+                currentLanguageTag = null
+                pendingLanguageTag = null
+                ttsEngine.setLanguage(Locale.getDefault())
+            }
+        } else {
+            currentLanguageTag = normalizedTag
+            pendingLanguageTag = null
+            if (normalizedTag == null) {
+                preferences.languageTag = null
+            } else {
+                preferences.languageTag = normalizedTag
+            }
+        }
     }
 
     private fun speakCurrentSentence() {
@@ -155,18 +332,27 @@ class TTSService : Service() {
                     delay(50)
                     speakCurrentSentence()
                 }
+                return
             }
-            TTSCommand.STOP -> handleStop()
+            TTSCommand.STOP -> {
+                handleStop()
+                return
+            }
             TTSCommand.NEXT -> {
                 // Move to the end so reader can advance externally.
                 currentSentenceIndex = sentences.size
                 handleStop()
+                return
             }
             TTSCommand.PAUSE -> {
-                ttsEngine.stop()
-                broadcastStatus(TTSPlaybackState.PAUSED)
+                pausePlayback()
+                return
             }
             null -> {
+                if (!ensureAudioFocus()) {
+                    handleStop()
+                    return
+                }
                 ttsEngine.speak(result.text.ifBlank { sentence }, utteranceId())
                 broadcastStatus(TTSPlaybackState.PLAYING)
             }
@@ -205,78 +391,128 @@ class TTSService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        val contentText = getString(
+        return buildNotification(null)
+    }
+
+    private fun updateNotification(stateLabel: String? = null) {
+        val manager = ContextCompat.getSystemService(this, NotificationManager::class.java)
+        manager?.notify(NOTIFICATION_ID, buildNotification(stateLabel))
+    }
+
+    private fun buildNotification(stateLabel: String?): Notification {
+        val contentText = stateLabel ?: getString(
             R.string.tts_notification_content,
             (currentSentenceIndex + 1).coerceAtMost(sentences.size),
             sentences.size
         )
+        val isPlaying = playbackState == TTSPlaybackState.PLAYING
+        val playPauseAction = if (isPlaying) {
+            NotificationCompat.Action(
+                R.drawable.ic_tts_pause_24,
+                getString(R.string.tts_action_pause),
+                servicePendingIntent(ACTION_PAUSE)
+            )
+        } else {
+            NotificationCompat.Action(
+                R.drawable.ic_tts_play_24,
+                getString(R.string.tts_action_play),
+                servicePendingIntent(ACTION_RESUME)
+            )
+        }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.tts_notification_title))
             .setContentText(contentText)
             .setSmallIcon(R.drawable.ic_reader_tts_24)
-            .setOngoing(true)
+            .setOngoing(isPlaying)
             .addAction(
                 R.drawable.ic_tts_prev_24,
                 getString(R.string.tts_action_previous),
                 servicePendingIntent(ACTION_PREVIOUS)
             )
+            .addAction(playPauseAction)
             .addAction(
-                R.drawable.ic_tts_pause_24,
-                getString(R.string.tts_action_pause),
-                servicePendingIntent(ACTION_PAUSE)
+                R.drawable.ic_tts_next_24,
+                getString(R.string.tts_action_next),
+                servicePendingIntent(ACTION_NEXT)
             )
             .addAction(
                 R.drawable.ic_tts_stop_24,
                 getString(R.string.tts_action_stop),
                 servicePendingIntent(ACTION_STOP)
             )
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
-    }
-
-    private fun updateNotification(stateLabel: String? = null) {
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(getString(R.string.tts_notification_title))
-            .setContentText(
-                stateLabel ?: getString(
-                    R.string.tts_notification_content,
-                    (currentSentenceIndex + 1).coerceAtMost(sentences.size),
-                    sentences.size
-                )
-            )
-            .setSmallIcon(R.drawable.ic_reader_tts_24)
-            .setOngoing(true)
-            .addAction(
-                R.drawable.ic_tts_prev_24,
-                getString(R.string.tts_action_previous),
-                servicePendingIntent(ACTION_PREVIOUS)
-            )
-            .addAction(
-                R.drawable.ic_tts_pause_24,
-                getString(R.string.tts_action_pause),
-                servicePendingIntent(ACTION_PAUSE)
-            )
-            .addAction(
-                R.drawable.ic_tts_stop_24,
-                getString(R.string.tts_action_stop),
-                servicePendingIntent(ACTION_STOP)
+            .setStyle(
+                MediaNotificationCompat.MediaStyle()
+                    .setMediaSession(mediaSession.sessionToken)
+                    .setShowActionsInCompactView(0, 1, 2)
             )
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
-
-        val manager = ContextCompat.getSystemService(this, NotificationManager::class.java)
-        manager?.notify(NOTIFICATION_ID, notification)
     }
 
     private fun broadcastStatus(state: TTSPlaybackState) {
         playbackState = state
+        updatePlaybackState(state)
         val intent = Intent(ACTION_STATUS).apply {
             putExtra(EXTRA_STATE, state.name)
             putExtra(EXTRA_SENTENCE_INDEX, currentSentenceIndex)
             putExtra(EXTRA_SENTENCE_TOTAL, sentences.size)
         }
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+    }
+
+    private fun updatePlaybackState(state: TTSPlaybackState) {
+        val playbackStateCompat = when (state) {
+            TTSPlaybackState.PLAYING -> PlaybackStateCompat.STATE_PLAYING
+            TTSPlaybackState.PAUSED -> PlaybackStateCompat.STATE_PAUSED
+            TTSPlaybackState.STOPPED -> PlaybackStateCompat.STATE_STOPPED
+            TTSPlaybackState.IDLE -> PlaybackStateCompat.STATE_NONE
+        }
+        mediaSession.setPlaybackState(
+            playbackStateBuilder
+                .setState(playbackStateCompat, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1f)
+                .build()
+        )
+    }
+
+    private fun ensureAudioFocus(): Boolean {
+        if (hasAudioFocus) {
+            return true
+        }
+        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val request = audioFocusRequest ?: return false
+            audioManager.requestAudioFocus(request)
+        } else {
+            audioManager.requestAudioFocus(
+                audioFocusChangeListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN
+            )
+        }
+        hasAudioFocus = granted == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        return hasAudioFocus
+    }
+
+    private fun abandonAudioFocus() {
+        if (!hasAudioFocus) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+        } else {
+            audioManager.abandonAudioFocus(audioFocusChangeListener)
+        }
+        hasAudioFocus = false
+    }
+
+    private fun pausePlayback(releaseFocus: Boolean = true) {
+        if (playbackState == TTSPlaybackState.PAUSED && !releaseFocus) {
+            return
+        }
+        ttsEngine.stop()
+        if (releaseFocus) {
+            abandonAudioFocus()
+        }
+        broadcastStatus(TTSPlaybackState.PAUSED)
+        updateNotification(getString(R.string.tts_notification_paused))
     }
 
     private fun createNotificationChannel() {
@@ -301,8 +537,14 @@ class TTSService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         ttsEngine.shutdown()
-        serviceScope.cancel()
+        abandonAudioFocus()
         broadcastStatus(TTSPlaybackState.STOPPED)
+        mediaSession.isActive = false
+        mediaSession.setCallback(null)
+        mediaSession.release()
+        serviceScope.cancel()
+        pendingLanguageTag = null
+        currentLanguageTag = null
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -310,6 +552,8 @@ class TTSService : Service() {
     companion object {
         private const val CHANNEL_ID = "tts_service_channel"
         private const val NOTIFICATION_ID = 1001
+        private const val MEDIA_SESSION_TAG = "RiftedReaderTTS"
+        private const val TAG = "TTSService"
 
         private const val ACTION_PLAY = "com.rifters.riftedreader.tts.ACTION_PLAY"
         private const val ACTION_PAUSE = "com.rifters.riftedreader.tts.ACTION_PAUSE"
@@ -317,6 +561,8 @@ class TTSService : Service() {
         private const val ACTION_NEXT = "com.rifters.riftedreader.tts.ACTION_NEXT"
         private const val ACTION_PREVIOUS = "com.rifters.riftedreader.tts.ACTION_PREVIOUS"
         private const val ACTION_UPDATE_CONFIG = "com.rifters.riftedreader.tts.ACTION_UPDATE_CONFIG"
+        private const val ACTION_RESUME = "com.rifters.riftedreader.tts.ACTION_RESUME"
+        private const val ACTION_TOGGLE_PLAY_PAUSE = "com.rifters.riftedreader.tts.ACTION_TOGGLE_PLAY_PAUSE"
         const val ACTION_STATUS = "com.rifters.riftedreader.tts.ACTION_STATUS"
 
         private const val EXTRA_TEXT = "extra_text"
@@ -324,6 +570,7 @@ class TTSService : Service() {
         private const val EXTRA_PITCH = "extra_pitch"
         private const val EXTRA_AUTO_SCROLL = "extra_auto_scroll"
         private const val EXTRA_HIGHLIGHT = "extra_highlight"
+        private const val EXTRA_LANGUAGE = "extra_language"
         const val EXTRA_STATE = "extra_state"
         const val EXTRA_SENTENCE_INDEX = "extra_sentence_index"
         const val EXTRA_SENTENCE_TOTAL = "extra_sentence_total"
@@ -336,6 +583,7 @@ class TTSService : Service() {
                 putExtra(EXTRA_PITCH, configuration.pitch)
                 putExtra(EXTRA_AUTO_SCROLL, configuration.autoScroll)
                 putExtra(EXTRA_HIGHLIGHT, configuration.highlightSentence)
+                putExtra(EXTRA_LANGUAGE, configuration.languageTag ?: "")
             }
             ContextCompat.startForegroundService(context, intent)
         }
@@ -350,6 +598,16 @@ class TTSService : Service() {
             ContextCompat.startForegroundService(context, intent)
         }
 
+        fun resume(context: Context) {
+            val intent = Intent(context, TTSService::class.java).apply { action = ACTION_RESUME }
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun togglePlayPause(context: Context) {
+            val intent = Intent(context, TTSService::class.java).apply { action = ACTION_TOGGLE_PLAY_PAUSE }
+            ContextCompat.startForegroundService(context, intent)
+        }
+
         fun updateConfiguration(context: Context, configuration: TTSConfiguration) {
             val intent = Intent(context, TTSService::class.java).apply {
                 action = ACTION_UPDATE_CONFIG
@@ -357,6 +615,7 @@ class TTSService : Service() {
                 putExtra(EXTRA_PITCH, configuration.pitch)
                 putExtra(EXTRA_AUTO_SCROLL, configuration.autoScroll)
                 putExtra(EXTRA_HIGHLIGHT, configuration.highlightSentence)
+                putExtra(EXTRA_LANGUAGE, configuration.languageTag ?: "")
             }
             ContextCompat.startForegroundService(context, intent)
         }

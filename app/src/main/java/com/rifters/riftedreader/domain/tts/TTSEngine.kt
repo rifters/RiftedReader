@@ -87,6 +87,8 @@ class TTSEngine(private val context: Context) {
         isInitialized = false
     }
 
+    fun isReady(): Boolean = isInitialized
+
     companion object {
         private const val TAG = "TTSEngine"
     }

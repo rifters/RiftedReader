@@ -65,6 +65,8 @@
     <string name="tts_pitch_label">Pitch</string>
     <string name="tts_option_highlight">Highlight sentence during playback</string>
     <string name="tts_option_auto_scroll">Auto-scroll to spoken sentence</string>
+    <string name="tts_voice_label">Voice</string>
+    <string name="tts_voice_default">System default</string>
     <string name="tts_status_ready">Ready to read this page.</string>
     <string name="tts_status_empty_selection">Load a page before starting TTS.</string>
     <string name="tts_action_play">Play</string>
@@ -76,6 +78,7 @@
     <string name="tts_notification_channel_name">Text-to-Speech</string>
     <string name="tts_notification_channel_description">Controls for background reading.</string>
     <string name="tts_action_previous">Previous</string>
+    <string name="tts_action_next">Next</string>
 
     
     <!-- Permissions -->

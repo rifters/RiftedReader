@@ -62,6 +62,13 @@ class ReaderTapZonesBottomSheet : BottomSheetDialogFragment() {
 
     private fun setupDropdowns() {
         zoneInputs.forEach { (zone, input) ->
+            input.keyListener = null
+            input.setOnClickListener { input.showDropDown() }
+            input.setOnFocusChangeListener { _, hasFocus ->
+                if (hasFocus) {
+                    input.showDropDown()
+                }
+            }
             input.setAdapter(ArrayAdapter(requireContext(), android.R.layout.simple_list_item_1, actionLabels))
             input.setOnItemClickListener { _, _, position, _ ->
                 readerPreferences.updateTapAction(zone, actions[position])

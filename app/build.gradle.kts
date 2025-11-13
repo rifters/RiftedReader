@@ -57,6 +57,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation("androidx.media:media:1.6.0")
     
     // Navigation
     implementation("androidx.navigation:navigation-fragment-ktx:2.7.6")
@@ -76,7 +77,7 @@ dependencies {
     
     // File format libraries
     // PDF support
-    implementation("com.github.barteksc:android-pdf-viewer:3.2.0-beta.1")
+    implementation("com.github.mhiew:android-pdf-viewer:3.2.0-beta.1")
     
     // EPUB support (will use custom implementation with JSoup)
     implementation("org.jsoup:jsoup:1.17.2")
@@ -89,6 +90,7 @@ dependencies {
     
     // Testing
     implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
+    testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")

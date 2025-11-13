@@ -32,6 +32,18 @@ class TTSPreferences(private val context: Context) {
         get() = prefs.getBoolean(KEY_HIGHLIGHT, true)
         set(value) = prefs.edit().putBoolean(KEY_HIGHLIGHT, value).apply()
 
+    var languageTag: String?
+        get() = prefs.getString(KEY_LANGUAGE_TAG, null)
+        set(value) {
+            prefs.edit().apply {
+                if (value.isNullOrBlank()) {
+                    remove(KEY_LANGUAGE_TAG)
+                } else {
+                    putString(KEY_LANGUAGE_TAG, value)
+                }
+            }.apply()
+        }
+
     fun saveReplacementRules(rules: String) {
         getReplacementRulesFile().writeText(rules)
     }
@@ -62,6 +74,7 @@ class TTSPreferences(private val context: Context) {
         private const val KEY_PITCH = "tts_pitch"
         private const val KEY_AUTO_SCROLL = "tts_auto_scroll"
         private const val KEY_HIGHLIGHT = "tts_highlight"
+        private const val KEY_LANGUAGE_TAG = "tts_language_tag"
 
         private const val RULES_DIR_NAME = "tts_rules"
         private const val DEFAULT_RULES_FILE = "default_rules.txt"
