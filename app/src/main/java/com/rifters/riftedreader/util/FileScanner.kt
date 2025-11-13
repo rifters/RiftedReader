@@ -1,6 +1,8 @@
 package com.rifters.riftedreader.util
 
 import android.content.Context
+import android.annotation.SuppressLint
+import android.os.Build
 import android.os.Environment
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import com.rifters.riftedreader.data.repository.BookRepository
@@ -8,6 +10,7 @@ import com.rifters.riftedreader.domain.parser.ParserFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.LinkedHashSet
 
 /**
  * Scans file system for supported book files
@@ -87,18 +90,26 @@ class FileScanner(
     /**
      * Get default directories to scan
      */
+    @SuppressLint("InlinedApi")
     private fun getDefaultScanDirectories(): List<File> {
-        val directories = mutableListOf<File>()
-        
-        // External storage
+        val directories = LinkedHashSet<File>()
+
+        // Common public directories
+        directories += Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        directories += Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            directories += Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_AUDIOBOOKS)
+        }
+
+        // Legacy folders that many readers use
         val externalStorage = Environment.getExternalStorageDirectory()
-        directories.add(File(externalStorage, "Books"))
-        directories.add(File(externalStorage, "Download"))
-        directories.add(File(externalStorage, "Documents"))
-        
-        // App-specific directory
-        context.getExternalFilesDir(null)?.let { directories.add(it) }
-        
+        directories += File(externalStorage, "Books")
+        directories += File(externalStorage, "ebooks")
+        directories += File(externalStorage, "RiftedReader")
+
+        // App-specific storage
+        context.getExternalFilesDir(null)?.let { directories += it }
+
         return directories.filter { it.exists() && it.isDirectory }
     }
 }

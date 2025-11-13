@@ -14,7 +14,18 @@
     <string name="filter">Filter</string>
     <string name="scan_books">Scan for books</string>
     <string name="no_books_found">No books found</string>
-    <string name="add_books_message">Add books to your library by scanning your device</string>
+    <string name="add_books_message">Add books by scanning your device or importing a file</string>
+    <string name="library_add_books_title">Add books</string>
+    <string name="library_action_scan">Scan device</string>
+    <string name="library_action_import">Import from file</string>
+    <string name="library_scan_completed">Added %1$d new books</string>
+    <string name="library_scan_no_new_books">No new books found</string>
+    <string name="library_scan_failed">Scanning failed. Try again.</string>
+    <string name="library_import_success"><![CDATA[Added "%1$s"]]></string>
+    <string name="library_import_unsupported"><![CDATA["%1$s" is not a supported format]]></string>
+    <string name="library_import_failed">Could not add that book. Try again.</string>
+    <string name="library_import_duplicate"><![CDATA["%1$s" is already in your library]]></string>
+    <string name="library_import_copy_failed">Could not copy the selected file</string>
     
     <!-- Reader -->
     <string name="chapter">Chapter %1$d</string>
@@ -86,6 +97,9 @@
     <string name="permission_storage_message">RiftedReader needs access to your storage to read ebook files.</string>
     <string name="permission_grant">Grant Permission</string>
     <string name="permission_denied">Permission Denied</string>
+    <string name="permission_all_files_title">Allow full storage access</string>
+    <string name="permission_all_files_message">RiftedReader needs "All files access" to scan your storage for books. You can also import books manually.</string>
+    <string name="permission_open_settings">Open settings</string>
     
     <!-- Common -->
     <string name="ok">OK</string>
