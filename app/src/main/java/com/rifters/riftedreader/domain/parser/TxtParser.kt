@@ -3,6 +3,7 @@ package com.rifters.riftedreader.domain.parser
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import java.io.File
 import java.nio.charset.Charset
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Parser for plain text files
@@ -16,7 +17,8 @@ class TxtParser : BookParser {
     }
     
     // Cache charset per file path to avoid re-detection
-    private val charsetCache = mutableMapOf<String, Charset>()
+    // Using ConcurrentHashMap for thread-safe concurrent access from multiple coroutines
+    private val charsetCache = ConcurrentHashMap<String, Charset>()
     
     override fun canParse(file: File): Boolean {
         return file.extension.lowercase() in SUPPORTED_EXTENSIONS
