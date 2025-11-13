@@ -5,7 +5,9 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.rifters.riftedreader.data.database.BookDatabase
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.databinding.ActivityReaderBinding
@@ -87,20 +89,24 @@ class ReaderActivity : AppCompatActivity() {
     
     private fun observeViewModel() {
         lifecycleScope.launch {
-            viewModel.content.collect { content ->
-                binding.contentTextView.text = content
-            }
-        }
-        
-        lifecycleScope.launch {
-            viewModel.currentPage.collect { page ->
-                updatePageIndicator(page)
-            }
-        }
-        
-        lifecycleScope.launch {
-            viewModel.totalPages.collect { total ->
-                binding.pageSlider.valueTo = total.toFloat().coerceAtLeast(1f)
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    viewModel.content.collect { content ->
+                        binding.contentTextView.text = content
+                    }
+                }
+                
+                launch {
+                    viewModel.currentPage.collect { page ->
+                        updatePageIndicator(page)
+                    }
+                }
+                
+                launch {
+                    viewModel.totalPages.collect { total ->
+                        binding.pageSlider.valueTo = total.toFloat().coerceAtLeast(1f)
+                    }
+                }
             }
         }
     }

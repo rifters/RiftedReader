@@ -12,7 +12,11 @@ class TxtParser : BookParser {
     companion object {
         private const val LINES_PER_PAGE = 30
         private val SUPPORTED_EXTENSIONS = listOf("txt", "text")
+        private const val CHARSET_DETECTION_BUFFER_SIZE = 8192 // Read first 8KB for charset detection
     }
+    
+    // Cache charset per file path to avoid re-detection
+    private val charsetCache = mutableMapOf<String, Charset>()
     
     override fun canParse(file: File): Boolean {
         return file.extension.lowercase() in SUPPORTED_EXTENSIONS
@@ -33,7 +37,8 @@ class TxtParser : BookParser {
     }
     
     override suspend fun getPageContent(file: File, page: Int): String {
-        val lines = file.readLines(detectCharset(file))
+        val charset = getOrDetectCharset(file)
+        val lines = file.readLines(charset)
         val startLine = page * LINES_PER_PAGE
         val endLine = minOf(startLine + LINES_PER_PAGE, lines.size)
         
@@ -45,7 +50,8 @@ class TxtParser : BookParser {
     }
     
     override suspend fun getPageCount(file: File): Int {
-        val lineCount = file.readLines(detectCharset(file)).size
+        val charset = getOrDetectCharset(file)
+        val lineCount = file.readLines(charset).size
         return (lineCount + LINES_PER_PAGE - 1) / LINES_PER_PAGE
     }
     
@@ -55,12 +61,27 @@ class TxtParser : BookParser {
     }
     
     /**
-     * Detect file encoding (simple implementation)
+     * Get cached charset or detect it for the file
+     */
+    private fun getOrDetectCharset(file: File): Charset {
+        return charsetCache.getOrPut(file.absolutePath) {
+            detectCharset(file)
+        }
+    }
+    
+    /**
+     * Detect file encoding by reading only the file header (first 8KB)
      */
     private fun detectCharset(file: File): Charset {
         return try {
-            // Try UTF-8 first
-            file.readLines(Charsets.UTF_8)
+            // Read only the beginning of the file for charset detection
+            val buffer = ByteArray(minOf(CHARSET_DETECTION_BUFFER_SIZE.toLong(), file.length()).toInt())
+            file.inputStream().use { input ->
+                input.read(buffer)
+            }
+            
+            // Try to decode with UTF-8
+            String(buffer, Charsets.UTF_8)
             Charsets.UTF_8
         } catch (e: Exception) {
             try {

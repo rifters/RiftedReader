@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.util.FileScanner
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,12 +25,18 @@ class LibraryViewModel(
     private val _scanProgress = MutableStateFlow(Pair(0, 0))
     val scanProgress: StateFlow<Pair<Int, Int>> = _scanProgress.asStateFlow()
     
+    // Track the active Flow collection job to cancel when needed
+    private var booksCollectionJob: Job? = null
+    
     init {
         loadBooks()
     }
     
     private fun loadBooks() {
-        viewModelScope.launch {
+        // Cancel any existing collection job to prevent memory leaks
+        booksCollectionJob?.cancel()
+        
+        booksCollectionJob = viewModelScope.launch {
             repository.allBooks.collect { bookList ->
                 _books.value = bookList
             }
@@ -50,10 +57,13 @@ class LibraryViewModel(
     }
     
     fun searchBooks(query: String) {
+        // Cancel any existing collection job to prevent race conditions and memory leaks
+        booksCollectionJob?.cancel()
+        
         if (query.isBlank()) {
             loadBooks()
         } else {
-            viewModelScope.launch {
+            booksCollectionJob = viewModelScope.launch {
                 repository.searchBooks(query).collect { searchResults ->
                     _books.value = searchResults
                 }
