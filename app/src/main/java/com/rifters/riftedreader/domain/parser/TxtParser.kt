@@ -80,17 +80,13 @@ class TxtParser : BookParser {
                 input.read(buffer)
             }
             
-            // Try to decode with UTF-8
-            String(buffer, Charsets.UTF_8)
+            // Try to decode with UTF-8 - will throw if invalid
+            val decoder = Charsets.UTF_8.newDecoder()
+            decoder.decode(java.nio.ByteBuffer.wrap(buffer))
             Charsets.UTF_8
         } catch (e: Exception) {
-            try {
-                // Fall back to ISO-8859-1
-                Charsets.ISO_8859_1
-            } catch (e: Exception) {
-                // Default to system charset
-                Charset.defaultCharset()
-            }
+            // Fall back to ISO-8859-1 (which accepts all byte values)
+            Charsets.ISO_8859_1
         }
     }
 }
