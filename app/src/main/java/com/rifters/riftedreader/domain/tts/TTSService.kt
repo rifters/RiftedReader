@@ -19,10 +19,14 @@ import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.media.AudioAttributesCompat
+import androidx.media.AudioFocusRequestCompat
+import androidx.media.AudioManagerCompat
 import androidx.media.app.NotificationCompat as MediaNotificationCompat
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.preferences.TTSPreferences
+import com.rifters.riftedreader.domain.tts.TTSStatusNotifier
+import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -39,6 +43,7 @@ class TTSService : Service() {
     private lateinit var preferences: TTSPreferences
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
+    private var audioFocusRequestCompat: AudioFocusRequestCompat? = null
     private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         when (focusChange) {
             AudioManager.AUDIOFOCUS_LOSS -> {
@@ -103,10 +108,18 @@ class TTSService : Service() {
                 .setAcceptsDelayedFocusGain(true)
                 .setOnAudioFocusChangeListener(audioFocusChangeListener)
                 .build()
+        } else {
+            val attributesCompat = AudioAttributesCompat.Builder()
+                .setUsage(AudioAttributesCompat.USAGE_MEDIA)
+                .setContentType(AudioAttributesCompat.CONTENT_TYPE_SPEECH)
+                .build()
+            audioFocusRequestCompat = AudioFocusRequestCompat.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(attributesCompat)
+                .setOnAudioFocusChangeListener(audioFocusChangeListener)
+                .build()
         }
 
         mediaSession = MediaSessionCompat(this, MEDIA_SESSION_TAG).apply {
-            setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() {
                     handleResume()
@@ -154,6 +167,7 @@ class TTSService : Service() {
             ACTION_UPDATE_CONFIG -> handleUpdateConfig(intent)
             ACTION_RESUME -> handleResume()
             ACTION_TOGGLE_PLAY_PAUSE -> handleTogglePlayPause()
+            ACTION_RELOAD_REPLACEMENTS -> handleReloadReplacements()
         }
         return START_STICKY
     }
@@ -210,7 +224,7 @@ class TTSService : Service() {
         abandonAudioFocus()
         broadcastStatus(TTSPlaybackState.STOPPED)
         mediaSession.isActive = false
-        stopForeground(true)
+        stopForegroundCompat()
         stopSelf()
     }
 
@@ -279,6 +293,14 @@ class TTSService : Service() {
             TTSPlaybackState.PLAYING -> pausePlayback()
             TTSPlaybackState.PAUSED -> handleResume()
             else -> Unit
+        }
+    }
+
+    private fun handleReloadReplacements() {
+        val rules = preferences.loadReplacementRules()
+        replacementEngine.clearRules()
+        if (!rules.isNullOrBlank()) {
+            replacementEngine.loadRulesFromText(rules)
         }
     }
 
@@ -367,21 +389,26 @@ class TTSService : Service() {
             }
 
             override fun onDone(utteranceId: String?) {
-                currentSentenceIndex++
-                serviceScope.launch {
-                    delay(200)
-                    speakCurrentSentence()
-                }
+                handleUtteranceCompletion()
             }
 
+            override fun onError(utteranceId: String?, errorCode: Int) {
+                handleUtteranceCompletion()
+            }
+
+            @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
             override fun onError(utteranceId: String?) {
-                currentSentenceIndex++
-                serviceScope.launch {
-                    delay(200)
-                    speakCurrentSentence()
-                }
+                handleUtteranceCompletion()
             }
         })
+    }
+
+    private fun handleUtteranceCompletion() {
+        currentSentenceIndex++
+        serviceScope.launch {
+            delay(200)
+            speakCurrentSentence()
+        }
     }
 
     private fun splitIntoSentences(text: String): List<String> {
@@ -453,12 +480,13 @@ class TTSService : Service() {
     private fun broadcastStatus(state: TTSPlaybackState) {
         playbackState = state
         updatePlaybackState(state)
-        val intent = Intent(ACTION_STATUS).apply {
-            putExtra(EXTRA_STATE, state.name)
-            putExtra(EXTRA_SENTENCE_INDEX, currentSentenceIndex)
-            putExtra(EXTRA_SENTENCE_TOTAL, sentences.size)
-        }
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+        TTSStatusNotifier.update(
+            TTSStatusSnapshot(
+                state = state,
+                sentenceIndex = currentSentenceIndex,
+                sentenceTotal = sentences.size
+            )
+        )
     }
 
     private fun updatePlaybackState(state: TTSPlaybackState) {
@@ -483,11 +511,8 @@ class TTSService : Service() {
             val request = audioFocusRequest ?: return false
             audioManager.requestAudioFocus(request)
         } else {
-            audioManager.requestAudioFocus(
-                audioFocusChangeListener,
-                AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN
-            )
+            val request = audioFocusRequestCompat ?: return false
+            AudioManagerCompat.requestAudioFocus(audioManager, request)
         }
         hasAudioFocus = granted == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         return hasAudioFocus
@@ -498,7 +523,7 @@ class TTSService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         } else {
-            audioManager.abandonAudioFocus(audioFocusChangeListener)
+            audioFocusRequestCompat?.let { AudioManagerCompat.abandonAudioFocusRequest(audioManager, it) }
         }
         hasAudioFocus = false
     }
@@ -534,6 +559,15 @@ class TTSService : Service() {
         return PendingIntent.getService(this, action.hashCode(), intent, flags)
     }
 
+    private fun stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         ttsEngine.shutdown()
@@ -563,7 +597,7 @@ class TTSService : Service() {
         private const val ACTION_UPDATE_CONFIG = "com.rifters.riftedreader.tts.ACTION_UPDATE_CONFIG"
         private const val ACTION_RESUME = "com.rifters.riftedreader.tts.ACTION_RESUME"
         private const val ACTION_TOGGLE_PLAY_PAUSE = "com.rifters.riftedreader.tts.ACTION_TOGGLE_PLAY_PAUSE"
-        const val ACTION_STATUS = "com.rifters.riftedreader.tts.ACTION_STATUS"
+        private const val ACTION_RELOAD_REPLACEMENTS = "com.rifters.riftedreader.tts.ACTION_RELOAD_REPLACEMENTS"
 
         private const val EXTRA_TEXT = "extra_text"
         private const val EXTRA_SPEED = "extra_speed"
@@ -571,9 +605,6 @@ class TTSService : Service() {
         private const val EXTRA_AUTO_SCROLL = "extra_auto_scroll"
         private const val EXTRA_HIGHLIGHT = "extra_highlight"
         private const val EXTRA_LANGUAGE = "extra_language"
-        const val EXTRA_STATE = "extra_state"
-        const val EXTRA_SENTENCE_INDEX = "extra_sentence_index"
-        const val EXTRA_SENTENCE_TOTAL = "extra_sentence_total"
 
         fun start(context: Context, text: String, configuration: TTSConfiguration) {
             val intent = Intent(context, TTSService::class.java).apply {
@@ -617,6 +648,11 @@ class TTSService : Service() {
                 putExtra(EXTRA_HIGHLIGHT, configuration.highlightSentence)
                 putExtra(EXTRA_LANGUAGE, configuration.languageTag ?: "")
             }
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun reloadReplacements(context: Context) {
+            val intent = Intent(context, TTSService::class.java).apply { action = ACTION_RELOAD_REPLACEMENTS }
             ContextCompat.startForegroundService(context, intent)
         }
 

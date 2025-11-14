@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory
+        android:title="@string/settings_section_reader">
+
+        <Preference
+            android:key="settings_reader"
+            android:title="@string/settings_reader_title"
+            android:summary="@string/settings_reader_summary"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="@string/settings_section_tts">
+
+        <Preference
+            android:key="settings_tts"
+            android:title="@string/settings_tts_title"
+            android:summary="@string/settings_tts_summary"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+
+</PreferenceScreen>

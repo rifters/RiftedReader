@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <ListPreference
+        android:key="tts_speed"
+        android:title="@string/settings_tts_speed"
+        android:defaultValue="1.0"
+        app:entries="@array/tts_speed_entries"
+        app:entryValues="@array/tts_speed_values"
+        app:useSimpleSummaryProvider="true" />
+
+    <ListPreference
+        android:key="tts_pitch"
+        android:title="@string/settings_tts_pitch"
+        android:defaultValue="1.0"
+        app:entries="@array/tts_pitch_entries"
+        app:entryValues="@array/tts_pitch_values"
+        app:useSimpleSummaryProvider="true" />
+
+    <SwitchPreferenceCompat
+        android:key="tts_highlight"
+        android:title="@string/settings_tts_highlight"
+        android:defaultValue="true"
+        app:iconSpaceReserved="false" />
+
+    <SwitchPreferenceCompat
+        android:key="tts_auto_scroll"
+        android:title="@string/settings_tts_auto_scroll"
+        android:defaultValue="true"
+        app:iconSpaceReserved="false" />
+
+    <Preference
+        android:key="tts_replacements"
+        android:title="@string/settings_tts_manage_replacements"
+        android:summary="@string/tts_replacements_summary"
+        app:iconSpaceReserved="false" />
+
+</PreferenceScreen>

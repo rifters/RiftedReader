@@ -26,6 +26,7 @@
     <string name="library_import_failed">Could not add that book. Try again.</string>
     <string name="library_import_duplicate"><![CDATA["%1$s" is already in your library]]></string>
     <string name="library_import_copy_failed">Could not copy the selected file</string>
+    <string name="library_menu_settings">Settings</string>
     
     <!-- Reader -->
     <string name="chapter">Chapter %1$d</string>
@@ -69,6 +70,16 @@
     <string name="reader_tap_action_open_settings">Open settings</string>
     <string name="reader_tap_action_start_tts">Start Text-to-Speech</string>
     <string name="reader_tap_reset">Reset to defaults</string>
+    <string name="reader_text_size_small">Small</string>
+    <string name="reader_text_size_default">Default</string>
+    <string name="reader_text_size_large">Large</string>
+    <string name="reader_text_size_extra_large">Extra large</string>
+    <string name="reader_line_height_compact">Compact</string>
+    <string name="reader_line_height_default">Default</string>
+    <string name="reader_line_height_relaxed">Relaxed</string>
+    <string name="reader_line_height_loose">Loose</string>
+    <string name="reader_mode_scroll">Scrolling</string>
+    <string name="reader_mode_page">Page flipping</string>
 
     <!-- TTS -->
     <string name="tts_controls_title">Text-to-Speech</string>
@@ -90,6 +101,62 @@
     <string name="tts_notification_channel_description">Controls for background reading.</string>
     <string name="tts_action_previous">Previous</string>
     <string name="tts_action_next">Next</string>
+    <string name="tts_speed_0_75">0.75×</string>
+    <string name="tts_speed_1_0">1.0× (default)</string>
+    <string name="tts_speed_1_25">1.25×</string>
+    <string name="tts_speed_1_5">1.5×</string>
+    <string name="tts_speed_1_75">1.75×</string>
+    <string name="tts_speed_2_0">2.0×</string>
+    <string name="tts_pitch_0_8">0.8</string>
+    <string name="tts_pitch_1_0">1.0 (default)</string>
+    <string name="tts_pitch_1_2">1.2</string>
+    <string name="tts_replacements_manage">Manage pronunciation rules</string>
+    <string name="tts_replacements_summary">Customize how Text-to-Speech pronounces words and symbols.</string>
+    <string name="tts_replacements_title">Pronunciation rules</string>
+    <string name="tts_replacements_empty">No replacements yet. Add one to get started.</string>
+    <string name="tts_replacements_add">Add rule</string>
+    <string name="tts_replacements_edit">Edit rule</string>
+    <string name="tts_replacements_delete">Delete rule?</string>
+    <string name="tts_replacements_delete_message">Remove this pronunciation rule?</string>
+    <string name="tts_replacement_pattern_hint">Text or pattern to match</string>
+    <string name="tts_replacement_replacement_hint">Replacement</string>
+    <string name="tts_replacement_type">Rule type</string>
+    <string name="tts_replacement_type_simple">Simple text</string>
+    <string name="tts_replacement_type_regex">Regular expression</string>
+    <string name="tts_replacement_type_command">Command</string>
+    <string name="tts_replacement_error_pattern_required">Enter text to match.</string>
+    <string name="tts_replacement_error_replacement_required">Enter a replacement.</string>
+    <string name="tts_replacement_command_pause">Pause after match</string>
+    <string name="tts_replacement_command_skip">Skip sentence</string>
+    <string name="tts_replacement_command_stop">Stop reading</string>
+    <string name="tts_replacement_command_next">Go to next page</string>
+    <string name="tts_replacement_type_label">Type</string>
+    <string name="tts_replacement_enabled">Rule enabled</string>
+    <string name="tts_replacement_disabled_label">Disabled</string>
+    <string name="tts_replacement_regex_label">Regex</string>
+    <string name="tts_replacement_command_label">Command</string>
+    <string name="tts_replacements_load_error">Could not load pronunciation rules.</string>
+    <string name="tts_replacements_deleted">Pronunciation rule deleted.</string>
+    <string name="tts_replacements_rule_added">Pronunciation rule added.</string>
+    <string name="tts_replacements_rule_updated">Pronunciation rule updated.</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_reader">Reader</string>
+    <string name="settings_section_tts">Text-to-Speech</string>
+    <string name="settings_reader_title">Reading preferences</string>
+    <string name="settings_reader_summary">Text size, themes, and reading mode.</string>
+    <string name="settings_tts_title">Text-to-Speech</string>
+    <string name="settings_tts_summary">Voices, speed, and pronunciation rules.</string>
+    <string name="settings_reader_text_size">Text size</string>
+    <string name="settings_reader_line_height">Line spacing</string>
+    <string name="settings_reader_theme">Theme</string>
+    <string name="settings_reader_mode">Reading mode</string>
+    <string name="settings_tts_speed">Default speed</string>
+    <string name="settings_tts_pitch">Default pitch</string>
+    <string name="settings_tts_highlight">Highlight sentences during playback</string>
+    <string name="settings_tts_auto_scroll">Auto-scroll with speech</string>
+    <string name="settings_tts_manage_replacements">Pronunciation rules</string>
 
     
     <!-- Permissions -->

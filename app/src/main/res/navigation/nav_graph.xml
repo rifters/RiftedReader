@@ -7,6 +7,41 @@
     <fragment
         android:id="@+id/libraryFragment"
         android:name="com.rifters.riftedreader.ui.library.LibraryFragment"
-        android:label="@string/library_title" />
+        android:label="@string/library_title">
+        <action
+            android:id="@+id/action_libraryFragment_to_settingsFragment"
+            app:destination="@id/settingsFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="com.rifters.riftedreader.ui.settings.SettingsFragment"
+        android:label="@string/settings_title">
+        <action
+            android:id="@+id/action_settingsFragment_to_readerSettingsFragment"
+            app:destination="@id/readerSettingsFragment" />
+        <action
+            android:id="@+id/action_settingsFragment_to_ttsSettingsFragment"
+            app:destination="@id/ttsSettingsFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/readerSettingsFragment"
+        android:name="com.rifters.riftedreader.ui.settings.ReaderSettingsFragment"
+        android:label="@string/settings_reader_title" />
+
+    <fragment
+        android:id="@+id/ttsSettingsFragment"
+        android:name="com.rifters.riftedreader.ui.settings.TTSSettingsFragment"
+        android:label="@string/settings_tts_title">
+        <action
+            android:id="@+id/action_ttsSettingsFragment_to_ttsReplacementsFragment"
+            app:destination="@id/ttsReplacementsFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/ttsReplacementsFragment"
+        android:name="com.rifters.riftedreader.ui.settings.TTSReplacementsFragment"
+        android:label="@string/tts_replacements_title" />
 
 </navigation>

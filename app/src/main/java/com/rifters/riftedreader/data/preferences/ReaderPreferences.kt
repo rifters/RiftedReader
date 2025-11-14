@@ -14,7 +14,8 @@ private const val DEFAULT_LINE_HEIGHT_MULTIPLIER = 1.3f
 data class ReaderSettings(
     val textSizeSp: Float = DEFAULT_TEXT_SIZE_SP,
     val lineHeightMultiplier: Float = DEFAULT_LINE_HEIGHT_MULTIPLIER,
-    val theme: ReaderTheme = ReaderTheme.LIGHT
+    val theme: ReaderTheme = ReaderTheme.LIGHT,
+    val mode: ReaderMode = ReaderMode.SCROLL
 )
 
 enum class ReaderTheme {
@@ -22,6 +23,11 @@ enum class ReaderTheme {
     DARK,
     SEPIA,
     BLACK
+}
+
+enum class ReaderMode {
+    SCROLL,
+    PAGE
 }
 
 class ReaderPreferences(context: Context) {
@@ -44,7 +50,9 @@ class ReaderPreferences(context: Context) {
         val lineHeight = prefs.getFloat(KEY_LINE_HEIGHT, DEFAULT_LINE_HEIGHT_MULTIPLIER)
         val themeName = prefs.getString(KEY_THEME, ReaderTheme.LIGHT.name) ?: ReaderTheme.LIGHT.name
         val theme = runCatching { ReaderTheme.valueOf(themeName) }.getOrDefault(ReaderTheme.LIGHT)
-        return ReaderSettings(size, lineHeight, theme)
+        val modeName = prefs.getString(KEY_MODE, ReaderMode.SCROLL.name) ?: ReaderMode.SCROLL.name
+        val mode = runCatching { ReaderMode.valueOf(modeName) }.getOrDefault(ReaderMode.SCROLL)
+        return ReaderSettings(size, lineHeight, theme, mode)
     }
 
     private fun saveSettings(settings: ReaderSettings) {
@@ -52,6 +60,7 @@ class ReaderPreferences(context: Context) {
             putFloat(KEY_TEXT_SIZE, settings.textSizeSp)
             putFloat(KEY_LINE_HEIGHT, settings.lineHeightMultiplier)
             putString(KEY_THEME, settings.theme.name)
+            putString(KEY_MODE, settings.mode.name)
         }
     }
 
@@ -95,6 +104,7 @@ class ReaderPreferences(context: Context) {
         private const val KEY_TEXT_SIZE = "text_size_sp"
         private const val KEY_LINE_HEIGHT = "line_height_multiplier"
         private const val KEY_THEME = "reader_theme"
+        private const val KEY_MODE = "reader_mode"
         private const val KEY_TAP_ACTIONS = "reader_tap_actions"
 
         private const val ENTRY_SEPARATOR = "|"
