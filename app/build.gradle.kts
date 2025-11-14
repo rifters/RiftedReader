@@ -52,6 +52,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    implementation("androidx.preference:preference-ktx:1.2.1")
     
     // Architecture Components
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
@@ -89,7 +90,6 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     
     // Testing
-    implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

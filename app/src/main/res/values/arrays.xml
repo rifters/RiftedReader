@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Reader settings -->
+    <string-array name="reader_text_size_entries">
+        <item>@string/reader_text_size_small</item>
+        <item>@string/reader_text_size_default</item>
+        <item>@string/reader_text_size_large</item>
+        <item>@string/reader_text_size_extra_large</item>
+    </string-array>
+    <string-array name="reader_text_size_values">
+        <item>14</item>
+        <item>16</item>
+        <item>18</item>
+        <item>20</item>
+    </string-array>
+
+    <string-array name="reader_line_height_entries">
+        <item>@string/reader_line_height_compact</item>
+        <item>@string/reader_line_height_default</item>
+        <item>@string/reader_line_height_relaxed</item>
+        <item>@string/reader_line_height_loose</item>
+    </string-array>
+    <string-array name="reader_line_height_values">
+        <item>1.1</item>
+        <item>1.3</item>
+        <item>1.5</item>
+        <item>1.7</item>
+    </string-array>
+
+    <string-array name="reader_theme_entries">
+        <item>@string/reader_theme_light</item>
+        <item>@string/reader_theme_dark</item>
+        <item>@string/reader_theme_sepia</item>
+        <item>@string/reader_theme_black</item>
+    </string-array>
+    <string-array name="reader_theme_values">
+        <item>LIGHT</item>
+        <item>DARK</item>
+        <item>SEPIA</item>
+        <item>BLACK</item>
+    </string-array>
+
+    <string-array name="reader_mode_entries">
+        <item>@string/reader_mode_scroll</item>
+        <item>@string/reader_mode_page</item>
+    </string-array>
+    <string-array name="reader_mode_values">
+        <item>SCROLL</item>
+        <item>PAGE</item>
+    </string-array>
+
+    <!-- TTS settings -->
+    <string-array name="tts_speed_entries">
+        <item>@string/tts_speed_0_75</item>
+        <item>@string/tts_speed_1_0</item>
+        <item>@string/tts_speed_1_25</item>
+        <item>@string/tts_speed_1_5</item>
+        <item>@string/tts_speed_1_75</item>
+        <item>@string/tts_speed_2_0</item>
+    </string-array>
+    <string-array name="tts_speed_values">
+        <item>0.75</item>
+        <item>1.0</item>
+        <item>1.25</item>
+        <item>1.5</item>
+        <item>1.75</item>
+        <item>2.0</item>
+    </string-array>
+
+    <string-array name="tts_pitch_entries">
+        <item>@string/tts_pitch_0_8</item>
+        <item>@string/tts_pitch_1_0</item>
+        <item>@string/tts_pitch_1_2</item>
+    </string-array>
+    <string-array name="tts_pitch_values">
+        <item>0.8</item>
+        <item>1.0</item>
+        <item>1.2</item>
+    </string-array>
+</resources>

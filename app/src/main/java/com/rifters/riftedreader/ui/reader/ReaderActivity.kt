@@ -1,9 +1,5 @@
 package com.rifters.riftedreader.ui.reader
 
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.os.Bundle
 import android.text.SpannableString
 import android.text.Spanned
@@ -19,7 +15,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.database.BookDatabase
 import com.rifters.riftedreader.data.preferences.ReaderPreferences
@@ -31,6 +26,7 @@ import com.rifters.riftedreader.databinding.ActivityReaderBinding
 import com.rifters.riftedreader.domain.parser.ParserFactory
 import com.rifters.riftedreader.domain.tts.TTSPlaybackState
 import com.rifters.riftedreader.domain.tts.TTSService
+import com.rifters.riftedreader.domain.tts.TTSStatusNotifier
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import kotlinx.coroutines.launch
 import java.io.File
@@ -48,21 +44,6 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var currentPageHtml: String? = null
     private var sentenceBoundaries: List<IntRange> = emptyList()
     private var highlightedSentenceIndex: Int = -1
-    private val ttsStatusIntentFilter = IntentFilter(TTSService.ACTION_STATUS)
-    private val ttsStatusReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != TTSService.ACTION_STATUS) return
-            val stateName = intent.getStringExtra(TTSService.EXTRA_STATE) ?: return
-            val playbackState = runCatching { TTSPlaybackState.valueOf(stateName) }.getOrNull() ?: return
-            val sentenceIndex = intent.getIntExtra(TTSService.EXTRA_SENTENCE_INDEX, -1)
-
-            when (playbackState) {
-                TTSPlaybackState.PLAYING, TTSPlaybackState.PAUSED -> handleTtsHighlight(sentenceIndex)
-                TTSPlaybackState.STOPPED, TTSPlaybackState.IDLE -> clearHighlightedSentence()
-            }
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityReaderBinding.inflate(layoutInflater)
@@ -178,6 +159,17 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
+                    TTSStatusNotifier.status.collect { snapshot ->
+                        when (snapshot.state) {
+                            TTSPlaybackState.PLAYING, TTSPlaybackState.PAUSED ->
+                                handleTtsHighlight(snapshot.sentenceIndex)
+                            TTSPlaybackState.STOPPED, TTSPlaybackState.IDLE ->
+                                clearHighlightedSentence()
+                        }
+                    }
+                }
+
+                launch {
                     viewModel.content.collect { pageContent ->
                         currentPageText = pageContent.text
                         currentPageHtml = pageContent.html
@@ -225,16 +217,6 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         binding.pageSlider.value = page.toFloat()
     }
 
-    override fun onStart() {
-        super.onStart()
-        LocalBroadcastManager.getInstance(this).registerReceiver(ttsStatusReceiver, ttsStatusIntentFilter)
-    }
-
-    override fun onStop() {
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(ttsStatusReceiver)
-        super.onStop()
-    }
-    
     override fun onPause() {
         super.onPause()
         viewModel.saveProgress()

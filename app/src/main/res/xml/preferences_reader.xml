@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <ListPreference
+        android:key="reader_text_size"
+        android:title="@string/settings_reader_text_size"
+        android:defaultValue="16"
+        app:entries="@array/reader_text_size_entries"
+        app:entryValues="@array/reader_text_size_values"
+        app:useSimpleSummaryProvider="true" />
+
+    <ListPreference
+        android:key="reader_line_height"
+        android:title="@string/settings_reader_line_height"
+        android:defaultValue="1.3"
+        app:entries="@array/reader_line_height_entries"
+        app:entryValues="@array/reader_line_height_values"
+        app:useSimpleSummaryProvider="true" />
+
+    <ListPreference
+        android:key="reader_theme"
+        android:title="@string/settings_reader_theme"
+        android:defaultValue="LIGHT"
+        app:entries="@array/reader_theme_entries"
+        app:entryValues="@array/reader_theme_values"
+        app:useSimpleSummaryProvider="true" />
+
+    <ListPreference
+        android:key="reader_mode"
+        android:title="@string/settings_reader_mode"
+        android:defaultValue="SCROLL"
+        app:entries="@array/reader_mode_entries"
+        app:entryValues="@array/reader_mode_values"
+        app:useSimpleSummaryProvider="true" />
+
+</PreferenceScreen>
