@@ -27,6 +27,7 @@ import com.rifters.riftedreader.domain.parser.ParserFactory
 import com.rifters.riftedreader.domain.tts.TTSPlaybackState
 import com.rifters.riftedreader.domain.tts.TTSService
 import com.rifters.riftedreader.domain.tts.TTSStatusNotifier
+import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import kotlinx.coroutines.launch
 import java.io.File
@@ -159,7 +160,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
-                    TTSStatusNotifier.status.collect { snapshot ->
+                    TTSStatusNotifier.status.collect { snapshot: TTSStatusSnapshot ->
                         when (snapshot.state) {
                             TTSPlaybackState.PLAYING, TTSPlaybackState.PAUSED ->
                                 handleTtsHighlight(snapshot.sentenceIndex)
