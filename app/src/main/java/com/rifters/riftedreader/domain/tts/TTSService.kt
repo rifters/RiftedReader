@@ -86,6 +86,7 @@ class TTSService : Service() {
     private var shouldResumeAfterFocusGain: Boolean = false
     private var currentLanguageTag: String? = null
     private var pendingLanguageTag: String? = null
+    private var pendingPlayIntent: Intent? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -150,6 +151,12 @@ class TTSService : Service() {
                 val tagToApply = pendingLanguageTag ?: preferences.languageTag
                 applyLanguage(tagToApply)
                 pendingLanguageTag = null
+                
+                // Process any pending play intent that arrived before initialization
+                pendingPlayIntent?.let { intent ->
+                    handlePlay(intent)
+                    pendingPlayIntent = null
+                }
             }
         }
         createNotificationChannel()
@@ -171,6 +178,12 @@ class TTSService : Service() {
     }
 
     private fun handlePlay(intent: Intent) {
+        // If TTS is not ready yet, queue this intent for later
+        if (!ttsEngine.isReady()) {
+            pendingPlayIntent = intent
+            return
+        }
+        
         val text = intent.getStringExtra(EXTRA_TEXT)
         val speed = intent.getFloatExtra(EXTRA_SPEED, preferences.speed)
         val pitch = intent.getFloatExtra(EXTRA_PITCH, preferences.pitch)
@@ -577,6 +590,7 @@ class TTSService : Service() {
         serviceScope.cancel()
         pendingLanguageTag = null
         currentLanguageTag = null
+        pendingPlayIntent = null
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
