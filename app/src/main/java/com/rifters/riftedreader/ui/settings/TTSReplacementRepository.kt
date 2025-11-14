@@ -4,7 +4,7 @@ import android.content.Context
 import com.rifters.riftedreader.data.preferences.TTSPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-private val RULE_PATTERN = Regex("\"([^\\\"]*)\"\\s+\"([^\\\"]*)\"")
+private val RULE_PATTERN = Regex("""\"((?:[^\\"]|\\.)*)\"\\s+\"((?:[^\\"]|\\.)*)\"""")
 
 internal enum class TTSReplacementUiType { SIMPLE, REGEX, COMMAND }
 
@@ -38,7 +38,7 @@ internal class TTSReplacementRepository(context: Context) {
             val prefix = if (item.enabled) "" else "#"
             val patternEscaped = patternToken.replace("\"", "\\\"")
             val replacementEscaped = item.replacement.replace("\"", "\\\"")
-            "\"${prefix}${patternEscaped}\" \"${replacementEscaped}\""
+            "${prefix}\"${patternEscaped}\" \"${replacementEscaped}\""
         }
         preferences.saveReplacementRules(text)
     }
@@ -54,8 +54,8 @@ internal class TTSReplacementRepository(context: Context) {
             val isDisabled = trimmed.startsWith("#")
             val effective = if (isDisabled) trimmed.drop(1).trimStart() else trimmed
             val match = RULE_PATTERN.find(effective) ?: continue
-            val rawPattern = match.groupValues[1]
-            val replacement = match.groupValues[2]
+            val rawPattern = match.groupValues[1].replace("\\\"", "\"")
+            val replacement = match.groupValues[2].replace("\\\"", "\"")
             val type = when {
                 replacement in COMMANDS -> TTSReplacementUiType.COMMAND
                 rawPattern.startsWith("*") -> TTSReplacementUiType.REGEX
