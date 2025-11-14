@@ -25,8 +25,6 @@ import androidx.media.AudioManagerCompat
 import androidx.media.app.NotificationCompat as MediaNotificationCompat
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.preferences.TTSPreferences
-import com.rifters.riftedreader.domain.tts.TTSStatusNotifier
-import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
