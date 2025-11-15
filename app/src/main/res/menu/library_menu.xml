@@ -6,4 +6,10 @@
         android:title="@string/library_menu_settings"
         android:icon="@drawable/ic_settings_24"
         app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/menu_filter_favorites"
+        android:title="@string/library_filter_favorites"
+        android:checkable="true"
+        app:showAsAction="never" />
 </menu>

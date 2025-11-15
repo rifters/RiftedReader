@@ -16,6 +16,10 @@ class BookRepository(private val bookMetaDao: BookMetaDao) {
     fun getRecentBooks(limit: Int = 10): Flow<List<BookMeta>> {
         return bookMetaDao.getRecentBooks(limit)
     }
+
+    suspend fun getAllBooksSnapshot(): List<BookMeta> {
+        return bookMetaDao.getAllBooksSnapshot()
+    }
     
     fun searchBooks(query: String): Flow<List<BookMeta>> {
         return bookMetaDao.searchBooks(query)

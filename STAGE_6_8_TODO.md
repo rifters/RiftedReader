@@ -1,0 +1,6 @@
+- [x] Persist LibrarySearchFilters across app restarts
+- [x] Add saved searches in library screen
+- [x] Add smart collections (recent, in-progress, completed, not started)
+- [x] Bulk metadata editor for title/author/tags/favorite
+- [ ] Cover art management + manual override workflow
+- [ ] Instrumented tests for selection + metadata flows

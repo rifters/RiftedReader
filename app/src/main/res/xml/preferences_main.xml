@@ -22,4 +22,14 @@
             app:iconSpaceReserved="false" />
     </PreferenceCategory>
 
+    <PreferenceCategory
+        android:title="@string/settings_section_library">
+
+        <Preference
+            android:key="settings_library_statistics"
+            android:title="@string/settings_library_statistics_title"
+            android:summary="@string/settings_library_statistics_summary"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+
 </PreferenceScreen>

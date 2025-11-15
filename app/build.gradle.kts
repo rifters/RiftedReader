@@ -75,6 +75,9 @@ dependencies {
     
     // Image Loading
     implementation("io.coil-kt:coil:2.5.0")
+
+    // RecyclerView selection support for bulk actions in the library
+    implementation("androidx.recyclerview:recyclerview-selection:1.1.0")
     
     // File format libraries
     // PDF support
