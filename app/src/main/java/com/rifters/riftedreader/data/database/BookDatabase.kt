@@ -6,20 +6,24 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.rifters.riftedreader.data.database.dao.BookMetaDao
+import com.rifters.riftedreader.data.database.dao.CollectionDao
 import com.rifters.riftedreader.data.database.entities.BookMeta
+import com.rifters.riftedreader.data.database.entities.BookCollectionCrossRef
+import com.rifters.riftedreader.data.database.entities.CollectionEntity
 
 /**
  * Main database for RiftedReader
  */
 @Database(
-    entities = [BookMeta::class],
-    version = 1,
+    entities = [BookMeta::class, CollectionEntity::class, BookCollectionCrossRef::class],
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class BookDatabase : RoomDatabase() {
     
     abstract fun bookMetaDao(): BookMetaDao
+    abstract fun collectionDao(): CollectionDao
     
     companion object {
         @Volatile

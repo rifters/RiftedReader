@@ -26,6 +26,7 @@ class FileScanner(
     suspend fun scanForBooks(
         onProgress: (scanned: Int, found: Int) -> Unit = { _, _ -> }
     ): List<BookMeta> = withContext(Dispatchers.IO) {
+        ParserFactory.enablePreviewParsers()
         val foundBooks = mutableListOf<BookMeta>()
         var scannedCount = 0
         

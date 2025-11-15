@@ -4,6 +4,7 @@ A modern ebook reader for Android, inspired by LibreraReader
 ## Project Status
 
 ✅ **Stage 1-3 Complete** - Android project structure, database layer, parsers, and basic UI implemented
+🛠️ **Stage 6-8 Scaffolding** - Format catalogue, collections database, statistics utilities, and cloud/OPDS interfaces added
 
 ## Documentation
 
@@ -51,6 +52,17 @@ This project includes detailed planning and analysis documents:
 - CBZ, CBR (Comic books)
 - DOC, DOCX
 
+| Format | Status | Notes |
+| --- | --- | --- |
+| TXT | ✅ Supported | Streaming parser in `TxtParser` |
+| EPUB | ✅ Supported | Spine & metadata extraction via JSoup |
+| PDF | ✅ Supported | AndroidPdfViewer wrapper |
+| MOBI / AZW / AZW3 | 🟡 In Progress | Preview parser + roadmap for libmobi integration |
+| FB2 | 🟡 In Progress | XML preview parser scaffolding |
+| CBZ | 🟡 In Progress | Archive preview parser scaffolding |
+| HTML | ✅ Supported | Jsoup-based parser aligned with Librera's HtmlExtractor |
+| CBR, RTF, DOCX | 🔜 Planned | Format descriptors tracked via `FormatCatalog` |
+
 ### Text-to-Speech ⭐ Core Feature
 - Advanced TTS with Android TextToSpeech API
 - **Sophisticated replacement system**:
@@ -67,7 +79,9 @@ This project includes detailed planning and analysis documents:
 - Fast file scanning
 - Metadata extraction
 - Collections and tags
+- Collections data model & repository ready for UI wiring
 - Advanced search and filtering
+- Library statistics calculator (totals, completion averages)
 - Reading progress tracking
 - Favorites system
 
@@ -78,6 +92,11 @@ This project includes detailed planning and analysis documents:
 - Configurable tap zones
 - Page and scroll modes
 - Bookmarks and highlights
+
+### Cloud & Sync (Scaffolding)
+- Cloud provider abstraction matching Google Drive / Dropbox roadmap
+- Stub Google Drive provider for integration testing
+- OPDS client data structures for catalog browsing
 
 ### Modern Architecture
 - Clean Architecture (MVVM)
@@ -132,9 +151,30 @@ This project includes detailed planning and analysis documents:
 - [ ] TTS controls UI
 
 ### Stage 5: Enhanced Features (Weeks 15-20)
-- [ ] Additional format support
-- [ ] Library enhancements
-- [ ] Cloud sync (optional)
+- [ ] Additional TTS polish
+- [ ] Reader refinements
+
+### Stage 6: Advanced Parsing (Weeks 15-16)
+- [x] Introduced central format catalogue with status tracking
+- [x] Preview parser scaffolding for MOBI, FB2, CBZ, CBR, RTF, DOCX
+- [x] HTML parser implementation using Jsoup (parity with Librera's HtmlExtractor)
+- [ ] Full content extraction for remaining new formats
+
+### Stage 7: Library Features (Weeks 17-18)
+- [x] Room entities & DAO for collections
+- [x] Collection repository façade
+- [x] Search filter use-case & statistics calculator
+- [x] LibraryViewModel wired to filter state & collections flow
+- [x] Persisted search filters & saved searches UI
+- [x] Library statistics screen in Settings
+- [x] Collections UI and smart collections
+- [ ] Bulk metadata editing & cover management
+
+### Stage 8: Cloud & Sync (Weeks 19-20)
+- [x] Cloud storage provider abstraction & stub implementations
+- [x] OPDS client data structures
+- [ ] Google Drive / Dropbox integrations
+- [ ] Progress sync & conflict resolution
 
 See [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) for complete timeline.
 
@@ -265,4 +305,4 @@ To run tests:
 
 ---
 
-**Last Updated**: November 13, 2025
+**Last Updated**: November 14, 2025

@@ -23,6 +23,9 @@
         <action
             android:id="@+id/action_settingsFragment_to_ttsSettingsFragment"
             app:destination="@id/ttsSettingsFragment" />
+        <action
+            android:id="@+id/action_settingsFragment_to_libraryStatisticsFragment"
+            app:destination="@id/libraryStatisticsFragment" />
     </fragment>
 
     <fragment
@@ -43,5 +46,10 @@
         android:id="@+id/ttsReplacementsFragment"
         android:name="com.rifters.riftedreader.ui.settings.TTSReplacementsFragment"
         android:label="@string/tts_replacements_title" />
+
+    <fragment
+        android:id="@+id/libraryStatisticsFragment"
+        android:name="com.rifters.riftedreader.ui.settings.LibraryStatisticsFragment"
+        android:label="@string/library_statistics_screen_title" />
 
 </navigation>

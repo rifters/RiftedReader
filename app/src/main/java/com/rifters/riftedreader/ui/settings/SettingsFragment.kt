@@ -21,10 +21,16 @@ class SettingsFragment : PreferenceFragmentCompat() {
             findNavController().navigate(R.id.action_settingsFragment_to_ttsSettingsFragment)
             true
         }
+
+        findPreference<Preference>(PREF_LIBRARY_STATS)?.setOnPreferenceClickListener {
+            findNavController().navigate(R.id.action_settingsFragment_to_libraryStatisticsFragment)
+            true
+        }
     }
 
     companion object {
         private const val PREF_READER = "settings_reader"
         private const val PREF_TTS = "settings_tts"
+        private const val PREF_LIBRARY_STATS = "settings_library_statistics"
     }
 }

@@ -12,6 +12,9 @@ interface BookMetaDao {
     
     @Query("SELECT * FROM books ORDER BY lastOpened DESC")
     fun getAllBooks(): Flow<List<BookMeta>>
+
+    @Query("SELECT * FROM books ORDER BY title COLLATE NOCASE ASC")
+    suspend fun getAllBooksSnapshot(): List<BookMeta>
     
     @Query("SELECT * FROM books WHERE id = :bookId")
     suspend fun getBookById(bookId: String): BookMeta?
