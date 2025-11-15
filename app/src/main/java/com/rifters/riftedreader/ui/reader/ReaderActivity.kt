@@ -11,12 +11,15 @@ import android.content.pm.ApplicationInfo
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
 import androidx.core.view.doOnLayout
+import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.database.BookDatabase
+import androidx.viewpager2.widget.ViewPager2
+import com.rifters.riftedreader.data.preferences.ReaderMode
 import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
 import com.rifters.riftedreader.data.preferences.ReaderTheme
@@ -24,10 +27,12 @@ import com.rifters.riftedreader.data.preferences.TTSPreferences
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.databinding.ActivityReaderBinding
 import com.rifters.riftedreader.domain.parser.ParserFactory
+import com.rifters.riftedreader.domain.tts.TTSConfiguration
 import com.rifters.riftedreader.domain.tts.TTSPlaybackState
 import com.rifters.riftedreader.domain.tts.TTSService
 import com.rifters.riftedreader.domain.tts.TTSStatusNotifier
 import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
+import com.rifters.riftedreader.ui.reader.ReaderThemePaletteResolver
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import kotlinx.coroutines.launch
 import java.io.File
@@ -41,10 +46,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     override lateinit var readerPreferences: ReaderPreferences
     private var tapActions: Map<ReaderTapZone, ReaderTapAction> = ReaderPreferences.defaultTapActions()
     private lateinit var ttsPreferences: TTSPreferences
+    private lateinit var pagerAdapter: ReaderPagerAdapter
     private var currentPageText: String = ""
     private var currentPageHtml: String? = null
     private var sentenceBoundaries: List<IntRange> = emptyList()
     private var highlightedSentenceIndex: Int = -1
+    private var currentHighlightRange: IntRange? = null
+    private var readerMode: ReaderMode = ReaderMode.SCROLL
+    private var autoContinueTts: Boolean = false
+    private var pendingTtsResume: Boolean = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityReaderBinding.inflate(layoutInflater)
@@ -79,9 +89,6 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         setupControls(bookTitle)
         setupGestures()
         observeViewModel()
-        
-        // Load initial page
-        viewModel.loadCurrentPage()
     }
     
     private fun setupGestures() {
@@ -99,6 +106,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         })
         
         binding.contentScrollView.setOnTouchListener { _, event ->
+            gestureDetector.onTouchEvent(event)
+            false
+        }
+
+        binding.pageViewPager.setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
             false
         }
@@ -128,13 +140,26 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             }
         }
 
+        pagerAdapter = ReaderPagerAdapter(this)
+        binding.pageViewPager.adapter = pagerAdapter
+        binding.pageViewPager.offscreenPageLimit = 1
+        binding.pageViewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                super.onPageSelected(position)
+                if (readerMode == ReaderMode.PAGE && viewModel.currentPage.value != position) {
+                    viewModel.goToPage(position)
+                }
+                controlsManager.onUserInteraction()
+            }
+        })
+
         binding.prevButton.setOnClickListener {
-            viewModel.previousPage()
+            navigateToPreviousPage()
             controlsManager.onUserInteraction()
         }
-        
+
         binding.nextButton.setOnClickListener {
-            viewModel.nextPage()
+            navigateToNextPage()
             controlsManager.onUserInteraction()
         }
         
@@ -145,7 +170,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
         binding.pageSlider.addOnChangeListener { _, value, fromUser ->
             if (fromUser) {
-                viewModel.goToPage(value.toInt())
+                val target = value.toInt()
+                if (readerMode == ReaderMode.PAGE) {
+                    binding.pageViewPager.setCurrentItem(target, true)
+                } else {
+                    viewModel.goToPage(target)
+                }
                 controlsManager.onUserInteraction()
             }
         }
@@ -161,6 +191,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
                     TTSStatusNotifier.status.collect { snapshot: TTSStatusSnapshot ->
+                        handleTtsStatus(snapshot)
                         when (snapshot.state) {
                             TTSPlaybackState.PLAYING, TTSPlaybackState.PAUSED ->
                                 handleTtsHighlight(snapshot.sentenceIndex)
@@ -176,11 +207,18 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         currentPageHtml = pageContent.html
                         sentenceBoundaries = buildSentenceBoundaries(pageContent.text)
                         highlightedSentenceIndex = -1
+                        currentHighlightRange = null
+                        viewModel.publishHighlight(viewModel.currentPage.value, null)
                         if (pageContent.html.isNullOrBlank()) {
                             binding.contentTextView.text = pageContent.text
                         } else {
                             val spanned = HtmlCompat.fromHtml(pageContent.html, HtmlCompat.FROM_HTML_MODE_LEGACY)
                             binding.contentTextView.text = spanned
+                        }
+                        binding.contentScrollView.scrollTo(0, 0)
+                        if (pendingTtsResume && autoContinueTts && currentPageText.isNotBlank()) {
+                            pendingTtsResume = false
+                            resumeTtsForCurrentPage()
                         }
                     }
                 }
@@ -188,12 +226,19 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 launch {
                     viewModel.currentPage.collect { page ->
                         updatePageIndicator(page)
+                        if (readerMode == ReaderMode.PAGE && binding.pageViewPager.currentItem != page) {
+                            binding.pageViewPager.setCurrentItem(page, false)
+                        }
                     }
                 }
                 
                 launch {
                     viewModel.totalPages.collect { total ->
-                        binding.pageSlider.valueTo = total.toFloat().coerceAtLeast(1f)
+                        val maxValue = (total - 1).coerceAtLeast(0)
+                        binding.pageSlider.valueTo = maxValue.toFloat()
+                        if (binding.pageSlider.value > maxValue) {
+                            binding.pageSlider.value = maxValue.toFloat()
+                        }
                     }
                 }
 
@@ -208,14 +253,24 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         tapActions = actions
                     }
                 }
+
+                launch {
+                    viewModel.pages.collect { pages ->
+                        pagerAdapter.submitPageCount(pages.size)
+                    }
+                }
             }
         }
     }
     
     private fun updatePageIndicator(page: Int) {
         val total = viewModel.totalPages.value
-        binding.pageIndicator.text = getString(R.string.reader_page_indicator, page + 1, total)
-        binding.pageSlider.value = page.toFloat()
+        val safeTotal = total.coerceAtLeast(0)
+        val displayPage = if (safeTotal == 0) 0 else (page + 1).coerceAtMost(safeTotal)
+        binding.pageIndicator.text = getString(R.string.reader_page_indicator, displayPage, safeTotal)
+        if (binding.pageSlider.value != page.toFloat()) {
+            binding.pageSlider.value = page.toFloat()
+        }
     }
 
     override fun onPause() {
@@ -231,16 +286,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private fun applyReaderSettings(settings: ReaderSettings) {
         binding.contentTextView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, settings.textSizeSp)
         binding.contentTextView.setLineSpacing(0f, settings.lineHeightMultiplier)
-
-        val (backgroundColor, textColor) = when (settings.theme) {
-            ReaderTheme.DARK -> R.color.reader_background_dark to R.color.reader_text_dark
-            ReaderTheme.SEPIA -> R.color.reader_background_sepia to R.color.reader_text_sepia
-            ReaderTheme.BLACK -> R.color.reader_background_black to R.color.reader_text_black
-            else -> R.color.reader_background_light to R.color.reader_text_light
-        }
-
-        binding.readerRoot.setBackgroundColor(ContextCompat.getColor(this, backgroundColor))
-        binding.contentTextView.setTextColor(ContextCompat.getColor(this, textColor))
+        val palette = ReaderThemePaletteResolver.resolve(this, settings.theme)
+        binding.readerRoot.setBackgroundColor(palette.backgroundColor)
+        binding.contentTextView.setTextColor(palette.textColor)
+        binding.pageViewPager.setBackgroundColor(palette.backgroundColor)
+        readerMode = settings.mode
+        updateReaderModeUi()
     }
 
     private fun openReaderSettings() {
@@ -262,11 +313,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             ReaderTapAction.BACK -> finish()
             ReaderTapAction.TOGGLE_CONTROLS -> controlsManager.toggleControls()
             ReaderTapAction.NEXT_PAGE -> {
-                viewModel.nextPage()
+                navigateToNextPage()
                 controlsManager.onUserInteraction()
             }
             ReaderTapAction.PREVIOUS_PAGE -> {
-                viewModel.previousPage()
+                navigateToPreviousPage()
                 controlsManager.onUserInteraction()
             }
             ReaderTapAction.OPEN_SETTINGS -> openReaderSettings()
@@ -279,32 +330,107 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         }
     }
 
+    private fun navigateToNextPage(animated: Boolean = true) {
+        val nextIndex = viewModel.currentPage.value + 1
+        val moved = viewModel.goToPage(nextIndex)
+        if (readerMode == ReaderMode.PAGE && moved) {
+            binding.pageViewPager.setCurrentItem(nextIndex, animated)
+        }
+    }
+
+    private fun navigateToPreviousPage(animated: Boolean = true) {
+        val previousIndex = viewModel.currentPage.value - 1
+        val moved = viewModel.goToPage(previousIndex)
+        if (readerMode == ReaderMode.PAGE && moved) {
+            binding.pageViewPager.setCurrentItem(previousIndex, animated)
+        }
+    }
+
+    private fun handleTtsStatus(snapshot: TTSStatusSnapshot) {
+        when (snapshot.state) {
+            TTSPlaybackState.PLAYING -> {
+                autoContinueTts = true
+                pendingTtsResume = false
+            }
+            TTSPlaybackState.PAUSED -> {
+                autoContinueTts = false
+                pendingTtsResume = false
+            }
+            TTSPlaybackState.STOPPED -> {
+                val reachedEnd = snapshot.sentenceTotal > 0 && snapshot.sentenceIndex >= snapshot.sentenceTotal
+                if (autoContinueTts && reachedEnd) {
+                    val advanced = viewModel.nextPage()
+                    pendingTtsResume = advanced
+                    if (!advanced) {
+                        autoContinueTts = false
+                    }
+                } else {
+                    autoContinueTts = false
+                    pendingTtsResume = false
+                }
+            }
+            TTSPlaybackState.IDLE -> {
+                autoContinueTts = false
+                pendingTtsResume = false
+            }
+        }
+    }
+
+    private fun resumeTtsForCurrentPage() {
+        if (currentPageText.isBlank()) return
+        val configuration = TTSConfiguration(
+            speed = ttsPreferences.speed,
+            pitch = ttsPreferences.pitch,
+            autoScroll = ttsPreferences.autoScroll,
+            highlightSentence = ttsPreferences.highlightSentence,
+            languageTag = ttsPreferences.languageTag
+        )
+        TTSService.start(this, currentPageText, configuration)
+    }
+
+    private fun updateReaderModeUi() {
+        if (readerMode == ReaderMode.PAGE) {
+            binding.contentScrollView.isVisible = false
+            binding.pageViewPager.isVisible = true
+            viewModel.publishHighlight(viewModel.currentPage.value, currentHighlightRange)
+        } else {
+            binding.pageViewPager.isVisible = false
+            binding.contentScrollView.isVisible = true
+            currentHighlightRange?.let { applyScrollHighlight(it) }
+        }
+    }
+
     private fun handleTtsHighlight(targetIndex: Int) {
         if (!ttsPreferences.highlightSentence || currentPageText.isEmpty()) {
+            currentHighlightRange = null
+            viewModel.publishHighlight(viewModel.currentPage.value, null)
             clearHighlightedSentence()
             return
         }
 
-        if (targetIndex == highlightedSentenceIndex) {
+        if (targetIndex == highlightedSentenceIndex && readerMode != ReaderMode.PAGE) {
             return
         }
 
         if (targetIndex !in sentenceBoundaries.indices) {
+            currentHighlightRange = null
+            viewModel.publishHighlight(viewModel.currentPage.value, null)
             clearHighlightedSentence()
             return
         }
 
         val range = sentenceBoundaries[targetIndex]
-        val spannable = SpannableString(currentPageText)
-        val endExclusive = (range.last + 1).coerceAtMost(spannable.length)
-        val highlightColor = ContextCompat.getColor(this, R.color.reader_tts_highlight)
-        spannable.setSpan(
-            BackgroundColorSpan(highlightColor),
-            range.first,
-            endExclusive,
-            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-        binding.contentTextView.text = spannable
+        if (readerMode == ReaderMode.PAGE) {
+            if (currentHighlightRange != range || highlightedSentenceIndex != targetIndex) {
+                currentHighlightRange = range
+                highlightedSentenceIndex = targetIndex
+                viewModel.publishHighlight(viewModel.currentPage.value, range)
+            }
+            return
+        }
+
+        currentHighlightRange = range
+        applyScrollHighlight(range)
         highlightedSentenceIndex = targetIndex
 
         if (ttsPreferences.autoScroll) {
@@ -329,11 +455,27 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         }
     }
 
+        private fun applyScrollHighlight(range: IntRange) {
+            if (currentPageText.isBlank()) return
+            val spannable = SpannableString(currentPageText)
+            val endExclusive = (range.last + 1).coerceAtMost(spannable.length)
+            val highlightColor = ContextCompat.getColor(this, R.color.reader_tts_highlight)
+            spannable.setSpan(
+                BackgroundColorSpan(highlightColor),
+                range.first,
+                endExclusive,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            binding.contentTextView.text = spannable
+        }
+
     private fun clearHighlightedSentence() {
-        if (highlightedSentenceIndex == -1) {
+        if (highlightedSentenceIndex == -1 && currentHighlightRange == null) {
             return
         }
         highlightedSentenceIndex = -1
+        currentHighlightRange = null
+        viewModel.publishHighlight(viewModel.currentPage.value, null)
         val html = currentPageHtml
         if (!html.isNullOrBlank()) {
             binding.contentTextView.text = HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_LEGACY)
