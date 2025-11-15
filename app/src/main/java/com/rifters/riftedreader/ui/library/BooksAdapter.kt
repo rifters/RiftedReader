@@ -100,7 +100,18 @@ class BooksAdapter(
             }
 
             binding.root.setOnClickListener {
-                onBookClick(book)
+                val tracker = selectionTracker
+                if (tracker != null && tracker.hasSelection()) {
+                    // In selection mode: toggle selection instead of opening book
+                    if (tracker.isSelected(book.id)) {
+                        tracker.deselect(book.id)
+                    } else {
+                        tracker.select(book.id)
+                    }
+                } else {
+                    // Not in selection mode: open the book normally
+                    onBookClick(book)
+                }
             }
 
             binding.root.setOnLongClickListener {
