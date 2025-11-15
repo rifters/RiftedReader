@@ -59,30 +59,20 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
     }
 
     private fun setupTextSizeSlider() {
-        binding.textSizeSlider.apply {
-            valueFrom = TEXT_SIZE_MIN
-            valueTo = TEXT_SIZE_MAX
-            stepSize = 1f
-            addOnChangeListener { _: Slider, value, fromUser ->
-                if (fromUser) {
-                    settingsViewModel.updateTextSize(value)
-                }
-                binding.textSizeValue.text = getString(R.string.reader_text_size_value, value.roundToInt())
+        binding.textSizeSlider.addOnChangeListener { _: Slider, value, fromUser ->
+            if (fromUser) {
+                settingsViewModel.updateTextSize(value)
             }
+            binding.textSizeValue.text = getString(R.string.reader_text_size_value, value.roundToInt())
         }
     }
 
     private fun setupLineHeightSlider() {
-        binding.lineHeightSlider.apply {
-            valueFrom = LINE_HEIGHT_MIN
-            valueTo = LINE_HEIGHT_MAX
-            stepSize = 0.1f
-            addOnChangeListener { _: Slider, value, fromUser ->
-                if (fromUser) {
-                    settingsViewModel.updateLineHeight(value)
-                }
-                binding.lineHeightValue.text = getString(R.string.reader_line_height_value, value)
+        binding.lineHeightSlider.addOnChangeListener { _: Slider, value, fromUser ->
+            if (fromUser) {
+                settingsViewModel.updateLineHeight(value)
             }
+            binding.lineHeightValue.text = getString(R.string.reader_line_height_value, value)
         }
     }
 
@@ -118,11 +108,6 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
     }
 
     companion object {
-        private const val TEXT_SIZE_MIN = 12f
-        private const val TEXT_SIZE_MAX = 28f
-        private const val LINE_HEIGHT_MIN = 1.0f
-        private const val LINE_HEIGHT_MAX = 2.0f
-
         fun show(manager: androidx.fragment.app.FragmentManager) {
             ReaderTextSettingsBottomSheet().show(manager, "ReaderTextSettings")
         }
