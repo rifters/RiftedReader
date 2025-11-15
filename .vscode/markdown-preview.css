@@ -1,0 +1,26 @@
+body {
+    background-color: #121212;
+    color: #e0e0e0;
+}
+
+a {
+    color: #80cbc4;
+}
+
+code, pre {
+    background-color: #1e1e1e;
+    color: #f8f8f2;
+}
+
+blockquote {
+    background-color: #1b1b1b;
+    border-left: 4px solid #80cbc4;
+}
+
+table {
+    background-color: #1b1b1b;
+}
+
+table tr:nth-child(even) {
+    background-color: #222222;
+}
