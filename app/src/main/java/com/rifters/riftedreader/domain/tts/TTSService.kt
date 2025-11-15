@@ -557,6 +557,8 @@ class TTSService : Service() {
             return
         }
         ttsEngine.stop()
+        // Save the current position so we can resume from here later
+        lastStoppedIndex = currentSentenceIndex.coerceIn(0, sentences.lastIndex.coerceAtLeast(0))
         if (releaseFocus) {
             abandonAudioFocus()
         }
