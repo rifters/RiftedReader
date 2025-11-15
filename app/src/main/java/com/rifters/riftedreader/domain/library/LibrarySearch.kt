@@ -2,10 +2,11 @@ package com.rifters.riftedreader.domain.library
 
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import com.rifters.riftedreader.data.repository.BookRepository
+import com.rifters.riftedreader.data.repository.CollectionRepository
 import com.rifters.riftedreader.domain.library.SmartCollectionId
 import com.rifters.riftedreader.domain.library.SmartCollections
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 
 /**
  * Filter descriptor covering Stage 7 requirements (collections, tags,
@@ -22,18 +23,28 @@ data class LibrarySearchFilters(
 )
 
 class LibrarySearchUseCase(
-    private val bookRepository: BookRepository
+    private val bookRepository: BookRepository,
+    private val collectionRepository: CollectionRepository
 ) {
 
     fun observe(filters: LibrarySearchFilters): Flow<List<BookMeta>> {
-        return bookRepository.allBooks.map { books ->
+        return bookRepository.allBooks.combine(collectionRepository.collectionsWithBooks) { books, collectionsWithBooks ->
+            // Build a map of bookId -> list of collectionIds for efficient lookup
+            val bookCollectionsMap = mutableMapOf<String, MutableList<String>>()
+            collectionsWithBooks.forEach { collectionWithBooks ->
+                collectionWithBooks.books.forEach { book ->
+                    bookCollectionsMap.getOrPut(book.id) { mutableListOf() }.add(collectionWithBooks.collection.id)
+                }
+            }
+            
             books.filter { book ->
-                matchesQuery(book, filters.query) &&
-                    matchesFormats(book, filters.formats) &&
-                    matchesFavorites(book, filters.favoritesOnly) &&
-                    matchesTags(book, filters.tags) &&
-                        matchesCollections(book, filters.collections) &&
-                        matchesSmartCollection(book, filters.smartCollection)
+                val bookWithCollections = book.copy(collections = bookCollectionsMap[book.id] ?: emptyList())
+                matchesQuery(bookWithCollections, filters.query) &&
+                    matchesFormats(bookWithCollections, filters.formats) &&
+                    matchesFavorites(bookWithCollections, filters.favoritesOnly) &&
+                    matchesTags(bookWithCollections, filters.tags) &&
+                        matchesCollections(bookWithCollections, filters.collections) &&
+                        matchesSmartCollection(bookWithCollections, filters.smartCollection)
             }
         }
     }
@@ -57,7 +68,8 @@ class LibrarySearchUseCase(
     private fun matchesTags(book: BookMeta, tags: Set<String>): Boolean {
         if (tags.isEmpty()) return true
         if (book.tags.isEmpty()) return false
-        return book.tags.any { tag -> tag.lowercase() in tags }
+        val normalizedTags = tags.map { it.lowercase() }.toSet()
+        return book.tags.any { tag -> tag.lowercase() in normalizedTags }
     }
 
     private fun matchesCollections(book: BookMeta, collections: Set<String>): Boolean {

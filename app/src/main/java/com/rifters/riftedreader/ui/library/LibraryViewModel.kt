@@ -40,7 +40,7 @@ class LibraryViewModel(
     private val libraryPreferences: LibraryPreferences
 ) : ViewModel() {
 
-    private val searchUseCase = LibrarySearchUseCase(repository)
+    private val searchUseCase = LibrarySearchUseCase(repository, collectionRepository)
 
     private val _books = MutableStateFlow<List<BookMeta>>(emptyList())
     val books: StateFlow<List<BookMeta>> = _books.asStateFlow()

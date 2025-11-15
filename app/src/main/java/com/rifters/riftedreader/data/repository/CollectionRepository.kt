@@ -56,4 +56,7 @@ class CollectionRepository(private val collectionDao: CollectionDao) {
     suspend fun assignmentCount(): Int = collectionDao.getAssignmentsCount()
 
     suspend fun snapshot(): List<CollectionEntity> = collectionDao.getCollectionsSnapshot()
+
+    suspend fun getCollectionIdsForBook(bookId: String): List<String> =
+        collectionDao.getCollectionIdsForBook(bookId)
 }
