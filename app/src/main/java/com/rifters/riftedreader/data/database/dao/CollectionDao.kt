@@ -55,4 +55,7 @@ interface CollectionDao {
 
     @Query("SELECT * FROM collections")
     suspend fun getCollectionsSnapshot(): List<CollectionEntity>
+
+    @Query("SELECT collectionId FROM book_collection_cross_ref WHERE bookId = :bookId")
+    suspend fun getCollectionIdsForBook(bookId: String): List<String>
 }
