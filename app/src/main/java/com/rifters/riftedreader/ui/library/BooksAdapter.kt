@@ -100,17 +100,7 @@ class BooksAdapter(
             }
 
             binding.root.setOnClickListener {
-                val tracker = selectionTracker
-                if (tracker != null && tracker.hasSelection()) {
-                    val currentlySelected = tracker.isSelected(book.id)
-                    if (currentlySelected) {
-                        tracker.deselect(book.id)
-                    } else {
-                        tracker.select(book.id)
-                    }
-                } else {
-                    onBookClick(book)
-                }
+                onBookClick(book)
             }
 
             binding.root.setOnLongClickListener {
@@ -125,7 +115,7 @@ class BooksAdapter(
 
                 override fun getPosition(): Int = this@BookViewHolder.adapterPosition
 
-                override fun inSelectionHotspot(e: MotionEvent): Boolean = true
+                override fun inSelectionHotspot(e: MotionEvent): Boolean = false
             }
         }
 
