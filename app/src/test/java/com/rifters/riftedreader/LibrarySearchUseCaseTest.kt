@@ -252,6 +252,92 @@ class LibrarySearchUseCaseTest {
         assertEquals(1, result.size)
         assertEquals("book1", result[0].id)
     }
+
+    @Test
+    fun filtering_shouldPopulateCollectionsInResults() = runBlocking {
+        val dao = TestBookMetaDao(testBooks)
+        
+        // Setup: Collections with books
+        val collection1 = CollectionEntity(id = "col1", name = "Collection 1")
+        val collection2 = CollectionEntity(id = "col2", name = "Collection 2")
+        
+        val collectionsWithBooks = listOf(
+            CollectionWithBooks(
+                collection = collection1,
+                books = listOf(testBooks[0], testBooks[1])  // book1 and book2 in col1
+            ),
+            CollectionWithBooks(
+                collection = collection2,
+                books = listOf(testBooks[1])  // only book2 in col2
+            )
+        )
+        
+        val collDao = TestCollectionDao(collectionsWithBooks)
+        val useCase = LibrarySearchUseCase(
+            BookRepository(dao),
+            CollectionRepository(collDao)
+        )
+        
+        // Filter by format epub (should return book1 and book3)
+        val filters = LibrarySearchFilters(formats = setOf("epub"))
+        val result = useCase.observe(filters).first()
+        
+        assertEquals(2, result.size)
+        
+        // Verify book1 has col1 populated in its collections field
+        val book1Result = result.find { it.id == "book1" }
+        assertNotNull(book1Result)
+        assertEquals(listOf("col1"), book1Result?.collections)
+        
+        // Verify book3 has empty collections (not in any collection)
+        val book3Result = result.find { it.id == "book3" }
+        assertNotNull(book3Result)
+        assertTrue(book3Result?.collections?.isEmpty() ?: false)
+    }
+
+    @Test
+    fun filtering_withCollectionFilter_shouldPopulateCollections() = runBlocking {
+        val dao = TestBookMetaDao(testBooks)
+        
+        // Setup: Collections with books
+        val collection1 = CollectionEntity(id = "col1", name = "Collection 1")
+        val collection2 = CollectionEntity(id = "col2", name = "Collection 2")
+        
+        val collectionsWithBooks = listOf(
+            CollectionWithBooks(
+                collection = collection1,
+                books = listOf(testBooks[0])  // book1 in col1
+            ),
+            CollectionWithBooks(
+                collection = collection2,
+                books = listOf(testBooks[0], testBooks[1])  // book1 and book2 in col2
+            )
+        )
+        
+        val collDao = TestCollectionDao(collectionsWithBooks)
+        val useCase = LibrarySearchUseCase(
+            BookRepository(dao),
+            CollectionRepository(collDao)
+        )
+        
+        // Filter by collection2 - should return book1 and book2
+        val filters = LibrarySearchFilters(collections = setOf("col2"))
+        val result = useCase.observe(filters).first()
+        
+        assertEquals(2, result.size)
+        
+        // Verify book1 has both col1 and col2 in its collections field
+        val book1Result = result.find { it.id == "book1" }
+        assertNotNull(book1Result)
+        assertEquals(2, book1Result?.collections?.size)
+        assertTrue(book1Result?.collections?.contains("col1") ?: false)
+        assertTrue(book1Result?.collections?.contains("col2") ?: false)
+        
+        // Verify book2 has only col2 in its collections field
+        val book2Result = result.find { it.id == "book2" }
+        assertNotNull(book2Result)
+        assertEquals(listOf("col2"), book2Result?.collections)
+    }
 }
 
 // Test DAOs that provide minimal implementations for testing

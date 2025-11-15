@@ -81,6 +81,8 @@ class TTSService : Service() {
 
     private var sentences: List<String> = emptyList()
     private var currentSentenceIndex: Int = 0
+    private var lastStoppedIndex: Int = 0
+    private var currentText: String = ""
     private var playbackState: TTSPlaybackState = TTSPlaybackState.IDLE
     private var hasAudioFocus: Boolean = false
     private var shouldResumeAfterFocusGain: Boolean = false
@@ -194,12 +196,21 @@ class TTSService : Service() {
         val requestedLanguageTag = languageExtra?.takeIf { it.isNotBlank() }
 
         if (!text.isNullOrBlank()) {
-            sentences = splitIntoSentences(text)
-            currentSentenceIndex = 0
+            // Only reset position if the text has changed
+            if (text != currentText) {
+                currentText = text
+                sentences = splitIntoSentences(text)
+                currentSentenceIndex = 0
+                lastStoppedIndex = 0
+            } else {
+                // Same text, resume from last stopped position
+                currentSentenceIndex = lastStoppedIndex
+            }
         }
 
         if (sentences.isEmpty()) {
-            currentSentenceIndex = -1
+            currentSentenceIndex = 0
+            lastStoppedIndex = 0
             broadcastStatus(TTSPlaybackState.STOPPED)
             stopSelf()
             return
@@ -232,7 +243,8 @@ class TTSService : Service() {
 
     private fun handleStop() {
         ttsEngine.stop()
-        currentSentenceIndex = -1
+        // Save the current position so we can resume from here later
+        lastStoppedIndex = currentSentenceIndex.coerceIn(0, sentences.lastIndex.coerceAtLeast(0))
         abandonAudioFocus()
         broadcastStatus(TTSPlaybackState.STOPPED)
         mediaSession.isActive = false
