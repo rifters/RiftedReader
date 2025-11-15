@@ -359,10 +359,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             TTSPlaybackState.STOPPED -> {
                 val reachedEnd = snapshot.sentenceTotal > 0 && snapshot.sentenceIndex >= snapshot.sentenceTotal
                 if (autoContinueTts && reachedEnd) {
+                    pendingTtsResume = true
                     val advanced = viewModel.nextPage()
-                    pendingTtsResume = advanced
                     if (!advanced) {
                         autoContinueTts = false
+                        pendingTtsResume = false
                     }
                 } else {
                     autoContinueTts = false

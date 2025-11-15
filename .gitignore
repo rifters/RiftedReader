@@ -81,3 +81,6 @@ lint-results.xml
 
 # Mac
 .DS_Store
+
+# VS Code
+.vscode/
