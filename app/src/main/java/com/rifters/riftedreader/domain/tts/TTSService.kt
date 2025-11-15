@@ -648,22 +648,22 @@ class TTSService : Service() {
 
         fun pause(context: Context) {
             val intent = Intent(context, TTSService::class.java).apply { action = ACTION_PAUSE }
-            ContextCompat.startForegroundService(context, intent)
+            context.startService(intent)
         }
 
         fun stop(context: Context) {
             val intent = Intent(context, TTSService::class.java).apply { action = ACTION_STOP }
-            ContextCompat.startForegroundService(context, intent)
+            context.startService(intent)
         }
 
         fun resume(context: Context) {
             val intent = Intent(context, TTSService::class.java).apply { action = ACTION_RESUME }
-            ContextCompat.startForegroundService(context, intent)
+            context.startService(intent)
         }
 
         fun togglePlayPause(context: Context) {
             val intent = Intent(context, TTSService::class.java).apply { action = ACTION_TOGGLE_PLAY_PAUSE }
-            ContextCompat.startForegroundService(context, intent)
+            context.startService(intent)
         }
 
         fun updateConfiguration(context: Context, configuration: TTSConfiguration) {
@@ -675,12 +675,12 @@ class TTSService : Service() {
                 putExtra(EXTRA_HIGHLIGHT, configuration.highlightSentence)
                 putExtra(EXTRA_LANGUAGE, configuration.languageTag ?: "")
             }
-            ContextCompat.startForegroundService(context, intent)
+            context.startService(intent)
         }
 
         fun reloadReplacements(context: Context) {
             val intent = Intent(context, TTSService::class.java).apply { action = ACTION_RELOAD_REPLACEMENTS }
-            ContextCompat.startForegroundService(context, intent)
+            context.startService(intent)
         }
 
         private fun utteranceId(): String = UUID.randomUUID().toString()
