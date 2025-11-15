@@ -235,7 +235,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 launch {
                     viewModel.totalPages.collect { total ->
                         val maxValue = (total - 1).coerceAtLeast(0)
-                        binding.pageSlider.valueTo = maxValue.toFloat()
+                        // Ensure valueTo is always greater than valueFrom (0) to avoid IllegalStateException
+                        val safeValueTo = maxValue.toFloat().coerceAtLeast(1f)
+                        binding.pageSlider.valueTo = safeValueTo
                         if (binding.pageSlider.value > maxValue) {
                             binding.pageSlider.value = maxValue.toFloat()
                         }
