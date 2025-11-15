@@ -37,14 +37,19 @@ class LibrarySearchUseCase(
                 }
             }
             
-            books.filter { book ->
+            books.mapNotNull { book ->
                 val bookWithCollections = book.copy(collections = bookCollectionsMap[book.id] ?: emptyList())
-                matchesQuery(bookWithCollections, filters.query) &&
+                if (matchesQuery(bookWithCollections, filters.query) &&
                     matchesFormats(bookWithCollections, filters.formats) &&
                     matchesFavorites(bookWithCollections, filters.favoritesOnly) &&
                     matchesTags(bookWithCollections, filters.tags) &&
                         matchesCollections(bookWithCollections, filters.collections) &&
                         matchesSmartCollection(bookWithCollections, filters.smartCollection)
+                ) {
+                    bookWithCollections
+                } else {
+                    null
+                }
             }
         }
     }
