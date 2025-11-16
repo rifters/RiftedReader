@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.content.ContextCompat
@@ -34,6 +35,7 @@ class ReaderPageFragment : Fragment() {
     private var latestPageText: String = ""
     private var latestPageHtml: String? = null
     private var highlightedRange: IntRange? = null
+    private var isWebViewReady = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -54,7 +56,18 @@ class ReaderPageFragment : Fragment() {
             settings.useWideViewPort = false
             settings.builtInZoomControls = false
             settings.displayZoomControls = false
-            webViewClient = WebViewClient()
+            
+            // Add JavaScript interface for TTS communication
+            addJavascriptInterface(TtsWebBridge(), "AndroidTtsBridge")
+            
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    isWebViewReady = true
+                    // Initialize TTS chunks when page is loaded
+                    prepareTtsChunks()
+                }
+            }
         }
         
         viewLifecycleOwner.lifecycleScope.launch {
@@ -278,10 +291,13 @@ class ReaderPageFragment : Fragment() {
                         padding: 1em;
                         overflow-x: auto;
                     }
-                    /* TTS highlighting support (for future implementation) */
-                    .tts-highlight {
-                        background-color: rgba(255, 213, 79, 0.35);
+                    /* TTS highlighting */
+                    [data-tts-chunk] {
+                        cursor: pointer;
                         transition: background-color 0.2s ease-in-out;
+                    }
+                    .tts-highlight {
+                        background-color: rgba(255, 213, 79, 0.35) !important;
                     }
                 </style>
             </head>
@@ -290,6 +306,171 @@ class ReaderPageFragment : Fragment() {
             </body>
             </html>
         """.trimIndent()
+    }
+    
+    /**
+     * Prepare TTS chunks by marking up content in WebView
+     * This enables tap-to-position and highlighting functionality
+     */
+    private fun prepareTtsChunks() {
+        if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+            return
+        }
+        
+        binding.pageWebView.evaluateJavascript(
+            """
+            (function() {
+                try {
+                    // Add TTS chunk style if not already present
+                    var styleId = 'tts-chunk-style';
+                    if (!document.getElementById(styleId)) {
+                        var style = document.createElement('style');
+                        style.id = styleId;
+                        style.innerHTML = '[data-tts-chunk]{cursor:pointer;transition:background-color 0.2s ease-in-out;} .tts-highlight{background-color: rgba(255, 213, 79, 0.35) !important;}';
+                        document.head.appendChild(style);
+                    }
+                    
+                    // Clear any existing TTS markup
+                    var existing = document.querySelectorAll('[data-tts-chunk]');
+                    existing.forEach(function(node) {
+                        node.classList.remove('tts-highlight');
+                        node.removeAttribute('data-tts-chunk');
+                    });
+                    
+                    // Mark up text blocks for TTS
+                    var selectors = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre, article, section';
+                    var nodes = document.querySelectorAll(selectors);
+                    var chunks = [];
+                    var index = 0;
+                    var currentPos = 0;
+                    
+                    nodes.forEach(function(node) {
+                        if (!node) { return; }
+                        var text = node.innerText || '';
+                        text = text.replace(/\s+/g, ' ').trim();
+                        if (!text) { return; }
+                        
+                        node.setAttribute('data-tts-chunk', index);
+                        chunks.push({ 
+                            index: index, 
+                            text: text,
+                            startPosition: currentPos
+                        });
+                        
+                        currentPos += text.length + 1; // +1 for space between chunks
+                        index++;
+                    });
+                    
+                    // Attach click handler for tap-to-position
+                    if (!window.__ttsTapHandlerAttached) {
+                        document.addEventListener('click', function(event) {
+                            var target = event.target.closest('[data-tts-chunk]');
+                            if (!target) { return; }
+                            var idx = parseInt(target.getAttribute('data-tts-chunk'));
+                            if (isNaN(idx)) { return; }
+                            if (window.AndroidTtsBridge && AndroidTtsBridge.onChunkTapped) {
+                                AndroidTtsBridge.onChunkTapped(idx);
+                            }
+                        }, false);
+                        window.__ttsTapHandlerAttached = true;
+                    }
+                    
+                    // Send chunks back to Android
+                    if (window.AndroidTtsBridge && AndroidTtsBridge.onChunksPrepared) {
+                        AndroidTtsBridge.onChunksPrepared(JSON.stringify(chunks));
+                    }
+                } catch(e) {
+                    console.error('prepareTtsChunks error:', e);
+                }
+            })();
+            """.trimIndent(),
+            null
+        )
+    }
+    
+    /**
+     * Highlight a specific TTS chunk in the WebView
+     */
+    fun highlightTtsChunk(chunkIndex: Int, scrollToCenter: Boolean = false) {
+        if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+            return
+        }
+        
+        val scrollCommand = if (scrollToCenter) {
+            "target.scrollIntoView({ behavior: 'smooth', block: 'center' });"
+        } else {
+            ""
+        }
+        
+        binding.pageWebView.evaluateJavascript(
+            """
+            (function() {
+                try {
+                    var nodes = document.querySelectorAll('[data-tts-chunk]');
+                    nodes.forEach(function(node) {
+                        node.classList.remove('tts-highlight');
+                    });
+                    var target = document.querySelector('[data-tts-chunk="$chunkIndex"]');
+                    if (target) {
+                        target.classList.add('tts-highlight');
+                        $scrollCommand
+                    }
+                } catch(e) {
+                    console.error('highlightTtsChunk error:', e);
+                }
+            })();
+            """.trimIndent(),
+            null
+        )
+    }
+    
+    /**
+     * Remove all TTS highlights from the WebView
+     */
+    fun clearTtsHighlights() {
+        if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+            return
+        }
+        
+        binding.pageWebView.evaluateJavascript(
+            """
+            (function() {
+                try {
+                    var nodes = document.querySelectorAll('[data-tts-chunk].tts-highlight');
+                    nodes.forEach(function(node) {
+                        node.classList.remove('tts-highlight');
+                    });
+                } catch(e) {
+                    console.error('clearTtsHighlights error:', e);
+                }
+            })();
+            """.trimIndent(),
+            null
+        )
+    }
+    
+    /**
+     * JavaScript interface for TTS communication between WebView and Android
+     */
+    private inner class TtsWebBridge {
+        @JavascriptInterface
+        fun onChunksPrepared(payload: String) {
+            // Notify ViewModel or Activity that TTS chunks are ready
+            // This can be used to enable TTS functionality
+            activity?.runOnUiThread {
+                // TODO: Notify TTS system that chunks are ready
+                // readerViewModel.onTtsChunksReady(pageIndex, payload)
+            }
+        }
+        
+        @JavascriptInterface
+        fun onChunkTapped(chunkIndex: Int) {
+            // Handle tap on a text chunk - jump to that position for TTS
+            activity?.runOnUiThread {
+                // TODO: Notify TTS system to start from this chunk
+                // readerViewModel.onTtsChunkTapped(pageIndex, chunkIndex)
+            }
+        }
     }
 
     companion object {
