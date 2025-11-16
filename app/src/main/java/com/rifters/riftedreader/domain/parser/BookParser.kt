@@ -37,11 +37,12 @@ interface BookParser {
 /**
  * Table of contents entry
  */
+@kotlinx.parcelize.Parcelize
 data class TocEntry(
     val title: String,
     val pageNumber: Int,
     val level: Int = 0
-)
+) : android.os.Parcelable
 
 /**
  * Represents both the plain text and optional formatted HTML for a page.

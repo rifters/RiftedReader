@@ -161,6 +161,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         binding.topBar.inflateMenu(R.menu.reader_toolbar_menu)
         binding.topBar.setOnMenuItemClickListener {
             when (it.itemId) {
+                R.id.action_reader_chapters -> {
+                    openChapters()
+                    true
+                }
                 R.id.action_reader_settings -> {
                     openReaderSettings()
                     true
@@ -359,6 +363,18 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private fun openTapZones() {
         controlsManager.showControls()
         ReaderTapZonesBottomSheet.show(supportFragmentManager)
+    }
+    
+    private fun openChapters() {
+        controlsManager.showControls()
+        val chapters = viewModel.tableOfContents.value
+        if (chapters.isEmpty()) {
+            // No chapters available
+            return
+        }
+        ChaptersBottomSheet.show(supportFragmentManager, chapters) { pageNumber ->
+            viewModel.goToPage(pageNumber)
+        }
     }
 
     private fun isDebugBuild(): Boolean {
