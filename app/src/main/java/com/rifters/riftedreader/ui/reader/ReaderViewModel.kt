@@ -188,54 +188,53 @@ class ReaderViewModel(
     }
     
     /**
-     * Split HTML content into multiple pages while preserving HTML structure.
-     * Uses a simple approach: split by character count while keeping full HTML elements.
+     * Split HTML content into multiple pages.
+     * For simplicity, we extract plain text from HTML and split that into pages.
+     * This loses HTML formatting but allows proper pagination.
+     * TODO: Implement proper HTML DOM splitting to preserve formatting.
      */
     private fun splitHtmlContent(content: PageContent): List<PageContent> {
         val html = content.html ?: return listOf(content)
         val text = content.text
         
-        // If text is short enough, keep as single page
+        // If text is short enough, keep as single page with HTML
         if (text.length <= TARGET_CHARS_PER_PAGE) {
             return listOf(content)
         }
         
-        // Simple approach: split text by target chars and keep the full HTML
-        // Each page will render the full HTML but with the subset of text
-        // This is not ideal but works as a first implementation
+        // Split the plain text into pages
+        // For now, we lose HTML formatting to enable pagination
+        // Users can switch to SCROLL mode to see formatted HTML
         val pages = mutableListOf<PageContent>()
-        var startIndex = 0
+        val paragraphs = text.split(Regex("\n\n+"))
+        val builder = StringBuilder()
         
-        while (startIndex < text.length) {
-            val endIndex = (startIndex + TARGET_CHARS_PER_PAGE).coerceAtMost(text.length)
+        for ((_, paragraph) in paragraphs.withIndex()) {
+            val trimmedPara = paragraph.trim()
+            if (trimmedPara.isEmpty()) continue
             
-            // Try to break at a paragraph or sentence boundary
-            var breakIndex = endIndex
-            if (endIndex < text.length) {
-                // Look for paragraph break
-                val paraBreak = text.indexOf("\n\n", endIndex - 200.coerceAtLeast(0))
-                if (paraBreak in startIndex until endIndex) {
-                    breakIndex = paraBreak + 2 // Include the break
-                } else {
-                    // Look for sentence break
-                    val sentenceBreak = text.indexOfAny(charArrayOf('.', '!', '?'), endIndex - 100.coerceAtLeast(0))
-                    if (sentenceBreak in startIndex until endIndex) {
-                        breakIndex = sentenceBreak + 1
-                    }
+            // Check if adding this paragraph would exceed the page size
+            val paraWithBreak = if (builder.isNotEmpty()) "\n\n$trimmedPara" else trimmedPara
+            
+            if (builder.isNotEmpty() && builder.length + paraWithBreak.length > TARGET_CHARS_PER_PAGE) {
+                // Current page is full, save it and start a new one
+                pages += PageContent(text = builder.toString().trim())
+                builder.clear()
+                builder.append(trimmedPara)
+            } else {
+                // Add paragraph to current page
+                if (builder.isNotEmpty()) {
+                    builder.append("\n\n")
                 }
+                builder.append(trimmedPara)
             }
-            
-            val pageText = text.substring(startIndex, breakIndex).trim()
-            if (pageText.isNotEmpty()) {
-                // Keep the HTML but mark the text range for this page
-                // The HTML will be rendered but only this text range is relevant
-                pages += PageContent(text = pageText, html = html)
-            }
-            
-            startIndex = breakIndex
         }
         
-        return pages.ifEmpty { listOf(content) }
+        if (builder.isNotBlank()) {
+            pages += PageContent(text = builder.toString().trim())
+        }
+        
+        return pages.ifEmpty { listOf(PageContent(text = text)) }
     }
 
     fun nextPage(): Boolean {
