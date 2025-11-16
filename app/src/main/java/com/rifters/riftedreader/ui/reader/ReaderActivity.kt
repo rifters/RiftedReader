@@ -95,12 +95,18 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private fun setupGestures() {
         gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                // Detect which view the tap originated from and use appropriate dimensions
+                // Convert screen-absolute coordinates (rawX, rawY) to view-relative coordinates
+                // to fix coordinate system mismatch with tap zone detection
+                val location = IntArray(2)
+                binding.readerRoot.getLocationOnScreen(location)
+                val viewX = e.rawX - location[0]
+                val viewY = e.rawY - location[1]
+                
                 val width = binding.readerRoot.width
                 val height = binding.readerRoot.height
                 val tapZone = ReaderTapZoneDetector.detect(
-                    e.rawX,
-                    e.rawY,
+                    viewX,
+                    viewY,
                     width,
                     height
                 )
@@ -127,18 +133,32 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         // Set up touch listener on controls container to enable tap zones even when controls are visible
         // The container is set to clickable=false in XML, but we need to intercept taps in the 
         // empty space between top bar and bottom controls
+        var isInMiddleArea = false
         val controlsTouchListener = View.OnTouchListener { _, event ->
-            // Check if tap is in the empty middle area (not on topBar or bottomControls)
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                val topBarBottom = binding.topBar.bottom
-                val bottomControlsTop = binding.bottomControls.top
-                val yInContainer = event.y.toInt()
-                
-                // If tap is in the transparent middle area, handle it for tap zones
-                if (yInContainer > topBarBottom && yInContainer < bottomControlsTop) {
-                    // Let gesture detector handle this tap
-                    gestureDetector.onTouchEvent(event)
-                    return@OnTouchListener true
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    // Check if tap starts in the empty middle area (not on topBar or bottomControls)
+                    val topBarBottom = binding.topBar.bottom
+                    val bottomControlsTop = binding.bottomControls.top
+                    val yInContainer = event.y.toInt()
+                    
+                    // If tap is in the transparent middle area, handle it for tap zones
+                    isInMiddleArea = yInContainer > topBarBottom && yInContainer < bottomControlsTop
+                    if (isInMiddleArea) {
+                        // Let gesture detector handle this tap
+                        gestureDetector.onTouchEvent(event)
+                        return@OnTouchListener true
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_CANCEL -> {
+                    // Continue gesture detection for events that started in middle area
+                    if (isInMiddleArea) {
+                        gestureDetector.onTouchEvent(event)
+                        if (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL) {
+                            isInMiddleArea = false
+                        }
+                        return@OnTouchListener true
+                    }
                 }
             }
             // For taps on actual controls or other events, don't consume
