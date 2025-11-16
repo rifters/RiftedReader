@@ -392,14 +392,16 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     }
 
     private fun updateReaderModeUi() {
-        if (readerMode == ReaderMode.PAGE) {
-            binding.contentScrollView.isVisible = false
-            binding.pageViewPager.isVisible = true
-            viewModel.publishHighlight(viewModel.currentPage.value, currentHighlightRange)
-        } else {
-            binding.pageViewPager.isVisible = false
-            binding.contentScrollView.isVisible = true
-            currentHighlightRange?.let { applyScrollHighlight(it) }
+        binding.root.post {
+            if (readerMode == ReaderMode.PAGE) {
+                binding.contentScrollView.isVisible = false
+                binding.pageViewPager.isVisible = true
+                viewModel.publishHighlight(viewModel.currentPage.value, currentHighlightRange)
+            } else {
+                binding.pageViewPager.isVisible = false
+                binding.contentScrollView.isVisible = true
+                currentHighlightRange?.let { applyScrollHighlight(it) }
+            }
         }
     }
 
