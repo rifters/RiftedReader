@@ -243,16 +243,19 @@ class EpubParser : BookParser {
     
     /**
      * Clean HTML for display while preserving important formatting
+     * 
+     * Since we're now using WebView for EPUB rendering, we can keep the HTML
+     * mostly intact. WebView has full HTML5 and CSS support.
      */
     private fun cleanHtmlForDisplay(body: Element): String {
-        // Remove script and style tags
+        // Remove script and style tags for security
         body.select("script, style").remove()
         
-        // Get the HTML content
+        // Get the HTML content - WebView will handle all the formatting
         val html = body.html()
         
-        // If HTML is empty or trivial, return null to use plain text
-        if (html.isBlank() || !html.contains("<")) {
+        // If HTML is empty, return empty string to use plain text
+        if (html.isBlank()) {
             return ""
         }
         

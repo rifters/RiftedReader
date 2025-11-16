@@ -7,6 +7,9 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
 import androidx.fragment.app.Fragment
@@ -32,6 +35,7 @@ class ReaderPageFragment : Fragment() {
     private var latestPageText: String = ""
     private var latestPageHtml: String? = null
     private var highlightedRange: IntRange? = null
+    private var isWebViewReady = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -44,6 +48,28 @@ class ReaderPageFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        
+        // Configure WebView for EPUB rendering
+        binding.pageWebView.apply {
+            settings.javaScriptEnabled = true
+            settings.loadWithOverviewMode = true
+            settings.useWideViewPort = false
+            settings.builtInZoomControls = false
+            settings.displayZoomControls = false
+            
+            // Add JavaScript interface for TTS communication
+            addJavascriptInterface(TtsWebBridge(), "AndroidTtsBridge")
+            
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    isWebViewReady = true
+                    // Initialize TTS chunks when page is loaded
+                    prepareTtsChunks()
+                }
+            }
+        }
+        
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 readerViewModel.pages.collect { pages ->
@@ -61,6 +87,7 @@ class ReaderPageFragment : Fragment() {
                         latestPageHtml = null
                         highlightedRange = null
                         binding.pageTextView.text = ""
+                        binding.pageWebView.loadUrl("about:blank")
                     }
                 }
             }
@@ -88,6 +115,12 @@ class ReaderPageFragment : Fragment() {
                     val palette = ReaderThemePaletteResolver.resolve(requireContext(), settings.theme)
                     binding.root.setBackgroundColor(palette.backgroundColor)
                     binding.pageTextView.setTextColor(palette.textColor)
+                    binding.pageWebView.setBackgroundColor(palette.backgroundColor)
+                    
+                    // Re-render content if settings changed
+                    if (latestPageText.isNotEmpty() || !latestPageHtml.isNullOrEmpty()) {
+                        renderBaseContent()
+                    }
                 }
             }
         }
@@ -104,33 +137,339 @@ class ReaderPageFragment : Fragment() {
             renderBaseContent()
             return
         }
-        if (latestPageText.isBlank()) {
-            binding.pageTextView.text = latestPageText
-            return
+        
+        // For WebView, we'll need JavaScript-based highlighting in the future
+        // For now, fall back to TextView for highlighting
+        val html = latestPageHtml
+        if (!html.isNullOrBlank()) {
+            // TODO: Implement WebView-based highlighting using JavaScript
+            // For now, use TextView for TTS highlighting
+            binding.pageWebView.visibility = View.GONE
+            binding.pageTextView.visibility = View.VISIBLE
+            
+            if (latestPageText.isBlank()) {
+                binding.pageTextView.text = latestPageText
+                return
+            }
+            if (range.first < 0 || range.first >= latestPageText.length) {
+                binding.pageTextView.text = latestPageText
+                return
+            }
+            val spannable = SpannableString(latestPageText)
+            val endExclusive = (range.last + 1).coerceAtMost(spannable.length)
+            val highlightColor = ContextCompat.getColor(requireContext(), R.color.reader_tts_highlight)
+            spannable.setSpan(
+                BackgroundColorSpan(highlightColor),
+                range.first,
+                endExclusive,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            binding.pageTextView.text = spannable
+        } else {
+            // Plain text highlighting
+            binding.pageWebView.visibility = View.GONE
+            binding.pageTextView.visibility = View.VISIBLE
+            
+            if (latestPageText.isBlank()) {
+                binding.pageTextView.text = latestPageText
+                return
+            }
+            if (range.first < 0 || range.first >= latestPageText.length) {
+                binding.pageTextView.text = latestPageText
+                return
+            }
+            val spannable = SpannableString(latestPageText)
+            val endExclusive = (range.last + 1).coerceAtMost(spannable.length)
+            val highlightColor = ContextCompat.getColor(requireContext(), R.color.reader_tts_highlight)
+            spannable.setSpan(
+                BackgroundColorSpan(highlightColor),
+                range.first,
+                endExclusive,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            binding.pageTextView.text = spannable
         }
-        if (range.first < 0 || range.first >= latestPageText.length) {
-            renderBaseContent()
-            return
-        }
-        val spannable = SpannableString(latestPageText)
-        val endExclusive = (range.last + 1).coerceAtMost(spannable.length)
-        val highlightColor = ContextCompat.getColor(requireContext(), R.color.reader_tts_highlight)
-        spannable.setSpan(
-            BackgroundColorSpan(highlightColor),
-            range.first,
-            endExclusive,
-            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-        binding.pageTextView.text = spannable
     }
 
     private fun renderBaseContent() {
         if (_binding == null) return
         val html = latestPageHtml
+        
         if (!html.isNullOrBlank()) {
-            binding.pageTextView.text = HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_LEGACY)
+            // Use WebView for rich HTML content (EPUB)
+            binding.pageWebView.visibility = View.VISIBLE
+            binding.pageTextView.visibility = View.GONE
+            
+            val settings = readerViewModel.readerSettings.value
+            val palette = ReaderThemePaletteResolver.resolve(requireContext(), settings.theme)
+            
+            // Wrap HTML with proper styling
+            val wrappedHtml = wrapHtmlForWebView(html, settings.textSizeSp, settings.lineHeightMultiplier, palette)
+            binding.pageWebView.loadDataWithBaseURL(null, wrappedHtml, "text/html", "UTF-8", null)
         } else {
+            // Use TextView for plain text content (TXT)
+            binding.pageWebView.visibility = View.GONE
+            binding.pageTextView.visibility = View.VISIBLE
             binding.pageTextView.text = latestPageText
+        }
+    }
+    
+    /**
+     * Wrap HTML content with proper styling for WebView display
+     */
+    private fun wrapHtmlForWebView(
+        content: String,
+        textSize: Float,
+        lineHeight: Float,
+        palette: ReaderThemePalette
+    ): String {
+        val backgroundColor = String.format("#%06X", 0xFFFFFF and palette.backgroundColor)
+        val textColor = String.format("#%06X", 0xFFFFFF and palette.textColor)
+        
+        return """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8"/>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
+                <style>
+                    html, body {
+                        margin: 0;
+                        padding: 0;
+                        background-color: $backgroundColor;
+                        color: $textColor;
+                        font-size: ${textSize}px;
+                        line-height: $lineHeight;
+                        font-family: serif;
+                    }
+                    body {
+                        padding: 16px;
+                        word-wrap: break-word;
+                        overflow-wrap: break-word;
+                    }
+                    /* Preserve formatting for all block elements */
+                    p, div, section, article {
+                        margin: 0.8em 0;
+                    }
+                    h1, h2, h3, h4, h5, h6 {
+                        margin: 1em 0 0.5em 0;
+                        font-weight: bold;
+                        line-height: 1.3;
+                    }
+                    h1 { font-size: 2em; }
+                    h2 { font-size: 1.75em; }
+                    h3 { font-size: 1.5em; }
+                    h4 { font-size: 1.25em; }
+                    h5 { font-size: 1.1em; }
+                    h6 { font-size: 1em; }
+                    blockquote {
+                        margin: 1em 0;
+                        padding-left: 1em;
+                        border-left: 3px solid $textColor;
+                        font-style: italic;
+                    }
+                    ul, ol {
+                        margin: 0.5em 0;
+                        padding-left: 2em;
+                    }
+                    li {
+                        margin: 0.3em 0;
+                    }
+                    img {
+                        max-width: 100% !important;
+                        height: auto !important;
+                        display: block;
+                        margin: 1em auto;
+                    }
+                    pre, code {
+                        font-family: monospace;
+                        background-color: rgba(128, 128, 128, 0.1);
+                        padding: 0.2em 0.4em;
+                        border-radius: 3px;
+                    }
+                    pre {
+                        padding: 1em;
+                        overflow-x: auto;
+                    }
+                    /* TTS highlighting */
+                    [data-tts-chunk] {
+                        cursor: pointer;
+                        transition: background-color 0.2s ease-in-out;
+                    }
+                    .tts-highlight {
+                        background-color: rgba(255, 213, 79, 0.35) !important;
+                    }
+                </style>
+            </head>
+            <body>
+                $content
+            </body>
+            </html>
+        """.trimIndent()
+    }
+    
+    /**
+     * Prepare TTS chunks by marking up content in WebView
+     * This enables tap-to-position and highlighting functionality
+     */
+    private fun prepareTtsChunks() {
+        if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+            return
+        }
+        
+        binding.pageWebView.evaluateJavascript(
+            """
+            (function() {
+                try {
+                    // Add TTS chunk style if not already present
+                    var styleId = 'tts-chunk-style';
+                    if (!document.getElementById(styleId)) {
+                        var style = document.createElement('style');
+                        style.id = styleId;
+                        style.innerHTML = '[data-tts-chunk]{cursor:pointer;transition:background-color 0.2s ease-in-out;} .tts-highlight{background-color: rgba(255, 213, 79, 0.35) !important;}';
+                        document.head.appendChild(style);
+                    }
+                    
+                    // Clear any existing TTS markup
+                    var existing = document.querySelectorAll('[data-tts-chunk]');
+                    existing.forEach(function(node) {
+                        node.classList.remove('tts-highlight');
+                        node.removeAttribute('data-tts-chunk');
+                    });
+                    
+                    // Mark up text blocks for TTS
+                    var selectors = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre, article, section';
+                    var nodes = document.querySelectorAll(selectors);
+                    var chunks = [];
+                    var index = 0;
+                    var currentPos = 0;
+                    
+                    nodes.forEach(function(node) {
+                        if (!node) { return; }
+                        var text = node.innerText || '';
+                        text = text.replace(/\s+/g, ' ').trim();
+                        if (!text) { return; }
+                        
+                        node.setAttribute('data-tts-chunk', index);
+                        chunks.push({ 
+                            index: index, 
+                            text: text,
+                            startPosition: currentPos
+                        });
+                        
+                        currentPos += text.length + 1; // +1 for space between chunks
+                        index++;
+                    });
+                    
+                    // Attach click handler for tap-to-position
+                    if (!window.__ttsTapHandlerAttached) {
+                        document.addEventListener('click', function(event) {
+                            var target = event.target.closest('[data-tts-chunk]');
+                            if (!target) { return; }
+                            var idx = parseInt(target.getAttribute('data-tts-chunk'));
+                            if (isNaN(idx)) { return; }
+                            if (window.AndroidTtsBridge && AndroidTtsBridge.onChunkTapped) {
+                                AndroidTtsBridge.onChunkTapped(idx);
+                            }
+                        }, false);
+                        window.__ttsTapHandlerAttached = true;
+                    }
+                    
+                    // Send chunks back to Android
+                    if (window.AndroidTtsBridge && AndroidTtsBridge.onChunksPrepared) {
+                        AndroidTtsBridge.onChunksPrepared(JSON.stringify(chunks));
+                    }
+                } catch(e) {
+                    console.error('prepareTtsChunks error:', e);
+                }
+            })();
+            """.trimIndent(),
+            null
+        )
+    }
+    
+    /**
+     * Highlight a specific TTS chunk in the WebView
+     */
+    fun highlightTtsChunk(chunkIndex: Int, scrollToCenter: Boolean = false) {
+        if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+            return
+        }
+        
+        val scrollCommand = if (scrollToCenter) {
+            "target.scrollIntoView({ behavior: 'smooth', block: 'center' });"
+        } else {
+            ""
+        }
+        
+        binding.pageWebView.evaluateJavascript(
+            """
+            (function() {
+                try {
+                    var nodes = document.querySelectorAll('[data-tts-chunk]');
+                    nodes.forEach(function(node) {
+                        node.classList.remove('tts-highlight');
+                    });
+                    var target = document.querySelector('[data-tts-chunk="$chunkIndex"]');
+                    if (target) {
+                        target.classList.add('tts-highlight');
+                        $scrollCommand
+                    }
+                } catch(e) {
+                    console.error('highlightTtsChunk error:', e);
+                }
+            })();
+            """.trimIndent(),
+            null
+        )
+    }
+    
+    /**
+     * Remove all TTS highlights from the WebView
+     */
+    fun clearTtsHighlights() {
+        if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+            return
+        }
+        
+        binding.pageWebView.evaluateJavascript(
+            """
+            (function() {
+                try {
+                    var nodes = document.querySelectorAll('[data-tts-chunk].tts-highlight');
+                    nodes.forEach(function(node) {
+                        node.classList.remove('tts-highlight');
+                    });
+                } catch(e) {
+                    console.error('clearTtsHighlights error:', e);
+                }
+            })();
+            """.trimIndent(),
+            null
+        )
+    }
+    
+    /**
+     * JavaScript interface for TTS communication between WebView and Android
+     */
+    private inner class TtsWebBridge {
+        @JavascriptInterface
+        fun onChunksPrepared(payload: String) {
+            // Notify ViewModel or Activity that TTS chunks are ready
+            // This can be used to enable TTS functionality
+            activity?.runOnUiThread {
+                // TODO: Notify TTS system that chunks are ready
+                // readerViewModel.onTtsChunksReady(pageIndex, payload)
+            }
+        }
+        
+        @JavascriptInterface
+        fun onChunkTapped(chunkIndex: Int) {
+            // Handle tap on a text chunk - jump to that position for TTS
+            activity?.runOnUiThread {
+                // TODO: Notify TTS system to start from this chunk
+                // readerViewModel.onTtsChunkTapped(pageIndex, chunkIndex)
+            }
         }
     }
 
