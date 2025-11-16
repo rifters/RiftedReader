@@ -23,9 +23,12 @@ class ReaderControlsManager(
     fun showControls() {
         hideJob?.cancel()
         if (!controlsContainer.isVisible) {
-            controlsContainer.alpha = 0f
-            controlsContainer.isVisible = true
-            controlsContainer.animate().alpha(1f).setDuration(ANIMATION_DURATION_MS).start()
+            // Post the visibility change to avoid requestLayout() during layout
+            controlsContainer.post {
+                controlsContainer.alpha = 0f
+                controlsContainer.isVisible = true
+                controlsContainer.animate().alpha(1f).setDuration(ANIMATION_DURATION_MS).start()
+            }
         }
         scheduleAutoHide()
     }
