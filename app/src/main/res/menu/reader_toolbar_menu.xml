@@ -2,6 +2,12 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
+        android:id="@+id/action_reader_chapters"
+        android:icon="@drawable/ic_chapters_24"
+        android:title="@string/reader_chapters"
+        app:showAsAction="ifRoom" />
+    
+    <item
         android:id="@+id/action_reader_tap_zones"
         android:icon="@drawable/ic_tap_zone_24"
         android:title="@string/reader_tap_zones"

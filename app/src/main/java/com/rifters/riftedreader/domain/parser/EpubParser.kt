@@ -81,8 +81,21 @@ class EpubParser : BookParser {
                 val content = zip.getInputStream(entry).bufferedReader().readText()
                 val doc = Jsoup.parse(content)
                 val body = doc.body()
+                
+                // Extract plain text for TTS and search
                 val text = body?.text().orEmpty()
-                val html = body?.html()?.takeIf { it.isNotBlank() }
+                
+                // Extract HTML with better structure preservation
+                // Use outerHtml() to get full body content with all tags preserved
+                val bodyHtml = body?.html()
+                
+                // Only return HTML if it has actual content beyond just text
+                val html = if (!bodyHtml.isNullOrBlank() && bodyHtml.contains("<")) {
+                    bodyHtml
+                } else {
+                    null
+                }
+                
                 return PageContent(text = text, html = html)
             }
         }

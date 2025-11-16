@@ -107,4 +107,34 @@
 
     </com.google.android.material.chip.ChipGroup>
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="@string/reader_mode_label"
+        android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
+
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/modeChipGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        app:singleSelection="true">
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/modeChipScroll"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/reader_mode_scroll" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/modeChipPage"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/reader_mode_page" />
+
+    </com.google.android.material.chip.ChipGroup>
+
 </LinearLayout>

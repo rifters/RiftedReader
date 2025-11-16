@@ -125,17 +125,31 @@
                     android:textColor="@android:color/white" />
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/ttsButton"
+                    android:id="@+id/ttsPlayPauseButton"
                     style="@style/Widget.Material3.Button.TextButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="12dp"
-                    android:text="@string/reader_tts"
+                    android:text="@string/tts_action_play"
                     android:textColor="@android:color/white"
-                    app:icon="@drawable/ic_reader_tts_24"
+                    app:icon="@drawable/ic_tts_play_24"
                     app:iconTint="@android:color/white"
                     app:iconGravity="textStart"
-                    app:iconPadding="8dp" />
+                    app:iconPadding="4dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/ttsStopButton"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:text="@string/tts_action_stop"
+                    android:textColor="@android:color/white"
+                    android:visibility="gone"
+                    app:icon="@drawable/ic_tts_stop_24"
+                    app:iconTint="@android:color/white"
+                    app:iconGravity="textStart"
+                    app:iconPadding="4dp" />
 
             </LinearLayout>
 

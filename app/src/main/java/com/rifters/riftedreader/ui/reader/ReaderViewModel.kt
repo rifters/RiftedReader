@@ -40,6 +40,9 @@ class ReaderViewModel(
     private val _highlight = MutableStateFlow<TtsHighlight?>(null)
     val highlight: StateFlow<TtsHighlight?> = _highlight.asStateFlow()
 
+    private val _tableOfContents = MutableStateFlow<List<com.rifters.riftedreader.domain.parser.TocEntry>>(emptyList())
+    val tableOfContents: StateFlow<List<com.rifters.riftedreader.domain.parser.TocEntry>> = _tableOfContents.asStateFlow()
+
     val readerSettings: StateFlow<ReaderSettings> = readerPreferences.settings
 
     class Factory(
@@ -60,6 +63,21 @@ class ReaderViewModel(
     
     init {
         buildPagination()
+        loadTableOfContents()
+    }
+
+    private fun loadTableOfContents() {
+        viewModelScope.launch {
+            try {
+                val toc = withContext(Dispatchers.IO) {
+                    parser.getTableOfContents(bookFile)
+                }
+                _tableOfContents.value = toc
+            } catch (e: Exception) {
+                _tableOfContents.value = emptyList()
+                e.printStackTrace()
+            }
+        }
     }
 
     private fun buildPagination() {

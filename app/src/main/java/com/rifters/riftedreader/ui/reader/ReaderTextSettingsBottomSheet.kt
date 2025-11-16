@@ -44,6 +44,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
         setupTextSizeSlider()
         setupLineHeightSlider()
         setupThemeChips()
+        setupModeChips()
 
         settingsViewModel.settings.collectWhileStarted(viewLifecycleOwner) { settings ->
             if (binding.textSizeSlider.value.roundToInt() != settings.textSizeSp.roundToInt()) {
@@ -53,6 +54,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
                 binding.lineHeightSlider.value = settings.lineHeightMultiplier
             }
             selectThemeChip(settings.theme)
+            selectModeChip(settings.mode)
             binding.textSizeValue.text = getString(R.string.reader_text_size_value, settings.textSizeSp.roundToInt())
             binding.lineHeightValue.text = getString(R.string.reader_line_height_value, settings.lineHeightMultiplier)
         }
@@ -89,6 +91,18 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
         binding.themeChipSepia.tag = ReaderTheme.SEPIA
         binding.themeChipBlack.tag = ReaderTheme.BLACK
     }
+    
+    private fun setupModeChips() {
+        binding.modeChipGroup.setOnCheckedStateChangeListener { group, checkedIds ->
+            val id = checkedIds.firstOrNull() ?: return@setOnCheckedStateChangeListener
+            val chip = group.findViewById<Chip>(id)
+            val mode = chip?.tag as? com.rifters.riftedreader.data.preferences.ReaderMode ?: return@setOnCheckedStateChangeListener
+            settingsViewModel.updateMode(mode)
+        }
+
+        binding.modeChipScroll.tag = com.rifters.riftedreader.data.preferences.ReaderMode.SCROLL
+        binding.modeChipPage.tag = com.rifters.riftedreader.data.preferences.ReaderMode.PAGE
+    }
 
     private fun selectThemeChip(theme: ReaderTheme) {
         val targetId = when (theme) {
@@ -99,6 +113,16 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
         }
         if (binding.themeChipGroup.checkedChipId != targetId) {
             binding.themeChipGroup.check(targetId)
+        }
+    }
+    
+    private fun selectModeChip(mode: com.rifters.riftedreader.data.preferences.ReaderMode) {
+        val targetId = when (mode) {
+            com.rifters.riftedreader.data.preferences.ReaderMode.SCROLL -> binding.modeChipScroll.id
+            com.rifters.riftedreader.data.preferences.ReaderMode.PAGE -> binding.modeChipPage.id
+        }
+        if (binding.modeChipGroup.checkedChipId != targetId) {
+            binding.modeChipGroup.check(targetId)
         }
     }
 

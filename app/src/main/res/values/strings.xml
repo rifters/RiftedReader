@@ -142,6 +142,7 @@
     <string name="reader_theme_sepia">Sepia</string>
     <string name="reader_theme_black">Black</string>
     <string name="reader_tap_zones">Tap zones</string>
+    <string name="reader_chapters">Chapters</string>
     <string name="reader_tap_zones_title">Tap zones</string>
     <string name="reader_tap_zones_description">Choose what each tap area does while reading.</string>
     <string name="reader_zone_top_left">Top left</string>
@@ -169,6 +170,7 @@
     <string name="reader_line_height_default">Default</string>
     <string name="reader_line_height_relaxed">Relaxed</string>
     <string name="reader_line_height_loose">Loose</string>
+    <string name="reader_mode_label">Reading mode</string>
     <string name="reader_mode_scroll">Scrolling</string>
     <string name="reader_mode_page">Page flipping</string>
 
