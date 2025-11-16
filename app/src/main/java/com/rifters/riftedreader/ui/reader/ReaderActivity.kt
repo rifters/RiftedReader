@@ -131,37 +131,32 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         }
         
         // Set up touch listener on controls container to enable tap zones even when controls are visible
-        // The container is set to clickable=false in XML, but we need to intercept taps in the 
-        // empty space between top bar and bottom controls
-        var isInMiddleArea = false
-        val controlsTouchListener = View.OnTouchListener { _, event ->
+        // When controls are visible, we want to pass through taps in the empty middle area to gesture detector
+        val controlsTouchListener = View.OnTouchListener { view, event ->
+            if (!binding.controlsContainer.isVisible) {
+                // Controls are hidden, don't intercept
+                return@OnTouchListener false
+            }
+            
+            // Controls are visible - check if tap is in the transparent middle area
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    // Check if tap starts in the empty middle area (not on topBar or bottomControls)
                     val topBarBottom = binding.topBar.bottom
                     val bottomControlsTop = binding.bottomControls.top
                     val yInContainer = event.y.toInt()
                     
                     // If tap is in the transparent middle area, handle it for tap zones
-                    isInMiddleArea = yInContainer > topBarBottom && yInContainer < bottomControlsTop
-                    if (isInMiddleArea) {
+                    if (yInContainer > topBarBottom && yInContainer < bottomControlsTop) {
                         // Let gesture detector handle this tap
                         gestureDetector.onTouchEvent(event)
                         return@OnTouchListener true
                     }
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_CANCEL -> {
-                    // Continue gesture detection for events that started in middle area
-                    if (isInMiddleArea) {
-                        gestureDetector.onTouchEvent(event)
-                        if (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL) {
-                            isInMiddleArea = false
-                        }
-                        return@OnTouchListener true
-                    }
+                MotionEvent.ACTION_UP -> {
+                    gestureDetector.onTouchEvent(event)
                 }
             }
-            // For taps on actual controls or other events, don't consume
+            // For taps on actual controls, don't consume so controls can handle them
             false
         }
         
