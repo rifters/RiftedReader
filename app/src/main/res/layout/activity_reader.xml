@@ -46,7 +46,7 @@
         android:id="@+id/controlsContainer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:clickable="false"
+        android:clickable="true"
         android:focusable="false"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
