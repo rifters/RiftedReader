@@ -116,70 +116,21 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         })
         
         // Set up touch listeners that coordinate gestures with scrolling/paging
+        // Always pass events to gesture detector to ensure tap zones work
         val scrollTouchListener = View.OnTouchListener { _, event ->
-            // Always let gesture detector see the event
             gestureDetector.onTouchEvent(event)
             // Don't consume the event - let ScrollView handle scrolling
             false
         }
         
         val pagerTouchListener = View.OnTouchListener { _, event ->
-            // Always let gesture detector see the event
             gestureDetector.onTouchEvent(event)
             // Don't consume the event - let ViewPager handle paging
             false
         }
         
-        // Set up touch listener on controls container to enable tap zones even when controls are visible
-        // When controls are visible, we want to pass through taps in the empty middle area to gesture detector
-        // Track whether we're handling a gesture sequence to ensure all events are forwarded together
-        var isHandlingGesture = false
-        val controlsTouchListener = View.OnTouchListener { view, event ->
-            if (!binding.controlsContainer.isVisible) {
-                // Controls are hidden, don't intercept
-                isHandlingGesture = false
-                return@OnTouchListener false
-            }
-            
-            // Controls are visible - check if tap is in the transparent middle area
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    val topBarBottom = binding.topBar.bottom
-                    val bottomControlsTop = binding.bottomControls.top
-                    val yInContainer = event.y.toInt()
-                    
-                    // If tap is in the transparent middle area, handle it for tap zones
-                    if (yInContainer > topBarBottom && yInContainer < bottomControlsTop) {
-                        // Start handling this gesture sequence
-                        isHandlingGesture = true
-                        gestureDetector.onTouchEvent(event)
-                        return@OnTouchListener true
-                    }
-                    isHandlingGesture = false
-                }
-                MotionEvent.ACTION_MOVE, MotionEvent.ACTION_CANCEL -> {
-                    // Forward all events in the gesture sequence to maintain gesture state
-                    if (isHandlingGesture) {
-                        gestureDetector.onTouchEvent(event)
-                        return@OnTouchListener true
-                    }
-                }
-                MotionEvent.ACTION_UP -> {
-                    // Forward final event in the gesture sequence
-                    if (isHandlingGesture) {
-                        gestureDetector.onTouchEvent(event)
-                        isHandlingGesture = false
-                        return@OnTouchListener true
-                    }
-                }
-            }
-            // For taps on actual controls, don't consume so controls can handle them
-            false
-        }
-        
         binding.contentScrollView.setOnTouchListener(scrollTouchListener)
         binding.pageViewPager.setOnTouchListener(pagerTouchListener)
-        binding.controlsContainer.setOnTouchListener(controlsTouchListener)
     }
     
     private fun setupControls(bookTitle: String) {

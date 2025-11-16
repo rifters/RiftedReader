@@ -148,10 +148,9 @@ class ReaderViewModel(
             return listOf(content)
         }
 
-        // For HTML content, don't split - keep the full chapter as one page
-        // Splitting HTML properly requires parsing and reconstructing the DOM
+        // For HTML content, split by DOM elements while preserving structure
         if (!content.html.isNullOrBlank()) {
-            return listOf(content)
+            return splitHtmlContent(content)
         }
 
         // Preserve paragraph breaks by treating them as special markers
@@ -185,6 +184,74 @@ class ReaderViewModel(
         }
 
         return pages.ifEmpty { listOf(content) }
+    }
+    
+    /**
+     * Split HTML content into multiple pages while preserving formatting.
+     * Parses HTML DOM and groups block-level elements into pages.
+     */
+    private fun splitHtmlContent(content: PageContent): List<PageContent> {
+        val html = content.html ?: return listOf(content)
+        
+        // Parse HTML using JSoup
+        val doc = org.jsoup.Jsoup.parse(html)
+        val body = doc.body()
+        
+        // Get all block-level elements (paragraphs, headings, lists, etc.)
+        val blockElements = body.select("p, h1, h2, h3, h4, h5, h6, div, blockquote, pre, ul, ol, li")
+        
+        if (blockElements.isEmpty()) {
+            // No block elements, keep as single page
+            return listOf(content)
+        }
+        
+        val pages = mutableListOf<PageContent>()
+        val currentElements = mutableListOf<org.jsoup.nodes.Element>()
+        var currentTextLength = 0
+        
+        for (element in blockElements) {
+            val elementText = element.text()
+            val elementLength = elementText.length
+            
+            // If adding this element would exceed page size and we have content, create a page
+            if (currentElements.isNotEmpty() && currentTextLength + elementLength > TARGET_CHARS_PER_PAGE) {
+                // Create a page with current elements
+                val pageHtml = buildHtmlFromElements(currentElements)
+                val pageText = currentElements.joinToString("\n\n") { it.text() }
+                pages += PageContent(text = pageText, html = pageHtml)
+                
+                // Start new page
+                currentElements.clear()
+                currentTextLength = 0
+            }
+            
+            // Add element to current page
+            currentElements.add(element.clone())
+            currentTextLength += elementLength
+        }
+        
+        // Add remaining elements as final page
+        if (currentElements.isNotEmpty()) {
+            val pageHtml = buildHtmlFromElements(currentElements)
+            val pageText = currentElements.joinToString("\n\n") { it.text() }
+            pages += PageContent(text = pageText, html = pageHtml)
+        }
+        
+        return pages.ifEmpty { listOf(content) }
+    }
+    
+    /**
+     * Build HTML from a list of elements
+     */
+    private fun buildHtmlFromElements(elements: List<org.jsoup.nodes.Element>): String {
+        if (elements.isEmpty()) return ""
+        
+        val container = org.jsoup.nodes.Element("div")
+        elements.forEach { element ->
+            container.appendChild(element.clone())
+        }
+        
+        return container.html()
     }
 
     fun nextPage(): Boolean {
