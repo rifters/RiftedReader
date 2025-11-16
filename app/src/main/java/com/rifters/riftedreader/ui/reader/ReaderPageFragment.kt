@@ -207,7 +207,6 @@ class ReaderPageFragment : Fragment() {
             binding.pageTextView.text = spannable
         }
     }
-    }
 
     private fun renderBaseContent() {
         if (_binding == null) return
