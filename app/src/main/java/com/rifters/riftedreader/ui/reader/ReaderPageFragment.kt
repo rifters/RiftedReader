@@ -117,9 +117,14 @@ class ReaderPageFragment : Fragment() {
                     binding.pageTextView.setTextColor(palette.textColor)
                     binding.pageWebView.setBackgroundColor(palette.backgroundColor)
                     
-                    // Re-render content if settings changed
+                    // Bug Fix 4: Re-render content only if there's no active highlight
+                    // This prevents losing the TTS highlight when settings change
                     if (latestPageText.isNotEmpty() || !latestPageHtml.isNullOrEmpty()) {
-                        renderBaseContent()
+                        if (highlightedRange == null) {
+                            renderBaseContent()
+                        } else {
+                            applyHighlight(highlightedRange)
+                        }
                     }
                 }
             }
@@ -128,6 +133,17 @@ class ReaderPageFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        // Bug Fix 1: Properly clean up WebView to prevent memory leaks
+        binding.pageWebView.apply {
+            // Stop any loading
+            stopLoading()
+            // Remove JavaScript interface
+            removeJavascriptInterface("AndroidTtsBridge")
+            // Clear WebView client to prevent callbacks after destruction
+            webViewClient = WebViewClient()
+            // Destroy the WebView
+            destroy()
+        }
         _binding = null
     }
 
@@ -205,6 +221,8 @@ class ReaderPageFragment : Fragment() {
             
             // Wrap HTML with proper styling
             val wrappedHtml = wrapHtmlForWebView(html, settings.textSizeSp, settings.lineHeightMultiplier, palette)
+            // Bug Fix 2: Reset isWebViewReady flag when loading new content to prevent race conditions
+            isWebViewReady = false
             binding.pageWebView.loadDataWithBaseURL(null, wrappedHtml, "text/html", "UTF-8", null)
         } else {
             // Use TextView for plain text content (TXT)
@@ -313,6 +331,8 @@ class ReaderPageFragment : Fragment() {
      * This enables tap-to-position and highlighting functionality
      */
     private fun prepareTtsChunks() {
+        // Bug Fix 3: Check binding is not null before accessing WebView
+        if (_binding == null) return
         if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
             return
         }
@@ -392,6 +412,8 @@ class ReaderPageFragment : Fragment() {
      * Highlight a specific TTS chunk in the WebView
      */
     fun highlightTtsChunk(chunkIndex: Int, scrollToCenter: Boolean = false) {
+        // Bug Fix 5: Check binding is not null before accessing WebView
+        if (_binding == null) return
         if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
             return
         }
@@ -428,6 +450,8 @@ class ReaderPageFragment : Fragment() {
      * Remove all TTS highlights from the WebView
      */
     fun clearTtsHighlights() {
+        // Bug Fix 6: Check binding is not null before accessing WebView
+        if (_binding == null) return
         if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
             return
         }
