@@ -20,6 +20,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.databinding.FragmentReaderPageBinding
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 
 class ReaderPageFragment : Fragment() {
 
@@ -36,6 +37,10 @@ class ReaderPageFragment : Fragment() {
     private var latestPageHtml: String? = null
     private var highlightedRange: IntRange? = null
     private var isWebViewReady = false
+    
+    // TTS chunk mapping for WebView highlighting
+    private data class TtsChunk(val index: Int, val text: String, val startPosition: Int, val endPosition: Int)
+    private var ttsChunks: List<TtsChunk> = emptyList()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -92,6 +97,8 @@ class ReaderPageFragment : Fragment() {
                     if (page != null) {
                         latestPageText = page.text
                         latestPageHtml = page.html
+                        // Clear chunks when content changes - they'll be rebuilt by prepareTtsChunks
+                        ttsChunks = emptyList()
                         if (highlightedRange == null) {
                             renderBaseContent()
                         } else {
@@ -101,6 +108,7 @@ class ReaderPageFragment : Fragment() {
                         latestPageText = ""
                         latestPageHtml = null
                         highlightedRange = null
+                        ttsChunks = emptyList()
                         binding.pageTextView.text = ""
                         binding.pageWebView.loadUrl("about:blank")
                     }
@@ -176,16 +184,31 @@ class ReaderPageFragment : Fragment() {
     private fun applyHighlight(range: IntRange?) {
         if (_binding == null) return
         if (range == null) {
-            renderBaseContent()
+            // Clear all highlights
+            clearTtsHighlights()
+            highlightedRange = null
             return
         }
         
         val html = latestPageHtml
         if (!html.isNullOrBlank()) {
-            // For HTML content, keep using WebView to preserve formatting
-            // Skip highlighting for now to avoid stripping HTML
-            // TODO: Implement WebView-based highlighting using JavaScript in the future
-            renderBaseContent()
+            // For HTML content, use JavaScript-based highlighting in WebView
+            if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+                // WebView not ready yet, just render content and return
+                renderBaseContent()
+                return
+            }
+            
+            // Find all chunks that overlap with the given range
+            val chunksToHighlight = findChunksInRange(range)
+            
+            if (chunksToHighlight.isEmpty()) {
+                // No chunks found, clear highlights
+                clearTtsHighlights()
+            } else {
+                // Highlight all overlapping chunks using JavaScript
+                highlightTtsChunks(chunksToHighlight)
+            }
         } else {
             // Plain text highlighting using TextView
             binding.pageWebView.visibility = View.GONE
@@ -210,6 +233,58 @@ class ReaderPageFragment : Fragment() {
             )
             binding.pageTextView.text = spannable
         }
+    }
+    
+    /**
+     * Find all TTS chunks that overlap with the given character range
+     */
+    private fun findChunksInRange(range: IntRange): List<Int> {
+        return ttsChunks.filter { chunk ->
+            // Check if chunk overlaps with the range
+            val chunkRange = chunk.startPosition..chunk.endPosition
+            chunkRange.intersect(range.toSet()).isNotEmpty()
+        }.map { it.index }
+    }
+    
+    /**
+     * Highlight multiple TTS chunks in the WebView
+     */
+    private fun highlightTtsChunks(chunkIndices: List<Int>) {
+        if (_binding == null) return
+        if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+            return
+        }
+        
+        // Build JavaScript selector for all chunks to highlight
+        val selectors = chunkIndices.joinToString(", ") { "[data-tts-chunk=\"$it\"]" }
+        
+        binding.pageWebView.evaluateJavascript(
+            """
+            (function() {
+                try {
+                    // Clear all existing highlights
+                    var allNodes = document.querySelectorAll('[data-tts-chunk]');
+                    allNodes.forEach(function(node) {
+                        node.classList.remove('tts-highlight');
+                    });
+                    
+                    // Highlight selected chunks
+                    var targets = document.querySelectorAll('$selectors');
+                    targets.forEach(function(node) {
+                        node.classList.add('tts-highlight');
+                    });
+                    
+                    // Scroll to first highlighted chunk
+                    if (targets.length > 0) {
+                        targets[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                } catch(e) {
+                    console.error('highlightTtsChunks error:', e);
+                }
+            })();
+            """.trimIndent(),
+            null
+        )
     }
 
     private fun renderBaseContent() {
@@ -484,11 +559,35 @@ class ReaderPageFragment : Fragment() {
     private inner class TtsWebBridge {
         @JavascriptInterface
         fun onChunksPrepared(payload: String) {
-            // Notify ViewModel or Activity that TTS chunks are ready
-            // This can be used to enable TTS functionality
+            // Parse and store chunk data for highlighting
             activity?.runOnUiThread {
-                // TODO: Notify TTS system that chunks are ready
-                // readerViewModel.onTtsChunksReady(pageIndex, payload)
+                try {
+                    val chunks = mutableListOf<TtsChunk>()
+                    val jsonArray = JSONArray(payload)
+                    
+                    for (i in 0 until jsonArray.length()) {
+                        val obj = jsonArray.getJSONObject(i)
+                        val index = obj.getInt("index")
+                        val text = obj.getString("text")
+                        val startPosition = obj.getInt("startPosition")
+                        val endPosition = startPosition + text.length - 1
+                        
+                        chunks.add(TtsChunk(index, text, startPosition, endPosition))
+                    }
+                    
+                    ttsChunks = chunks
+                    
+                    // If there's a pending highlight, apply it now that chunks are ready
+                    highlightedRange?.let { range ->
+                        applyHighlight(range)
+                    }
+                    
+                    // TODO: Notify TTS system that chunks are ready
+                    // readerViewModel.onTtsChunksReady(pageIndex, payload)
+                } catch (e: Exception) {
+                    android.util.Log.e("ReaderPageFragment", "Error parsing TTS chunks", e)
+                    ttsChunks = emptyList()
+                }
             }
         }
         
