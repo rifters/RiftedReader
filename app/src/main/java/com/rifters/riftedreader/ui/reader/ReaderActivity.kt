@@ -105,15 +105,23 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             }
         })
         
-        binding.contentScrollView.setOnTouchListener { _, event ->
+        // Set up touch listeners that coordinate gestures with scrolling/paging
+        val scrollTouchListener = View.OnTouchListener { view, event ->
+            // Always let gesture detector see the event
             gestureDetector.onTouchEvent(event)
+            // Don't consume the event - let ScrollView handle scrolling
             false
         }
-
-        binding.pageViewPager.setOnTouchListener { _, event ->
+        
+        val pagerTouchListener = View.OnTouchListener { view, event ->
+            // Always let gesture detector see the event
             gestureDetector.onTouchEvent(event)
+            // Don't consume the event - let ViewPager handle paging
             false
         }
+        
+        binding.contentScrollView.setOnTouchListener(scrollTouchListener)
+        binding.pageViewPager.setOnTouchListener(pagerTouchListener)
     }
     
     private fun setupControls(bookTitle: String) {
