@@ -95,11 +95,14 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private fun setupGestures() {
         gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                // Detect which view the tap originated from and use appropriate dimensions
+                val width = binding.readerRoot.width
+                val height = binding.readerRoot.height
                 val tapZone = ReaderTapZoneDetector.detect(
-                    e.x,
-                    e.y,
-                    binding.contentScrollView.width,
-                    binding.contentScrollView.height
+                    e.rawX,
+                    e.rawY,
+                    width,
+                    height
                 )
                 handleTapZone(tapZone)
                 return true
@@ -121,8 +124,30 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             false
         }
         
+        // Set up touch listener on controls container to enable tap zones even when controls are visible
+        // The container is set to clickable=false in XML, but we need to intercept taps in the 
+        // empty space between top bar and bottom controls
+        val controlsTouchListener = View.OnTouchListener { _, event ->
+            // Check if tap is in the empty middle area (not on topBar or bottomControls)
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                val topBarBottom = binding.topBar.bottom
+                val bottomControlsTop = binding.bottomControls.top
+                val yInContainer = event.y.toInt()
+                
+                // If tap is in the transparent middle area, handle it for tap zones
+                if (yInContainer > topBarBottom && yInContainer < bottomControlsTop) {
+                    // Let gesture detector handle this tap
+                    gestureDetector.onTouchEvent(event)
+                    return@OnTouchListener true
+                }
+            }
+            // For taps on actual controls or other events, don't consume
+            false
+        }
+        
         binding.contentScrollView.setOnTouchListener(scrollTouchListener)
         binding.pageViewPager.setOnTouchListener(pagerTouchListener)
+        binding.controlsContainer.setOnTouchListener(controlsTouchListener)
     }
     
     private fun setupControls(bookTitle: String) {
@@ -172,9 +197,30 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             controlsManager.onUserInteraction()
         }
         
-        binding.ttsButton.setOnClickListener {
+        // TTS Play/Pause button
+        binding.ttsPlayPauseButton.setOnClickListener {
+            handleTtsPlayPause()
+            controlsManager.onUserInteraction()
+        }
+        
+        // TTS Play/Pause button long press - open TTS settings
+        binding.ttsPlayPauseButton.setOnLongClickListener {
             controlsManager.showControls()
             TTSControlsBottomSheet.show(supportFragmentManager, viewModel.content.value.text)
+            true
+        }
+        
+        // TTS Stop button
+        binding.ttsStopButton.setOnClickListener {
+            TTSService.stop(this)
+            controlsManager.onUserInteraction()
+        }
+        
+        // TTS Stop button long press - open TTS settings
+        binding.ttsStopButton.setOnLongClickListener {
+            controlsManager.showControls()
+            TTSControlsBottomSheet.show(supportFragmentManager, viewModel.content.value.text)
+            true
         }
 
         binding.pageSlider.addOnChangeListener { _, value, fromUser ->
@@ -358,6 +404,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     }
 
     private fun handleTtsStatus(snapshot: TTSStatusSnapshot) {
+        // Update button UI based on TTS state
+        updateTtsButtonStates(snapshot.state)
+        
         when (snapshot.state) {
             TTSPlaybackState.PLAYING -> {
                 autoContinueTts = true
@@ -519,6 +568,55 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             }
         }
         return ranges
+    }
+    
+    private fun handleTtsPlayPause() {
+        val snapshot = TTSStatusNotifier.status.value
+        when (snapshot.state) {
+            TTSPlaybackState.IDLE, TTSPlaybackState.STOPPED -> {
+                // Start TTS playback
+                if (currentPageText.isNotBlank()) {
+                    val configuration = TTSConfiguration(
+                        speed = ttsPreferences.speed,
+                        pitch = ttsPreferences.pitch,
+                        autoScroll = ttsPreferences.autoScroll,
+                        highlightSentence = ttsPreferences.highlightSentence,
+                        languageTag = ttsPreferences.languageTag
+                    )
+                    TTSService.start(this, currentPageText, configuration)
+                }
+            }
+            TTSPlaybackState.PLAYING -> {
+                // Pause TTS playback
+                TTSService.pause(this)
+            }
+            TTSPlaybackState.PAUSED -> {
+                // Resume TTS playback
+                TTSService.resume(this)
+            }
+        }
+    }
+    
+    private fun updateTtsButtonStates(state: TTSPlaybackState) {
+        binding.root.post {
+            when (state) {
+                TTSPlaybackState.IDLE, TTSPlaybackState.STOPPED -> {
+                    binding.ttsPlayPauseButton.text = getString(R.string.tts_action_play)
+                    binding.ttsPlayPauseButton.setIconResource(R.drawable.ic_tts_play_24)
+                    binding.ttsStopButton.isVisible = false
+                }
+                TTSPlaybackState.PLAYING -> {
+                    binding.ttsPlayPauseButton.text = getString(R.string.tts_action_pause)
+                    binding.ttsPlayPauseButton.setIconResource(R.drawable.ic_tts_pause_24)
+                    binding.ttsStopButton.isVisible = true
+                }
+                TTSPlaybackState.PAUSED -> {
+                    binding.ttsPlayPauseButton.text = getString(R.string.tts_action_play)
+                    binding.ttsPlayPauseButton.setIconResource(R.drawable.ic_tts_play_24)
+                    binding.ttsStopButton.isVisible = true
+                }
+            }
+        }
     }
 
 }
