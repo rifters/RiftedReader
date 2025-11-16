@@ -148,8 +148,7 @@ class ReaderViewModel(
             return listOf(content)
         }
 
-        // For HTML content, split by paragraphs while preserving HTML structure
-        // This is a simple approach that works for most EPUB content
+        // For HTML content, split by DOM elements while preserving structure
         if (!content.html.isNullOrBlank()) {
             return splitHtmlContent(content)
         }
@@ -188,53 +187,71 @@ class ReaderViewModel(
     }
     
     /**
-     * Split HTML content into multiple pages.
-     * For simplicity, we extract plain text from HTML and split that into pages.
-     * This loses HTML formatting but allows proper pagination.
-     * TODO: Implement proper HTML DOM splitting to preserve formatting.
+     * Split HTML content into multiple pages while preserving formatting.
+     * Parses HTML DOM and groups block-level elements into pages.
      */
     private fun splitHtmlContent(content: PageContent): List<PageContent> {
         val html = content.html ?: return listOf(content)
-        val text = content.text
         
-        // If text is short enough, keep as single page with HTML
-        if (text.length <= TARGET_CHARS_PER_PAGE) {
+        // Parse HTML using JSoup
+        val doc = org.jsoup.Jsoup.parse(html)
+        val body = doc.body()
+        
+        // Get all block-level elements (paragraphs, headings, lists, etc.)
+        val blockElements = body.select("p, h1, h2, h3, h4, h5, h6, div, blockquote, pre, ul, ol, li")
+        
+        if (blockElements.isEmpty()) {
+            // No block elements, keep as single page
             return listOf(content)
         }
         
-        // Split the plain text into pages
-        // For now, we lose HTML formatting to enable pagination
-        // Users can switch to SCROLL mode to see formatted HTML
         val pages = mutableListOf<PageContent>()
-        val paragraphs = text.split(Regex("\n\n+"))
-        val builder = StringBuilder()
+        val currentElements = mutableListOf<org.jsoup.nodes.Element>()
+        var currentTextLength = 0
         
-        for ((_, paragraph) in paragraphs.withIndex()) {
-            val trimmedPara = paragraph.trim()
-            if (trimmedPara.isEmpty()) continue
+        for (element in blockElements) {
+            val elementText = element.text()
+            val elementLength = elementText.length
             
-            // Check if adding this paragraph would exceed the page size
-            val paraWithBreak = if (builder.isNotEmpty()) "\n\n$trimmedPara" else trimmedPara
-            
-            if (builder.isNotEmpty() && builder.length + paraWithBreak.length > TARGET_CHARS_PER_PAGE) {
-                // Current page is full, save it and start a new one
-                pages += PageContent(text = builder.toString().trim())
-                builder.clear()
-                builder.append(trimmedPara)
-            } else {
-                // Add paragraph to current page
-                if (builder.isNotEmpty()) {
-                    builder.append("\n\n")
-                }
-                builder.append(trimmedPara)
+            // If adding this element would exceed page size and we have content, create a page
+            if (currentElements.isNotEmpty() && currentTextLength + elementLength > TARGET_CHARS_PER_PAGE) {
+                // Create a page with current elements
+                val pageHtml = buildHtmlFromElements(currentElements)
+                val pageText = currentElements.joinToString("\n\n") { it.text() }
+                pages += PageContent(text = pageText, html = pageHtml)
+                
+                // Start new page
+                currentElements.clear()
+                currentTextLength = 0
             }
+            
+            // Add element to current page
+            currentElements.add(element.clone())
+            currentTextLength += elementLength
         }
         
-        if (builder.isNotBlank()) {
-            pages += PageContent(text = builder.toString().trim())
+        // Add remaining elements as final page
+        if (currentElements.isNotEmpty()) {
+            val pageHtml = buildHtmlFromElements(currentElements)
+            val pageText = currentElements.joinToString("\n\n") { it.text() }
+            pages += PageContent(text = pageText, html = pageHtml)
         }
         
-        return pages.ifEmpty { listOf(PageContent(text = text)) }
+        return pages.ifEmpty { listOf(content) }
+    }
+    
+    /**
+     * Build HTML from a list of elements
+     */
+    private fun buildHtmlFromElements(elements: List<org.jsoup.nodes.Element>): String {
+        if (elements.isEmpty()) return ""
+        
+        val container = org.jsoup.nodes.Element("div")
+        elements.forEach { element ->
+            container.appendChild(element.clone())
+        }
+        
+        return container.html()
     }
 
     fun nextPage(): Boolean {
