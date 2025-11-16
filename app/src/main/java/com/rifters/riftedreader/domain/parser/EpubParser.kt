@@ -155,7 +155,7 @@ class EpubParser : BookParser {
         }
         
         // Get spine order
-        val opfDir = opfPath.substringBeforeLast('/')
+        val opfDir = if (opfPath.contains('/')) opfPath.substringBeforeLast('/') else ""
         doc.select("spine > itemref").forEach { itemref ->
             val idref = itemref.attr("idref")
             manifest[idref]?.let { href ->
@@ -199,7 +199,7 @@ class EpubParser : BookParser {
             // If we still don't have a cover, try common file names directly
             if (imagePath.isNullOrBlank()) {
                 val commonCoverNames = listOf("cover.jpg", "cover.jpeg", "cover.png", "Cover.jpg", "Cover.jpeg", "Cover.png")
-                val opfDir = opfPath.substringBeforeLast('/')
+                val opfDir = if (opfPath.contains('/')) opfPath.substringBeforeLast('/') else ""
                 imagePath = commonCoverNames.firstOrNull { name ->
                     val fullPath = if (opfDir.isNotBlank()) "$opfDir/$name" else name
                     zip.getEntry(fullPath) != null
@@ -211,7 +211,7 @@ class EpubParser : BookParser {
             }
             
             // Construct full path relative to OPF
-            val opfDir = opfPath.substringBeforeLast('/')
+            val opfDir = if (opfPath.contains('/')) opfPath.substringBeforeLast('/') else ""
             val fullImagePath = if (opfDir.isNotBlank() && !imagePath.startsWith("/")) {
                 "$opfDir/$imagePath"
             } else {
@@ -278,7 +278,7 @@ class EpubParser : BookParser {
             }
             
             // Construct full NCX path
-            val opfDir = opfPath.substringBeforeLast('/')
+            val opfDir = if (opfPath.contains('/')) opfPath.substringBeforeLast('/') else ""
             val ncxPath = if (opfDir.isNotBlank()) "$opfDir/$ncxHref" else ncxHref
             
             val ncxEntry = zip.getEntry(ncxPath) ?: return null
@@ -361,7 +361,7 @@ class EpubParser : BookParser {
             }
             
             // Construct full nav path
-            val opfDir = opfPath.substringBeforeLast('/')
+            val opfDir = if (opfPath.contains('/')) opfPath.substringBeforeLast('/') else ""
             val navPath = if (opfDir.isNotBlank()) "$opfDir/$navHref" else navHref
             
             val navEntry = zip.getEntry(navPath) ?: return null
