@@ -99,10 +99,13 @@ class ChaptersAdapter(
             binding.chapterTitle.text = chapter.title
             
             // Apply indentation based on level
+            val basePaddingDp = 16 // 16dp base padding to match layout
             val indentDp = chapter.level * 16 // 16dp per level
-            val indentPx = (indentDp * binding.root.resources.displayMetrics.density).toInt()
+            val density = binding.root.resources.displayMetrics.density
+            val basePaddingPx = (basePaddingDp * density).toInt()
+            val indentPx = (indentDp * density).toInt()
             binding.chapterTitle.setPadding(
-                16 + indentPx, // left padding + indent
+                basePaddingPx + indentPx, // left padding + indent
                 binding.chapterTitle.paddingTop,
                 binding.chapterTitle.paddingRight,
                 binding.chapterTitle.paddingBottom
