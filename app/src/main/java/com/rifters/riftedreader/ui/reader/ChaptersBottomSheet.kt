@@ -97,6 +97,17 @@ class ChaptersAdapter(
 
         fun bind(chapter: TocEntry) {
             binding.chapterTitle.text = chapter.title
+            
+            // Apply indentation based on level
+            val indentDp = chapter.level * 16 // 16dp per level
+            val indentPx = (indentDp * binding.root.resources.displayMetrics.density).toInt()
+            binding.chapterTitle.setPadding(
+                16 + indentPx, // left padding + indent
+                binding.chapterTitle.paddingTop,
+                binding.chapterTitle.paddingRight,
+                binding.chapterTitle.paddingBottom
+            )
+            
             binding.root.setOnClickListener {
                 onChapterClick(chapter.pageNumber)
             }
