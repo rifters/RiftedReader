@@ -130,30 +130,37 @@ class ReaderViewModel(
             return listOf(content)
         }
 
-        val normalized = text.replace('\n', ' ').replace("\r", " ")
-        val words = normalized.split(Regex("\\s+"))
-        if (words.isEmpty()) {
-            return listOf(content)
-        }
-
+        // Preserve paragraph breaks by treating them as special markers
+        val paragraphs = text.split(Regex("\n\n+"))
         val pages = mutableListOf<PageContent>()
         val builder = StringBuilder()
-        for (word in words) {
-            if (builder.length + word.length + 1 > TARGET_CHARS_PER_PAGE && builder.isNotBlank()) {
+        
+        for ((index, paragraph) in paragraphs.withIndex()) {
+            val trimmedPara = paragraph.trim()
+            if (trimmedPara.isEmpty()) continue
+            
+            // Check if adding this paragraph would exceed the page size
+            val paraWithBreak = if (builder.isNotEmpty()) "\n\n$trimmedPara" else trimmedPara
+            
+            if (builder.isNotEmpty() && builder.length + paraWithBreak.length > TARGET_CHARS_PER_PAGE) {
+                // Current page is full, save it and start a new one
                 pages += PageContent(text = builder.toString().trim())
                 builder.clear()
+                builder.append(trimmedPara)
+            } else {
+                // Add paragraph to current page
+                if (builder.isNotEmpty()) {
+                    builder.append("\n\n")
+                }
+                builder.append(trimmedPara)
             }
-            if (builder.isNotEmpty()) {
-                builder.append(' ')
-            }
-            builder.append(word)
         }
 
         if (builder.isNotBlank()) {
             pages += PageContent(text = builder.toString().trim())
         }
 
-        return pages
+        return pages.ifEmpty { listOf(content) }
     }
 
     fun nextPage(): Boolean {

@@ -89,6 +89,7 @@ class TTSService : Service() {
     private var currentLanguageTag: String? = null
     private var pendingLanguageTag: String? = null
     private val pendingPlayIntents: MutableList<Intent> = mutableListOf()
+    private var shouldFlushQueue: Boolean = true
 
     override fun onCreate() {
         super.onCreate()
@@ -202,9 +203,11 @@ class TTSService : Service() {
                 sentences = splitIntoSentences(text)
                 currentSentenceIndex = 0
                 lastStoppedIndex = 0
+                shouldFlushQueue = true  // New text, flush the queue
             } else {
                 // Same text, resume from last stopped position
                 currentSentenceIndex = lastStoppedIndex
+                shouldFlushQueue = true  // Resume from stopped, flush queue
             }
         }
 
@@ -256,6 +259,7 @@ class TTSService : Service() {
         if (currentSentenceIndex < sentences.lastIndex) {
             currentSentenceIndex++
             if (ensureAudioFocus()) {
+                shouldFlushQueue = true  // Flush queue when manually navigating
                 speakCurrentSentence()
             } else {
                 handleStop()
@@ -269,12 +273,14 @@ class TTSService : Service() {
         if (currentSentenceIndex > 0) {
             currentSentenceIndex--
             if (ensureAudioFocus()) {
+                shouldFlushQueue = true  // Flush queue when manually navigating
                 speakCurrentSentence()
             } else {
                 handleStop()
             }
         } else {
             if (ensureAudioFocus()) {
+                shouldFlushQueue = true  // Flush queue when replaying first sentence
                 speakCurrentSentence()
             }
         }
@@ -309,6 +315,7 @@ class TTSService : Service() {
         if (!ensureAudioFocus()) {
             return
         }
+        shouldFlushQueue = true  // Flush queue when resuming
         speakCurrentSentence()
     }
 
@@ -399,7 +406,10 @@ class TTSService : Service() {
                     handleStop()
                     return
                 }
-                ttsEngine.speak(result.text.ifBlank { sentence }, utteranceId())
+                val textToSpeak = result.text.ifBlank { sentence }
+                val flushQueue = shouldFlushQueue
+                shouldFlushQueue = false  // Only flush the first utterance
+                ttsEngine.speak(textToSpeak, utteranceId(), flushQueue)
                 broadcastStatus(TTSPlaybackState.PLAYING)
             }
         }
