@@ -135,7 +135,7 @@ class ReaderViewModel(
         val pages = mutableListOf<PageContent>()
         val builder = StringBuilder()
         
-        for ((index, paragraph) in paragraphs.withIndex()) {
+        for ((_, paragraph) in paragraphs.withIndex()) {
             val trimmedPara = paragraph.trim()
             if (trimmedPara.isEmpty()) continue
             

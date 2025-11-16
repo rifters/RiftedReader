@@ -6,6 +6,7 @@ import android.text.Spanned
 import android.text.style.BackgroundColorSpan
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import android.content.pm.ApplicationInfo
 import androidx.core.content.ContextCompat
@@ -106,14 +107,14 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         })
         
         // Set up touch listeners that coordinate gestures with scrolling/paging
-        val scrollTouchListener = View.OnTouchListener { view, event ->
+        val scrollTouchListener = View.OnTouchListener { _, event ->
             // Always let gesture detector see the event
             gestureDetector.onTouchEvent(event)
             // Don't consume the event - let ScrollView handle scrolling
             false
         }
         
-        val pagerTouchListener = View.OnTouchListener { view, event ->
+        val pagerTouchListener = View.OnTouchListener { _, event ->
             // Always let gesture detector see the event
             gestureDetector.onTouchEvent(event)
             // Don't consume the event - let ViewPager handle paging
