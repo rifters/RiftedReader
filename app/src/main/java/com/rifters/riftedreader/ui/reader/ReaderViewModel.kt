@@ -148,6 +148,12 @@ class ReaderViewModel(
             return listOf(content)
         }
 
+        // For HTML content, don't split - keep the full chapter as one page
+        // Splitting HTML properly requires parsing and reconstructing the DOM
+        if (!content.html.isNullOrBlank()) {
+            return listOf(content)
+        }
+
         // Preserve paragraph breaks by treating them as special markers
         val paragraphs = text.split(Regex("\n\n+"))
         val pages = mutableListOf<PageContent>()

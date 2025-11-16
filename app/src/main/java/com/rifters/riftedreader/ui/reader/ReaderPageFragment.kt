@@ -56,6 +56,10 @@ class ReaderPageFragment : Fragment() {
             settings.useWideViewPort = false
             settings.builtInZoomControls = false
             settings.displayZoomControls = false
+            settings.domStorageEnabled = true
+            settings.databaseEnabled = true
+            settings.allowFileAccess = false
+            settings.allowContentAccess = false
             
             // Add JavaScript interface for TTS communication
             addJavascriptInterface(TtsWebBridge(), "AndroidTtsBridge")
@@ -66,6 +70,17 @@ class ReaderPageFragment : Fragment() {
                     isWebViewReady = true
                     // Initialize TTS chunks when page is loaded
                     prepareTtsChunks()
+                }
+                
+                override fun onReceivedError(
+                    view: WebView?,
+                    errorCode: Int,
+                    description: String?,
+                    failingUrl: String?
+                ) {
+                    super.onReceivedError(view, errorCode, description, failingUrl)
+                    // Log error but don't crash
+                    android.util.Log.e("ReaderPageFragment", "WebView error: $description")
                 }
             }
         }
@@ -133,12 +148,19 @@ class ReaderPageFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        // Bug Fix 1: Properly clean up WebView to prevent memory leaks
+        // Properly clean up WebView to prevent memory leaks and crashes
         binding.pageWebView.apply {
             // Stop any loading
             stopLoading()
             // Remove JavaScript interface
             removeJavascriptInterface("AndroidTtsBridge")
+            // Load blank page to clear memory
+            loadUrl("about:blank")
+            // Clear history and cache
+            clearHistory()
+            clearCache(true)
+            // Remove WebView from parent
+            (parent as? ViewGroup)?.removeView(this)
             // Clear WebView client to prevent callbacks after destruction
             webViewClient = WebViewClient()
             // Destroy the WebView
@@ -154,35 +176,14 @@ class ReaderPageFragment : Fragment() {
             return
         }
         
-        // For WebView, we'll need JavaScript-based highlighting in the future
-        // For now, fall back to TextView for highlighting
         val html = latestPageHtml
         if (!html.isNullOrBlank()) {
-            // TODO: Implement WebView-based highlighting using JavaScript
-            // For now, use TextView for TTS highlighting
-            binding.pageWebView.visibility = View.GONE
-            binding.pageTextView.visibility = View.VISIBLE
-            
-            if (latestPageText.isBlank()) {
-                binding.pageTextView.text = latestPageText
-                return
-            }
-            if (range.first < 0 || range.first >= latestPageText.length) {
-                binding.pageTextView.text = latestPageText
-                return
-            }
-            val spannable = SpannableString(latestPageText)
-            val endExclusive = (range.last + 1).coerceAtMost(spannable.length)
-            val highlightColor = ContextCompat.getColor(requireContext(), R.color.reader_tts_highlight)
-            spannable.setSpan(
-                BackgroundColorSpan(highlightColor),
-                range.first,
-                endExclusive,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            binding.pageTextView.text = spannable
+            // For HTML content, keep using WebView to preserve formatting
+            // Skip highlighting for now to avoid stripping HTML
+            // TODO: Implement WebView-based highlighting using JavaScript in the future
+            renderBaseContent()
         } else {
-            // Plain text highlighting
+            // Plain text highlighting using TextView
             binding.pageWebView.visibility = View.GONE
             binding.pageTextView.visibility = View.VISIBLE
             
@@ -315,7 +316,7 @@ class ReaderPageFragment : Fragment() {
                         transition: background-color 0.2s ease-in-out;
                     }
                     .tts-highlight {
-                        background-color: rgba(255, 213, 79, 0.35) !important;
+                        background-color: rgba(255, 213, 79, 0.4) !important;
                     }
                 </style>
             </head>
@@ -346,7 +347,7 @@ class ReaderPageFragment : Fragment() {
                     if (!document.getElementById(styleId)) {
                         var style = document.createElement('style');
                         style.id = styleId;
-                        style.innerHTML = '[data-tts-chunk]{cursor:pointer;transition:background-color 0.2s ease-in-out;} .tts-highlight{background-color: rgba(255, 213, 79, 0.35) !important;}';
+                        style.innerHTML = '[data-tts-chunk]{cursor:pointer;transition:background-color 0.2s ease-in-out;} .tts-highlight{background-color: rgba(255, 213, 79, 0.4) !important;}';
                         document.head.appendChild(style);
                     }
                     

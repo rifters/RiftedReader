@@ -37,5 +37,5 @@
     <color name="reader_text_dark">#E6E1E5</color>
     <color name="reader_text_sepia">#5C4A2F</color>
     <color name="reader_text_black">#E0E0E0</color>
-    <color name="reader_tts_highlight">#663B82F6</color>
+    <color name="reader_tts_highlight">#66FFD54F</color>
 </resources>

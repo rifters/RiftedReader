@@ -45,7 +45,8 @@ class TTSEngine(private val context: Context) {
             return
         }
         val queueMode = if (flushQueue) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-        tts?.speak(text, queueMode, null, utteranceId)
+        val params = android.os.Bundle()
+        tts?.speak(text, queueMode, params, utteranceId)
     }
 
     fun stop() {
