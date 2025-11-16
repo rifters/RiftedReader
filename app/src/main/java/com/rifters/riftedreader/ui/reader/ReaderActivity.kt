@@ -132,9 +132,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         
         // Set up touch listener on controls container to enable tap zones even when controls are visible
         // When controls are visible, we want to pass through taps in the empty middle area to gesture detector
+        // Track whether we're handling a gesture sequence to ensure all events are forwarded together
+        var isHandlingGesture = false
         val controlsTouchListener = View.OnTouchListener { view, event ->
             if (!binding.controlsContainer.isVisible) {
                 // Controls are hidden, don't intercept
+                isHandlingGesture = false
                 return@OnTouchListener false
             }
             
@@ -147,13 +150,27 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     
                     // If tap is in the transparent middle area, handle it for tap zones
                     if (yInContainer > topBarBottom && yInContainer < bottomControlsTop) {
-                        // Let gesture detector handle this tap
+                        // Start handling this gesture sequence
+                        isHandlingGesture = true
+                        gestureDetector.onTouchEvent(event)
+                        return@OnTouchListener true
+                    }
+                    isHandlingGesture = false
+                }
+                MotionEvent.ACTION_MOVE, MotionEvent.ACTION_CANCEL -> {
+                    // Forward all events in the gesture sequence to maintain gesture state
+                    if (isHandlingGesture) {
                         gestureDetector.onTouchEvent(event)
                         return@OnTouchListener true
                     }
                 }
                 MotionEvent.ACTION_UP -> {
-                    gestureDetector.onTouchEvent(event)
+                    // Forward final event in the gesture sequence
+                    if (isHandlingGesture) {
+                        gestureDetector.onTouchEvent(event)
+                        isHandlingGesture = false
+                        return@OnTouchListener true
+                    }
                 }
             }
             // For taps on actual controls, don't consume so controls can handle them

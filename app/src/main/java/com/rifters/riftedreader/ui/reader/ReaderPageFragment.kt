@@ -149,9 +149,15 @@ class ReaderPageFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         // Properly clean up WebView to prevent memory leaks and crashes
+        // Fix: Reset isWebViewReady FIRST to prevent any JavaScript execution during cleanup
+        isWebViewReady = false
+        
         binding.pageWebView.apply {
             // Stop any loading
             stopLoading()
+            // Fix: Replace webViewClient BEFORE calling loadUrl to prevent onPageFinished callback
+            // This prevents race condition where onPageFinished could trigger prepareTtsChunks
+            webViewClient = WebViewClient()
             // Remove JavaScript interface
             removeJavascriptInterface("AndroidTtsBridge")
             // Load blank page to clear memory
@@ -161,8 +167,6 @@ class ReaderPageFragment : Fragment() {
             clearCache(true)
             // Remove WebView from parent
             (parent as? ViewGroup)?.removeView(this)
-            // Clear WebView client to prevent callbacks after destruction
-            webViewClient = WebViewClient()
             // Destroy the WebView
             destroy()
         }
