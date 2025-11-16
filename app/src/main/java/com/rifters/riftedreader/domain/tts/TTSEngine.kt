@@ -39,12 +39,13 @@ class TTSEngine(private val context: Context) {
         }
     }
 
-    fun speak(text: String, utteranceId: String = UUID.randomUUID().toString()) {
+    fun speak(text: String, utteranceId: String = UUID.randomUUID().toString(), flushQueue: Boolean = false) {
         if (!isInitialized) {
             Log.w(TAG, "Attempted to speak before TTS was initialized")
             return
         }
-        tts?.speak(text, TextToSpeech.QUEUE_ADD, null, utteranceId)
+        val queueMode = if (flushQueue) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+        tts?.speak(text, queueMode, null, utteranceId)
     }
 
     fun stop() {

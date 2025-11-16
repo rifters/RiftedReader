@@ -6,6 +6,7 @@ import android.text.Spanned
 import android.text.style.BackgroundColorSpan
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import android.content.pm.ApplicationInfo
 import androidx.core.content.ContextCompat
@@ -105,15 +106,23 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             }
         })
         
-        binding.contentScrollView.setOnTouchListener { _, event ->
+        // Set up touch listeners that coordinate gestures with scrolling/paging
+        val scrollTouchListener = View.OnTouchListener { _, event ->
+            // Always let gesture detector see the event
             gestureDetector.onTouchEvent(event)
+            // Don't consume the event - let ScrollView handle scrolling
             false
         }
-
-        binding.pageViewPager.setOnTouchListener { _, event ->
+        
+        val pagerTouchListener = View.OnTouchListener { _, event ->
+            // Always let gesture detector see the event
             gestureDetector.onTouchEvent(event)
+            // Don't consume the event - let ViewPager handle paging
             false
         }
+        
+        binding.contentScrollView.setOnTouchListener(scrollTouchListener)
+        binding.pageViewPager.setOnTouchListener(pagerTouchListener)
     }
     
     private fun setupControls(bookTitle: String) {
@@ -392,14 +401,16 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     }
 
     private fun updateReaderModeUi() {
-        if (readerMode == ReaderMode.PAGE) {
-            binding.contentScrollView.isVisible = false
-            binding.pageViewPager.isVisible = true
-            viewModel.publishHighlight(viewModel.currentPage.value, currentHighlightRange)
-        } else {
-            binding.pageViewPager.isVisible = false
-            binding.contentScrollView.isVisible = true
-            currentHighlightRange?.let { applyScrollHighlight(it) }
+        binding.root.post {
+            if (readerMode == ReaderMode.PAGE) {
+                binding.contentScrollView.isVisible = false
+                binding.pageViewPager.isVisible = true
+                viewModel.publishHighlight(viewModel.currentPage.value, currentHighlightRange)
+            } else {
+                binding.pageViewPager.isVisible = false
+                binding.contentScrollView.isVisible = true
+                currentHighlightRange?.let { applyScrollHighlight(it) }
+            }
         }
     }
 
