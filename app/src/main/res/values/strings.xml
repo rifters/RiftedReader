@@ -170,6 +170,7 @@
     <string name="reader_line_height_default">Default</string>
     <string name="reader_line_height_relaxed">Relaxed</string>
     <string name="reader_line_height_loose">Loose</string>
+    <string name="reader_mode_label">Reading mode</string>
     <string name="reader_mode_scroll">Scrolling</string>
     <string name="reader_mode_page">Page flipping</string>
 

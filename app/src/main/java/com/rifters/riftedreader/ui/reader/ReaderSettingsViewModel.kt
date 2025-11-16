@@ -24,6 +24,10 @@ class ReaderSettingsViewModel(
     fun updateTheme(theme: ReaderTheme) {
         readerPreferences.updateSettings { current -> current.copy(theme = theme) }
     }
+    
+    fun updateMode(mode: com.rifters.riftedreader.data.preferences.ReaderMode) {
+        readerPreferences.updateSettings { current -> current.copy(mode = mode) }
+    }
 
     class Factory(private val readerPreferences: ReaderPreferences) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
