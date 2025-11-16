@@ -240,9 +240,9 @@ class ReaderPageFragment : Fragment() {
      */
     private fun findChunksInRange(range: IntRange): List<Int> {
         return ttsChunks.filter { chunk ->
-            // Check if chunk overlaps with the range
+            // Check if chunk overlaps with the range using efficient range comparison
             val chunkRange = chunk.startPosition..chunk.endPosition
-            chunkRange.intersect(range.toSet()).isNotEmpty()
+            chunkRange.first <= range.last && range.first <= chunkRange.last
         }.map { it.index }
     }
     
