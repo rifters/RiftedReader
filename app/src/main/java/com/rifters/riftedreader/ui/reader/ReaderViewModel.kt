@@ -123,11 +123,15 @@ class ReaderViewModel(
                 return@withContext pages
             }
 
-            // Generic fallback: treat each parser "page" (chapter/spine) and further split it.
+            // For EPUB/HTML: Don't split chapters - let WebView handle pagination per-viewport
+            // Each parser "page" represents a chapter/spine item
             for (index in 0 until rawPageCount) {
                 val chapterContent = runCatching { parser.getPageContent(bookFile, index) }
                     .getOrDefault(PageContent.EMPTY)
-                pages += splitChapterContent(chapterContent)
+                // Add the chapter as-is without splitting
+                if (!chapterContent.text.isBlank() || !chapterContent.html.isNullOrBlank()) {
+                    pages += chapterContent
+                }
             }
 
             if (pages.isEmpty()) {
