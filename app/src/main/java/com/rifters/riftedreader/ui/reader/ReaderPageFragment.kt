@@ -148,6 +148,7 @@ class ReaderPageFragment : Fragment() {
                     // Determine what changed
                     val themeChanged = previousSettings?.theme != settings.theme
                     val fontSizeChanged = previousSettings?.textSizeSp != settings.textSizeSp
+                    val lineHeightChanged = previousSettings?.lineHeightMultiplier != settings.lineHeightMultiplier
                     
                     // Update theme-related properties
                     val palette = ReaderThemePaletteResolver.resolve(requireContext(), settings.theme)
@@ -157,14 +158,14 @@ class ReaderPageFragment : Fragment() {
                     
                     // Handle WebView content updates based on what changed
                     if (latestPageText.isNotEmpty() || !latestPageHtml.isNullOrEmpty()) {
-                        if (!latestPageHtml.isNullOrEmpty() && fontSizeChanged && !themeChanged) {
+                        if (!latestPageHtml.isNullOrEmpty() && fontSizeChanged && !themeChanged && !lineHeightChanged) {
                             // For HTML content with font size change only, use paginator API
                             // This preserves reading position without reloading
                             if (isWebViewReady && binding.pageWebView.visibility == View.VISIBLE) {
                                 WebViewPaginatorBridge.setFontSize(binding.pageWebView, settings.textSizeSp.toInt())
                             }
-                        } else if (themeChanged) {
-                            // Theme change requires full reload to update colors
+                        } else if (themeChanged || lineHeightChanged) {
+                            // Theme or line height change requires full reload to update styles
                             if (highlightedRange == null) {
                                 renderBaseContent()
                             } else {
