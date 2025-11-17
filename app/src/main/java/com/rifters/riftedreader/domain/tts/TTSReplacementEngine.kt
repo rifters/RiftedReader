@@ -43,80 +43,80 @@ class TTSReplacementEngine {
         return TTSReplacementResult(result, issuedCommand)
     }
 
-    fun addRuleFromText(pattern: String, replacement: String): Boolean {
-        return try {
-            val enabled = !pattern.startsWith(DISABLED_PREFIX) && !pattern.matches(DISABLED_PATTERN)
-            val cleanPattern = if (pattern.startsWith(DISABLED_PREFIX)) pattern.drop(1) else pattern
+    fun loadRulesFromText(text: String): Int {
+        clearRules()
+        var loaded = 0
+        
+        TTSReplacementParser.parseText(text).forEach { parsedRule ->
+            if (addParsedRule(parsedRule)) {
+                loaded++
+            }
+        }
+        
+        return loaded
+    }
 
-            when (val command = replacement.toCommandOrNull()) {
-                null -> {
-                    if (cleanPattern.startsWith(REGEX_PREFIX)) {
-                        val regex = Regex(cleanPattern.drop(1))
-                        regexRules.add(
-                            TTSReplacementRule.RegexRule(
-                                isEnabled = enabled,
-                                pattern = cleanPattern,
-                                replacement = replacement,
-                                regex = regex
+    private fun addParsedRule(parsed: ParsedRule): Boolean {
+        return try {
+            when (parsed.type) {
+                RuleType.SIMPLE -> {
+                    simpleRules.add(
+                        TTSReplacementRule.SimpleRule(
+                            isEnabled = parsed.enabled,
+                            pattern = parsed.pattern,
+                            replacement = parsed.replacement
+                        )
+                    )
+                }
+                RuleType.REGEX -> {
+                    val regex = Regex(parsed.pattern)
+                    regexRules.add(
+                        TTSReplacementRule.RegexRule(
+                            isEnabled = parsed.enabled,
+                            pattern = parsed.pattern,
+                            replacement = parsed.replacement,
+                            regex = regex
+                        )
+                    )
+                }
+                RuleType.COMMAND -> {
+                    val command = parsed.replacement.toCommandOrNull()
+                    if (command != null) {
+                        commandRules.add(
+                            TTSReplacementRule.CommandRule(
+                                isEnabled = parsed.enabled,
+                                pattern = parsed.pattern,
+                                replacement = parsed.replacement,
+                                command = command
                             )
                         )
                     } else {
-                        simpleRules.add(
-                            TTSReplacementRule.SimpleRule(
-                                isEnabled = enabled,
-                                pattern = cleanPattern,
-                                replacement = replacement
-                            )
-                        )
+                        Log.w(TAG, "Unknown command: ${parsed.replacement}")
+                        return false
                     }
-                }
-                else -> {
-                    commandRules.add(
-                        TTSReplacementRule.CommandRule(
-                            isEnabled = enabled,
-                            pattern = cleanPattern,
-                            replacement = replacement,
-                            command = command
-                        )
-                    )
                 }
             }
             true
         } catch (ex: Exception) {
-            Log.e(TAG, "Failed to add rule $pattern -> $replacement", ex)
+            Log.e(TAG, "Failed to add rule ${parsed.pattern} -> ${parsed.replacement}", ex)
             false
         }
     }
 
-    fun loadRulesFromText(text: String): Int {
-        clearRules()
-        var loaded = 0
-        text.lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith(COMMENT_PREFIX) }
-            .forEach { line ->
-                parseRuleLine(line)?.let { (pattern, replacement) ->
-                    if (addRuleFromText(pattern, replacement)) {
-                        loaded++
-                    }
-                }
-            }
-        return loaded
-    }
-
     fun exportRulesToText(): String {
-        val builder = StringBuilder()
-        getAllRules().forEach { rule ->
-            val prefix = if (!rule.isEnabled) DISABLED_PREFIX else ""
-            builder.append('"')
-                .append(prefix)
-                .append(rule.pattern)
-                .append("""" """)
-                .append(rule.replacement)
-                .append('"')
-                .append('\n')
+        val parsedRules = getAllRules().map { rule ->
+            ParsedRule(
+                pattern = rule.pattern,
+                replacement = rule.replacement,
+                type = when (rule) {
+                    is TTSReplacementRule.SimpleRule -> RuleType.SIMPLE
+                    is TTSReplacementRule.RegexRule -> RuleType.REGEX
+                    is TTSReplacementRule.CommandRule -> RuleType.COMMAND
+                },
+                enabled = rule.isEnabled
+            )
         }
-        return builder.toString()
+        return TTSReplacementParser.formatRules(parsedRules)
     }
 
     fun getAllRules(): List<TTSReplacementRule> = simpleRules + regexRules + commandRules
@@ -125,12 +125,6 @@ class TTSReplacementEngine {
         simpleRules.clear()
         regexRules.clear()
         commandRules.clear()
-    }
-
-    private fun parseRuleLine(line: String): Pair<String, String>? {
-        val matcher = RULE_REGEX.find(line) ?: return null
-        val (pattern, replacement) = matcher.destructured
-        return pattern to replacement
     }
 
     private fun String.toCommandOrNull(): TTSCommand? = when (this) {
@@ -143,16 +137,10 @@ class TTSReplacementEngine {
 
     companion object {
         private const val TAG = "TTSReplacementEngine"
-        private const val REGEX_PREFIX = "*"
-        private const val DISABLED_PREFIX = "#"
-        private const val COMMENT_PREFIX = "//"
-
+        
         private const val CMD_PAUSE = "ttsPAUSE"
         private const val CMD_STOP = "ttsSTOP"
         private const val CMD_NEXT = "ttsNEXT"
         private const val CMD_SKIP = "ttsSKIP"
-
-        private val DISABLED_PATTERN = Regex("\\w+\\d+")
-        private val RULE_REGEX = Regex("\"([^\"]+)\"\\s+\"([^\"]+)\"")
     }
 }

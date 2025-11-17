@@ -2,13 +2,15 @@ package com.rifters.riftedreader.data.repository
 
 import android.content.Context
 import com.rifters.riftedreader.data.preferences.TTSPreferences
+import com.rifters.riftedreader.domain.tts.ParsedRule
+import com.rifters.riftedreader.domain.tts.RuleType
+import com.rifters.riftedreader.domain.tts.TTSReplacementParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-private val RULE_PATTERN = Regex("""\"((?:[^\\"]|\\.)*)\"\\s+\"((?:[^\\"]|\\.)*)\"""")
 
-internal enum class TTSReplacementUiType { SIMPLE, REGEX, COMMAND }
+enum class TTSReplacementUiType { SIMPLE, REGEX, COMMAND }
 
-internal data class TTSReplacementUiItem(
+data class TTSReplacementUiItem(
     val id: Long,
     val pattern: String,
     val replacement: String,
@@ -16,7 +18,7 @@ internal data class TTSReplacementUiItem(
     val enabled: Boolean
 )
 
-internal class TTSReplacementRepository(context: Context) {
+class TTSReplacementRepository(context: Context) {
 
     private val preferences = TTSPreferences(context)
 
@@ -26,54 +28,37 @@ internal class TTSReplacementRepository(context: Context) {
             return@withContext emptyList()
         }
         val lines = file.readLines()
-        parseLines(lines)
+        TTSReplacementParser.parseLines(lines).mapIndexed { index, parsedRule ->
+            parsedRule.toUiItem(index.toLong())
+        }
     }
 
     suspend fun saveRules(items: List<TTSReplacementUiItem>) = withContext(Dispatchers.IO) {
-        val text = items.joinToString(separator = "\n") { item ->
-            val patternToken = when (item.type) {
-                TTSReplacementUiType.REGEX -> "*${item.pattern}"
-                else -> item.pattern
-            }
-            val prefix = if (item.enabled) "" else "#"
-            val patternEscaped = patternToken.replace("\"", "\\\"")
-            val replacementEscaped = item.replacement.replace("\"", "\\\"")
-            "${prefix}\"${patternEscaped}\" \"${replacementEscaped}\""
-        }
+        val parsedRules = items.map { it.toParsedRule() }
+        val text = TTSReplacementParser.formatRules(parsedRules)
         preferences.saveReplacementRules(text)
     }
 
-    private fun parseLines(lines: List<String>): List<TTSReplacementUiItem> {
-        val items = mutableListOf<TTSReplacementUiItem>()
-        var nextId = 0L
-        for (line in lines) {
-            val trimmed = line.trim()
-            if (trimmed.isBlank() || trimmed.startsWith("//")) {
-                continue
-            }
-            val isDisabled = trimmed.startsWith("#")
-            val effective = if (isDisabled) trimmed.drop(1).trimStart() else trimmed
-            val match = RULE_PATTERN.find(effective) ?: continue
-            val rawPattern = match.groupValues[1].replace("\\\"", "\"")
-            val replacement = match.groupValues[2].replace("\\\"", "\"")
-            val type = when {
-                replacement in COMMANDS -> TTSReplacementUiType.COMMAND
-                rawPattern.startsWith("*") -> TTSReplacementUiType.REGEX
-                else -> TTSReplacementUiType.SIMPLE
-            }
-            val pattern = if (type == TTSReplacementUiType.REGEX) rawPattern.removePrefix("*") else rawPattern
-            items += TTSReplacementUiItem(
-                id = nextId++,
-                pattern = pattern,
-                replacement = replacement,
-                type = type,
-                enabled = !isDisabled
-            )
-        }
-        return items
-    }
+    private fun ParsedRule.toUiItem(id: Long) = TTSReplacementUiItem(
+        id = id,
+        pattern = pattern,
+        replacement = replacement,
+        type = when (type) {
+            RuleType.SIMPLE -> TTSReplacementUiType.SIMPLE
+            RuleType.REGEX -> TTSReplacementUiType.REGEX
+            RuleType.COMMAND -> TTSReplacementUiType.COMMAND
+        },
+        enabled = enabled
+    )
 
-    companion object {
-        private val COMMANDS = setOf("ttsPAUSE", "ttsSKIP", "ttsSTOP", "ttsNEXT")
-    }
+    private fun TTSReplacementUiItem.toParsedRule() = ParsedRule(
+        pattern = pattern,
+        replacement = replacement,
+        type = when (type) {
+            TTSReplacementUiType.SIMPLE -> RuleType.SIMPLE
+            TTSReplacementUiType.REGEX -> RuleType.REGEX
+            TTSReplacementUiType.COMMAND -> RuleType.COMMAND
+        },
+        enabled = enabled
+    )
 }
