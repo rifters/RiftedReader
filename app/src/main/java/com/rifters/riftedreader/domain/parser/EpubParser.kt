@@ -92,11 +92,11 @@ class EpubParser : BookParser {
                 // Extract plain text for TTS and search
                 val text = body.text()
                 
-                // Extract HTML with better structure preservation
-                // Clean the HTML but preserve important formatting elements
-                val cleanedHtml = cleanHtmlForDisplay(body)
+                // Remove script and style tags for security, preserve all other HTML
+                body.select("script, style").remove()
+                val html = body.html()
                 
-                return PageContent(text = text, html = cleanedHtml)
+                return PageContent(text = text, html = html.takeIf { it.isNotBlank() } ?: "")
             }
         }
         return PageContent.EMPTY
@@ -242,24 +242,18 @@ class EpubParser : BookParser {
     }
     
     /**
-     * Clean HTML for display while preserving important formatting
-     * 
-     * Since we're now using WebView for EPUB rendering, we can keep the HTML
-     * mostly intact. WebView has full HTML5 and CSS support.
+     * Build a map from spine item href to page index for TOC linking
      */
-    private fun cleanHtmlForDisplay(body: Element): String {
-        // Remove script and style tags for security
-        body.select("script, style").remove()
-        
-        // Get the HTML content - WebView will handle all the formatting
-        val html = body.html()
-        
-        // If HTML is empty, return empty string to use plain text
-        if (html.isBlank()) {
-            return ""
+    private fun buildHrefToIndexMap(zip: ZipFile): Map<String, Int> {
+        val spineItems = getSpineItems(zip)
+        val hrefToIndex = mutableMapOf<String, Int>()
+        spineItems.forEachIndexed { index, path ->
+            val href = path.substringAfterLast('/')
+            hrefToIndex[href] = index
+            // Also store without anchor for flexibility
+            hrefToIndex[href.substringBefore('#')] = index
         }
-        
-        return html
+        return hrefToIndex
     }
     
     /**
@@ -288,15 +282,8 @@ class EpubParser : BookParser {
             val ncxContent = zip.getInputStream(ncxEntry).bufferedReader().readText()
             val ncxDoc = Jsoup.parse(ncxContent, "", org.jsoup.parser.Parser.xmlParser())
             
-            // Build spine href to index map
-            val spineItems = getSpineItems(zip)
-            val hrefToIndex = mutableMapOf<String, Int>()
-            spineItems.forEachIndexed { index, path ->
-                val href = path.substringAfterLast('/')
-                hrefToIndex[href] = index
-                // Also store without anchor
-                hrefToIndex[href.substringBefore('#')] = index
-            }
+            // Build href to index map for spine items
+            val hrefToIndex = buildHrefToIndexMap(zip)
             
             // Parse nav points
             val entries = mutableListOf<TocEntry>()
@@ -371,14 +358,8 @@ class EpubParser : BookParser {
             val navContent = zip.getInputStream(navEntry).bufferedReader().readText()
             val navDoc = Jsoup.parse(navContent)
             
-            // Build spine href to index map
-            val spineItems = getSpineItems(zip)
-            val hrefToIndex = mutableMapOf<String, Int>()
-            spineItems.forEachIndexed { index, path ->
-                val href = path.substringAfterLast('/')
-                hrefToIndex[href] = index
-                hrefToIndex[href.substringBefore('#')] = index
-            }
+            // Build href to index map for spine items
+            val hrefToIndex = buildHrefToIndexMap(zip)
             
             // Parse nav element with toc type
             val tocNav = navDoc.select("nav[*|type=toc], nav#toc").firstOrNull() ?: return null
