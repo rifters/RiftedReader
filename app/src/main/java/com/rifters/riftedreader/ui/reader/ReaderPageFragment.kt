@@ -4,7 +4,9 @@ import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
 import android.os.Bundle
+import android.view.GestureDetector
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
@@ -12,6 +14,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
+import androidx.core.view.GestureDetectorCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -21,6 +24,7 @@ import com.rifters.riftedreader.R
 import com.rifters.riftedreader.databinding.FragmentReaderPageBinding
 import kotlinx.coroutines.launch
 import org.json.JSONArray
+import kotlin.math.abs
 
 class ReaderPageFragment : Fragment() {
 
@@ -96,6 +100,9 @@ class ReaderPageFragment : Fragment() {
                     android.util.Log.e("ReaderPageFragment", "WebView error: $description")
                 }
             }
+            
+            // Set up gesture detection for in-page horizontal swipes
+            setupWebViewSwipeHandling()
         }
         
         viewLifecycleOwner.lifecycleScope.launch {
@@ -207,6 +214,71 @@ class ReaderPageFragment : Fragment() {
             destroy()
         }
         _binding = null
+    }
+
+    /**
+     * Set up swipe gesture handling for in-page horizontal pagination.
+     * This prevents ViewPager2 from intercepting swipes when there are more pages
+     * within the current chapter.
+     */
+    private fun setupWebViewSwipeHandling() {
+        val gestureDetector = GestureDetectorCompat(
+            requireContext(),
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onFling(
+                    e1: MotionEvent?,
+                    e2: MotionEvent,
+                    velocityX: Float,
+                    velocityY: Float
+                ): Boolean {
+                    // Only handle if WebView is visible and ready
+                    if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+                        return false
+                    }
+                    
+                    // Check if this is a horizontal swipe (not vertical scroll)
+                    if (abs(velocityX) > abs(velocityY) && abs(velocityX) > FLING_THRESHOLD) {
+                        // Launch coroutine to check page boundaries
+                        viewLifecycleOwner.lifecycleScope.launch {
+                            try {
+                                val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
+                                val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
+                                
+                                if (velocityX < 0) {
+                                    // Swipe left (next page)
+                                    if (currentPage < pageCount - 1) {
+                                        // Not at last page, navigate within chapter
+                                        WebViewPaginatorBridge.nextPage(binding.pageWebView)
+                                        return@launch
+                                    }
+                                    // At last page, let ViewPager2 handle (go to next chapter)
+                                } else {
+                                    // Swipe right (previous page)
+                                    if (currentPage > 0) {
+                                        // Not at first page, navigate within chapter
+                                        WebViewPaginatorBridge.prevPage(binding.pageWebView)
+                                        return@launch
+                                    }
+                                    // At first page, let ViewPager2 handle (go to previous chapter)
+                                }
+                            } catch (e: Exception) {
+                                // If anything goes wrong, let ViewPager2 handle it
+                                android.util.Log.e("ReaderPageFragment", "Error in swipe handling", e)
+                            }
+                        }
+                    }
+                    
+                    return false // Don't consume - let parent handle if not consumed
+                }
+            }
+        )
+        
+        // Set touch listener on WebView to intercept swipes
+        binding.pageWebView.setOnTouchListener { _, event ->
+            gestureDetector.onTouchEvent(event)
+            // Return false to allow WebView's default touch handling (scrolling, clicking, etc.)
+            false
+        }
     }
 
     private fun applyHighlight(range: IntRange?) {
@@ -639,6 +711,7 @@ class ReaderPageFragment : Fragment() {
 
     companion object {
         private const val ARG_PAGE_INDEX = "arg_page_index"
+        private const val FLING_THRESHOLD = 1000f // Minimum velocity for horizontal fling detection
 
         fun newInstance(pageIndex: Int): ReaderPageFragment {
             return ReaderPageFragment().apply {

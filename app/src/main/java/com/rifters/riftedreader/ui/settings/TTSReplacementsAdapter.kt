@@ -12,6 +12,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.chip.Chip
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.rifters.riftedreader.R
+import com.rifters.riftedreader.data.repository.TTSReplacementUiItem
+import com.rifters.riftedreader.data.repository.TTSReplacementUiType
 
 internal class TTSReplacementsAdapter(
     private val onToggle: (id: Long, enabled: Boolean) -> Unit,

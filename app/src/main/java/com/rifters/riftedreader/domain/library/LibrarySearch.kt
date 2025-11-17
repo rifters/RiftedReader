@@ -3,8 +3,6 @@ package com.rifters.riftedreader.domain.library
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.data.repository.CollectionRepository
-import com.rifters.riftedreader.domain.library.SmartCollectionId
-import com.rifters.riftedreader.domain.library.SmartCollections
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 

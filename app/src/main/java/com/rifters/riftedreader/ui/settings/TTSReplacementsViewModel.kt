@@ -3,6 +3,9 @@ package com.rifters.riftedreader.ui.settings
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.rifters.riftedreader.data.repository.TTSReplacementRepository
+import com.rifters.riftedreader.data.repository.TTSReplacementUiItem
+import com.rifters.riftedreader.data.repository.TTSReplacementUiType
 import com.rifters.riftedreader.domain.tts.TTSService
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow

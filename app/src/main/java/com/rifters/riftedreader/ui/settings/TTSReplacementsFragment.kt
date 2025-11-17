@@ -20,6 +20,8 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
 import com.rifters.riftedreader.R
+import com.rifters.riftedreader.data.repository.TTSReplacementUiItem
+import com.rifters.riftedreader.data.repository.TTSReplacementUiType
 import kotlinx.coroutines.launch
 
 class TTSReplacementsFragment : Fragment(R.layout.fragment_tts_replacements) {
