@@ -38,6 +38,9 @@ class ReaderPageFragment : Fragment() {
     private var highlightedRange: IntRange? = null
     private var isWebViewReady = false
     
+    // Track previous settings to detect what changed
+    private var previousSettings: com.rifters.riftedreader.data.preferences.ReaderSettings? = null
+    
     // TTS chunk mapping for WebView highlighting
     private data class TtsChunk(val index: Int, val text: String, val startPosition: Int, val endPosition: Int)
     private var ttsChunks: List<TtsChunk> = emptyList()
@@ -138,22 +141,41 @@ class ReaderPageFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 readerViewModel.readerSettings.collect { settings ->
+                    // Always update TextView settings
                     binding.pageTextView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, settings.textSizeSp)
                     binding.pageTextView.setLineSpacing(0f, settings.lineHeightMultiplier)
+                    
+                    // Determine what changed
+                    val themeChanged = previousSettings?.theme != settings.theme
+                    val fontSizeChanged = previousSettings?.textSizeSp != settings.textSizeSp
+                    
+                    // Update theme-related properties
                     val palette = ReaderThemePaletteResolver.resolve(requireContext(), settings.theme)
                     binding.root.setBackgroundColor(palette.backgroundColor)
                     binding.pageTextView.setTextColor(palette.textColor)
                     binding.pageWebView.setBackgroundColor(palette.backgroundColor)
                     
-                    // Bug Fix 4: Re-render content only if there's no active highlight
-                    // This prevents losing the TTS highlight when settings change
+                    // Handle WebView content updates based on what changed
                     if (latestPageText.isNotEmpty() || !latestPageHtml.isNullOrEmpty()) {
-                        if (highlightedRange == null) {
-                            renderBaseContent()
-                        } else {
-                            applyHighlight(highlightedRange)
+                        if (!latestPageHtml.isNullOrEmpty() && fontSizeChanged && !themeChanged) {
+                            // For HTML content with font size change only, use paginator API
+                            // This preserves reading position without reloading
+                            if (isWebViewReady && binding.pageWebView.visibility == View.VISIBLE) {
+                                WebViewPaginatorBridge.setFontSize(binding.pageWebView, settings.textSizeSp.toInt())
+                            }
+                        } else if (themeChanged) {
+                            // Theme change requires full reload to update colors
+                            if (highlightedRange == null) {
+                                renderBaseContent()
+                            } else {
+                                applyHighlight(highlightedRange)
+                            }
                         }
+                        // For plain text content, TextView handles updates automatically
                     }
+                    
+                    // Store current settings for next comparison
+                    previousSettings = settings
                 }
             }
         }

@@ -81,10 +81,14 @@
     
     /**
      * Update column styles on the content wrapper
+     * Preserves existing fontSize to avoid breaking dynamic font size adjustments
      */
     function updateColumnStyles(wrapper) {
         viewportWidth = window.innerWidth;
         const columnWidth = viewportWidth;
+        
+        // Preserve the current font size before updating styles
+        const preservedFontSize = wrapper.style.fontSize;
         
         wrapper.style.cssText = `
             column-width: ${columnWidth}px;
@@ -93,6 +97,11 @@
             height: 100%;
             scroll-snap-align: start;
         `;
+        
+        // Restore the preserved font size if it existed
+        if (preservedFontSize) {
+            wrapper.style.fontSize = preservedFontSize;
+        }
     }
     
     /**
