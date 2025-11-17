@@ -1,4 +1,4 @@
-package com.rifters.riftedreader.ui.settings
+package com.rifters.riftedreader.data.repository
 
 import android.content.Context
 import com.rifters.riftedreader.data.preferences.TTSPreferences
