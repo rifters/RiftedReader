@@ -73,6 +73,13 @@ class ReaderPageFragment : Fragment() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     isWebViewReady = true
+                    
+                    // Initialize in-page paginator with current font size
+                    view?.let { webView ->
+                        val settings = readerViewModel.readerSettings.value
+                        WebViewPaginatorBridge.setFontSize(webView, settings.textSizeSp)
+                    }
+                    
                     // Initialize TTS chunks when page is loaded
                     prepareTtsChunks()
                 }
@@ -303,7 +310,8 @@ class ReaderPageFragment : Fragment() {
             val wrappedHtml = wrapHtmlForWebView(html, settings.textSizeSp, settings.lineHeightMultiplier, palette)
             // Bug Fix 2: Reset isWebViewReady flag when loading new content to prevent race conditions
             isWebViewReady = false
-            binding.pageWebView.loadDataWithBaseURL(null, wrappedHtml, "text/html", "UTF-8", null)
+            // Use file:///android_asset/ as base URL so the paginator script can be loaded
+            binding.pageWebView.loadDataWithBaseURL("file:///android_asset/", wrappedHtml, "text/html", "UTF-8", null)
         } else {
             // Use TextView for plain text content (TXT)
             binding.pageWebView.visibility = View.GONE
@@ -398,6 +406,7 @@ class ReaderPageFragment : Fragment() {
                         background-color: rgba(255, 213, 79, 0.4) !important;
                     }
                 </style>
+                <script src="file:///android_asset/inpage_paginator.js"></script>
             </head>
             <body>
                 $content
