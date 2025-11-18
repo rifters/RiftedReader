@@ -252,15 +252,51 @@ class ReaderPageFragment : Fragment() {
      * within the current chapter.
      */
     private fun setupWebViewSwipeHandling() {
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment", 
+            "setupWebViewSwipeHandling() called for page $pageIndex"
+        )
+        
         val gestureDetector = GestureDetectorCompat(
             requireContext(),
             object : GestureDetector.SimpleOnGestureListener() {
+                
+                override fun onDown(e: MotionEvent): Boolean {
+                    // CRITICAL: Return true so GestureDetector tracks the sequence
+                    // Without this, onFling/onScroll won't be called
+                    val settings = readerViewModel.readerSettings.value
+                    com.rifters.riftedreader.util.AppLogger.d(
+                        "ReaderPageFragment",
+                        "onDown: page=$pageIndex x=${e.x} y=${e.y} mode=${settings.mode} isWebViewReady=$isWebViewReady visibility=${binding.pageWebView.visibility}"
+                    )
+                    return true
+                }
+                
+                override fun onScroll(
+                    e1: MotionEvent?,
+                    e2: MotionEvent,
+                    distanceX: Float,
+                    distanceY: Float
+                ): Boolean {
+                    com.rifters.riftedreader.util.AppLogger.d(
+                        "ReaderPageFragment",
+                        "onScroll: page=$pageIndex distanceX=$distanceX distanceY=$distanceY"
+                    )
+                    return false
+                }
+                
                 override fun onFling(
                     e1: MotionEvent?,
                     e2: MotionEvent,
                     velocityX: Float,
                     velocityY: Float
                 ): Boolean {
+                    val settings = readerViewModel.readerSettings.value
+                    com.rifters.riftedreader.util.AppLogger.d(
+                        "ReaderPageFragment",
+                        "onFling: page=$pageIndex vx=$velocityX vy=$velocityY mode=${settings.mode}"
+                    )
+                    
                     // Only handle if WebView is visible and ready
                     if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
                         com.rifters.riftedreader.util.AppLogger.d(
@@ -272,6 +308,14 @@ class ReaderPageFragment : Fragment() {
                     
                     // Check if this is a horizontal swipe (not vertical scroll)
                     if (abs(velocityX) > abs(velocityY) && abs(velocityX) > FLING_THRESHOLD) {
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "Detected horizontal fling: page=$pageIndex vx=$velocityX (threshold=$FLING_THRESHOLD)"
+                        )
+                        
+                        // Prevent parent from intercepting this gesture while we handle it
+                        (binding.pageWebView.parent as? ViewGroup)?.requestDisallowInterceptTouchEvent(true)
+                        
                         // Launch coroutine to check page boundaries
                         viewLifecycleOwner.lifecycleScope.launch {
                             try {
@@ -299,7 +343,8 @@ class ReaderPageFragment : Fragment() {
                                         "ReaderPageFragment", 
                                         "At last in-page ($currentPage/$pageCount), swipe falls through to ViewPager2 for chapter navigation"
                                     )
-                                    // At last page, let ViewPager2 handle (go to next chapter)
+                                    // At last page, allow ViewPager2 to handle (go to next chapter)
+                                    (binding.pageWebView.parent as? ViewGroup)?.requestDisallowInterceptTouchEvent(false)
                                 } else {
                                     // Swipe right (previous page)
                                     if (currentPage > 0) {
@@ -316,13 +361,16 @@ class ReaderPageFragment : Fragment() {
                                         "ReaderPageFragment", 
                                         "At first in-page ($currentPage/$pageCount), swipe falls through to ViewPager2 for chapter navigation"
                                     )
-                                    // At first page, let ViewPager2 handle (go to previous chapter)
+                                    // At first page, allow ViewPager2 to handle (go to previous chapter)
+                                    (binding.pageWebView.parent as? ViewGroup)?.requestDisallowInterceptTouchEvent(false)
                                 }
                             } catch (e: Exception) {
                                 // If anything goes wrong, let ViewPager2 handle it
                                 com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "Error in swipe handling for page $pageIndex", e)
+                                (binding.pageWebView.parent as? ViewGroup)?.requestDisallowInterceptTouchEvent(false)
                             }
                         }
+                        return true // Consumed the horizontal fling
                     }
                     
                     return false // Don't consume - let parent handle if not consumed
@@ -332,9 +380,26 @@ class ReaderPageFragment : Fragment() {
         
         // Set touch listener on WebView to intercept swipes
         binding.pageWebView.setOnTouchListener { _, event ->
-            gestureDetector.onTouchEvent(event)
-            // Return false to allow WebView's default touch handling (scrolling, clicking, etc.)
-            false
+            val actionName = when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> "DOWN"
+                MotionEvent.ACTION_MOVE -> "MOVE"
+                MotionEvent.ACTION_UP -> "UP"
+                MotionEvent.ACTION_CANCEL -> "CANCEL"
+                else -> "OTHER(${event.actionMasked})"
+            }
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "pageWebView.onTouch: page=$pageIndex action=$actionName x=${event.x} y=${event.y}"
+            )
+            
+            val handled = gestureDetector.onTouchEvent(event)
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "gestureDetector.onTouchEvent returned $handled for page $pageIndex action=$actionName"
+            )
+            
+            // Return the handled value - consume only if gesture detector handled it
+            handled
         }
     }
 
