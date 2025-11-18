@@ -50,8 +50,10 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
             if (binding.textSizeSlider.value.roundToInt() != settings.textSizeSp.roundToInt()) {
                 binding.textSizeSlider.value = settings.textSizeSp
             }
-            if (!binding.lineHeightSlider.value.equalsWithin(settings.lineHeightMultiplier)) {
-                binding.lineHeightSlider.value = settings.lineHeightMultiplier
+            // Convert float line height (1.0-2.0) to integer slider value (10-20)
+            val sliderValue = (settings.lineHeightMultiplier * 10).roundToInt().toFloat()
+            if (binding.lineHeightSlider.value.roundToInt() != sliderValue.roundToInt()) {
+                binding.lineHeightSlider.value = sliderValue
             }
             selectThemeChip(settings.theme)
             selectModeChip(settings.mode)
@@ -73,10 +75,14 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
     private fun setupLineHeightSlider() {
         binding.lineHeightSlider.addOnChangeListener { _: Slider, value, fromUser ->
             if (fromUser) {
-                com.rifters.riftedreader.util.AppLogger.userAction("ReaderTextSettingsBottomSheet", "Line height slider changed to $value", "ui/settings/change")
-                settingsViewModel.updateLineHeight(value)
+                // Convert integer slider value (10-20) to float line height (1.0-2.0)
+                val lineHeight = value / 10f
+                com.rifters.riftedreader.util.AppLogger.userAction("ReaderTextSettingsBottomSheet", "Line height slider changed to $lineHeight", "ui/settings/change")
+                settingsViewModel.updateLineHeight(lineHeight)
             }
-            binding.lineHeightValue.text = getString(R.string.reader_line_height_value, value)
+            // Convert integer slider value to float for display
+            val lineHeight = value / 10f
+            binding.lineHeightValue.text = getString(R.string.reader_line_height_value, lineHeight)
         }
     }
 

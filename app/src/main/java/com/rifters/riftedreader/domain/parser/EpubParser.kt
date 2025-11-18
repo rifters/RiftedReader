@@ -100,16 +100,17 @@ class EpubParser : BookParser {
                 // Convert image src attributes to base64 data URIs
                 val contentDir = contentPath.substringBeforeLast('/', "")
                 val images = body.select("img[src]")
-                AppLogger.d("EpubParser", "Found ${images.size} images on page $page")
+                
+                if (images.isNotEmpty()) {
+                    AppLogger.d("EpubParser", "Found ${images.size} images on page $page")
+                }
                 
                 images.forEach { img ->
                     val originalSrc = img.attr("src")
-                    AppLogger.d("EpubParser", "Processing image: $originalSrc")
                     
                     try {
                         // Resolve relative path
                         val imagePath = resolveRelativePath(contentDir, originalSrc)
-                        AppLogger.d("EpubParser", "Resolved image path: $imagePath")
                         
                         // Try to load image from EPUB
                         val imageEntry = zip.getEntry(imagePath)
@@ -132,7 +133,6 @@ class EpubParser : BookParser {
                             
                             // Update src attribute
                             img.attr("src", dataUri)
-                            AppLogger.d("EpubParser", "Converted image to base64 (${imageBytes.size} bytes)")
                         } else {
                             AppLogger.w("EpubParser", "Image not found in EPUB: $imagePath")
                         }
