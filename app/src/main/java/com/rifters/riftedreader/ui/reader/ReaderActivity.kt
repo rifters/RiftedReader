@@ -197,6 +197,35 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         pagerAdapter = ReaderPagerAdapter(this)
         binding.pageViewPager.adapter = pagerAdapter
         binding.pageViewPager.offscreenPageLimit = 1
+        
+        // DEBUG-ONLY: Instrument ViewPager2's internal RecyclerView for gesture tracing
+        // ViewPager2 contains a RecyclerView as its direct child at index 0
+        binding.pageViewPager.post {
+            if (binding.pageViewPager.childCount > 0) {
+                val recyclerView = binding.pageViewPager.getChildAt(0)
+                recyclerView.setOnTouchListener { _, event ->
+                    val actionName = when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> "DOWN"
+                        MotionEvent.ACTION_MOVE -> "MOVE"
+                        MotionEvent.ACTION_UP -> "UP"
+                        MotionEvent.ACTION_CANCEL -> "CANCEL"
+                        else -> "OTHER(${event.actionMasked})"
+                    }
+                    val timestamp = System.currentTimeMillis()
+                    val currentPage = viewModel.currentPage.value
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "DEBUG-ONLY: ViewPager2.RecyclerView.onTouch: action=$actionName x=${event.x} y=${event.y} timestamp=$timestamp currentPage=$currentPage"
+                    )
+                    // Don't consume - let RecyclerView handle its touch events
+                    false
+                }
+                AppLogger.d("ReaderActivity", "DEBUG-ONLY: ViewPager2 RecyclerView instrumentation attached")
+            } else {
+                AppLogger.w("ReaderActivity", "DEBUG-ONLY: ViewPager2 has no children to instrument")
+            }
+        }
+        
         binding.pageViewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 super.onPageSelected(position)

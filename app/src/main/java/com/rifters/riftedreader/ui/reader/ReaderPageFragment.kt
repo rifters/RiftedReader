@@ -326,6 +326,12 @@ class ReaderPageFragment : Fragment() {
                             // Mark as intercepted to prevent multiple triggers
                             scrollIntercepted = true
                             
+                            // DEBUG-ONLY: Log gesture interception request
+                            com.rifters.riftedreader.util.AppLogger.d(
+                                "ReaderPageFragment",
+                                "DEBUG-ONLY: requestDisallowInterceptTouchEvent(true) - Taking gesture ownership at page=$pageIndex [SCROLL_INTERCEPT]"
+                            )
+                            
                             // Prevent parent from intercepting this gesture while we handle it
                             (binding.pageWebView.parent as? ViewGroup)?.requestDisallowInterceptTouchEvent(true)
                             
@@ -355,6 +361,11 @@ class ReaderPageFragment : Fragment() {
                                                 "ReaderPageFragment", 
                                                 "SCROLL_FALLTHROUGH: At last in-page ($currentPage/$pageCount), allowing ViewPager2 to handle chapter navigation [EDGE_REACHED]"
                                             )
+                                            // DEBUG-ONLY: Log gesture interception release
+                                            com.rifters.riftedreader.util.AppLogger.d(
+                                                "ReaderPageFragment",
+                                                "DEBUG-ONLY: requestDisallowInterceptTouchEvent(false) - Releasing gesture ownership at page=$pageIndex [SCROLL_EDGE_REACHED]"
+                                            )
                                             // At last page, allow ViewPager2 to handle (go to next chapter)
                                             (binding.pageWebView.parent as? ViewGroup)?.requestDisallowInterceptTouchEvent(false)
                                         }
@@ -373,6 +384,11 @@ class ReaderPageFragment : Fragment() {
                                                 "ReaderPageFragment", 
                                                 "SCROLL_FALLTHROUGH: At first in-page ($currentPage/$pageCount), allowing ViewPager2 to handle chapter navigation [EDGE_REACHED]"
                                             )
+                                            // DEBUG-ONLY: Log gesture interception release
+                                            com.rifters.riftedreader.util.AppLogger.d(
+                                                "ReaderPageFragment",
+                                                "DEBUG-ONLY: requestDisallowInterceptTouchEvent(false) - Releasing gesture ownership at page=$pageIndex [SCROLL_EDGE_REACHED]"
+                                            )
                                             // At first page, allow ViewPager2 to handle (go to previous chapter)
                                             (binding.pageWebView.parent as? ViewGroup)?.requestDisallowInterceptTouchEvent(false)
                                         }
@@ -383,6 +399,11 @@ class ReaderPageFragment : Fragment() {
                                         "ReaderPageFragment", 
                                         "ERROR in scroll-based navigation for page $pageIndex: ${e.message} [FALLBACK_TO_VIEWPAGER]", 
                                         e
+                                    )
+                                    // DEBUG-ONLY: Log gesture interception release on error
+                                    com.rifters.riftedreader.util.AppLogger.d(
+                                        "ReaderPageFragment",
+                                        "DEBUG-ONLY: requestDisallowInterceptTouchEvent(false) - Releasing gesture ownership at page=$pageIndex [ERROR_FALLBACK]"
                                     )
                                     (binding.pageWebView.parent as? ViewGroup)?.requestDisallowInterceptTouchEvent(false)
                                 }
@@ -423,6 +444,12 @@ class ReaderPageFragment : Fragment() {
                             "Detected horizontal fling: page=$pageIndex vx=$velocityX (threshold=$FLING_THRESHOLD)"
                         )
                         
+                        // DEBUG-ONLY: Log gesture interception request
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "DEBUG-ONLY: requestDisallowInterceptTouchEvent(true) - Taking gesture ownership at page=$pageIndex [FLING_INTERCEPT]"
+                        )
+                        
                         // Prevent parent from intercepting this gesture while we handle it
                         (binding.pageWebView.parent as? ViewGroup)?.requestDisallowInterceptTouchEvent(true)
                         
@@ -453,6 +480,11 @@ class ReaderPageFragment : Fragment() {
                                         "ReaderPageFragment", 
                                         "FLING_FALLTHROUGH: At last in-page ($currentPage/$pageCount), swipe falls through to ViewPager2 for chapter navigation [EDGE_REACHED]"
                                     )
+                                    // DEBUG-ONLY: Log gesture interception release
+                                    com.rifters.riftedreader.util.AppLogger.d(
+                                        "ReaderPageFragment",
+                                        "DEBUG-ONLY: requestDisallowInterceptTouchEvent(false) - Releasing gesture ownership at page=$pageIndex [FLING_EDGE_REACHED]"
+                                    )
                                     // At last page, allow ViewPager2 to handle (go to next chapter)
                                     (binding.pageWebView.parent as? ViewGroup)?.requestDisallowInterceptTouchEvent(false)
                                 } else {
@@ -471,6 +503,11 @@ class ReaderPageFragment : Fragment() {
                                         "ReaderPageFragment", 
                                         "FLING_FALLTHROUGH: At first in-page ($currentPage/$pageCount), swipe falls through to ViewPager2 for chapter navigation [EDGE_REACHED]"
                                     )
+                                    // DEBUG-ONLY: Log gesture interception release
+                                    com.rifters.riftedreader.util.AppLogger.d(
+                                        "ReaderPageFragment",
+                                        "DEBUG-ONLY: requestDisallowInterceptTouchEvent(false) - Releasing gesture ownership at page=$pageIndex [FLING_EDGE_REACHED]"
+                                    )
                                     // At first page, allow ViewPager2 to handle (go to previous chapter)
                                     (binding.pageWebView.parent as? ViewGroup)?.requestDisallowInterceptTouchEvent(false)
                                 }
@@ -480,6 +517,11 @@ class ReaderPageFragment : Fragment() {
                                     "ReaderPageFragment", 
                                     "ERROR in fling handling for page $pageIndex: ${e.message} [FALLBACK_TO_VIEWPAGER]", 
                                     e
+                                )
+                                // DEBUG-ONLY: Log gesture interception release on error
+                                com.rifters.riftedreader.util.AppLogger.d(
+                                    "ReaderPageFragment",
+                                    "DEBUG-ONLY: requestDisallowInterceptTouchEvent(false) - Releasing gesture ownership at page=$pageIndex [ERROR_FALLBACK]"
                                 )
                                 (binding.pageWebView.parent as? ViewGroup)?.requestDisallowInterceptTouchEvent(false)
                             }
@@ -520,22 +562,19 @@ class ReaderPageFragment : Fragment() {
                 else -> "OTHER(${event.actionMasked})"
             }
             
-            // Only log MOVE events at a reduced rate to avoid spam
-            if (event.actionMasked != MotionEvent.ACTION_MOVE) {
-                com.rifters.riftedreader.util.AppLogger.d(
-                    "ReaderPageFragment",
-                    "pageWebView.onTouch: page=$pageIndex action=$actionName x=${event.x} y=${event.y}"
-                )
-            }
+            // DEBUG-ONLY: Log all touch events including MOVE for gesture tracing
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "DEBUG-ONLY: pageWebView.onTouch: page=$pageIndex action=$actionName x=${event.x} y=${event.y}"
+            )
             
             val handled = gestureDetector.onTouchEvent(event)
             
-            if (event.actionMasked != MotionEvent.ACTION_MOVE) {
-                com.rifters.riftedreader.util.AppLogger.d(
-                    "ReaderPageFragment",
-                    "gestureDetector.onTouchEvent returned $handled for page $pageIndex action=$actionName"
-                )
-            }
+            // DEBUG-ONLY: Log gesture detector result
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "DEBUG-ONLY: gestureDetector.onTouchEvent returned $handled for page $pageIndex action=$actionName"
+            )
             
             // Return the handled value - consume only if gesture detector handled it
             handled
