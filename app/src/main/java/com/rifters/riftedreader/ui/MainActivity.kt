@@ -6,6 +6,7 @@ import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupActionBarWithNavController
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.databinding.ActivityMainBinding
+import com.rifters.riftedreader.util.AppLogger
 
 class MainActivity : AppCompatActivity() {
     
@@ -13,6 +14,8 @@ class MainActivity : AppCompatActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLogger.event("MainActivity", "onCreate started", "ui/MainActivity/lifecycle")
+        
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         
@@ -23,9 +26,37 @@ class MainActivity : AppCompatActivity() {
         val navController = navHostFragment.navController
         
         setupActionBarWithNavController(navController)
+        
+        AppLogger.event("MainActivity", "onCreate completed", "ui/MainActivity/lifecycle")
+    }
+    
+    override fun onStart() {
+        super.onStart()
+        AppLogger.event("MainActivity", "onStart", "ui/MainActivity/lifecycle")
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        AppLogger.event("MainActivity", "onResume", "ui/MainActivity/lifecycle")
+    }
+    
+    override fun onPause() {
+        AppLogger.event("MainActivity", "onPause", "ui/MainActivity/lifecycle")
+        super.onPause()
+    }
+    
+    override fun onStop() {
+        AppLogger.event("MainActivity", "onStop", "ui/MainActivity/lifecycle")
+        super.onStop()
+    }
+    
+    override fun onDestroy() {
+        AppLogger.event("MainActivity", "onDestroy", "ui/MainActivity/lifecycle")
+        super.onDestroy()
     }
     
     override fun onSupportNavigateUp(): Boolean {
+        AppLogger.userAction("MainActivity", "Navigate up pressed", "ui/MainActivity/navigation")
         val navHostFragment = supportFragmentManager
             .findFragmentById(R.id.nav_host_fragment) as NavHostFragment
         val navController = navHostFragment.navController

@@ -3,6 +3,7 @@ package com.rifters.riftedreader.ui.reader
 import android.os.Handler
 import android.os.Looper
 import android.webkit.WebView
+import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -75,7 +76,9 @@ object WebViewPaginatorBridge {
      * @return The number of pages
      */
     suspend fun getPageCount(webView: WebView): Int {
-        return evaluateInt(webView, "window.inpagePaginator.getPageCount()")
+        val count = evaluateInt(webView, "window.inpagePaginator.getPageCount()")
+        AppLogger.d("WebViewPaginatorBridge", "getPageCount: $count pages")
+        return count
     }
     
     /**
@@ -97,6 +100,7 @@ object WebViewPaginatorBridge {
      * @param smooth Whether to animate the transition (default: true)
      */
     fun goToPage(webView: WebView, index: Int, smooth: Boolean = true) {
+        AppLogger.userAction("WebViewPaginatorBridge", "goToPage: index=$index, smooth=$smooth", "ui/webview/pagination")
         mainHandler.post {
             webView.evaluateJavascript(
                 "window.inpagePaginator.goToPage($index, $smooth)",
@@ -114,6 +118,7 @@ object WebViewPaginatorBridge {
      * @param px The font size in pixels
      */
     fun setFontSize(webView: WebView, px: Int) {
+        AppLogger.d("WebViewPaginatorBridge", "setFontSize: ${px}px - triggering reflow")
         mainHandler.post {
             webView.evaluateJavascript(
                 "window.inpagePaginator.setFontSize($px)",
@@ -172,6 +177,7 @@ object WebViewPaginatorBridge {
      * @param webView The WebView containing the paginated content
      */
     fun reflow(webView: WebView) {
+        AppLogger.d("WebViewPaginatorBridge", "reflow: triggering content reflow")
         mainHandler.post {
             webView.evaluateJavascript(
                 "window.inpagePaginator.reflow()",

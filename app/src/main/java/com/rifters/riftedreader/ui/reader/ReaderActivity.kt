@@ -35,6 +35,7 @@ import com.rifters.riftedreader.domain.tts.TTSStatusNotifier
 import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
 import com.rifters.riftedreader.ui.reader.ReaderThemePaletteResolver
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
+import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -58,6 +59,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var pendingTtsResume: Boolean = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLogger.event("ReaderActivity", "onCreate started", "ui/ReaderActivity/lifecycle")
+        
         binding = ActivityReaderBinding.inflate(layoutInflater)
         setContentView(binding.root)
         
@@ -66,7 +69,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         val bookPath = intent.getStringExtra("BOOK_PATH") ?: ""
         val bookTitle = intent.getStringExtra("BOOK_TITLE") ?: ""
         
+        AppLogger.d("ReaderActivity", "Opening book: $bookTitle at path: $bookPath")
+        
         if (bookPath.isEmpty()) {
+            AppLogger.w("ReaderActivity", "Empty book path, finishing activity")
             finish()
             return
         }
@@ -81,15 +87,20 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         val parser = ParserFactory.getParser(bookFile)
 
         if (parser == null) {
+            AppLogger.e("ReaderActivity", "No parser found for book: $bookPath")
             finish()
             return
         }
 
+        AppLogger.d("ReaderActivity", "Parser loaded: ${parser::class.simpleName}")
+        
         val factory = ReaderViewModel.Factory(bookId, bookFile, parser, repository, readerPreferences)
         viewModel = ViewModelProvider(this, factory)[ReaderViewModel::class.java]
         setupControls(bookTitle)
         setupGestures()
         observeViewModel()
+        
+        AppLogger.event("ReaderActivity", "onCreate completed", "ui/ReaderActivity/lifecycle")
     }
     
     private fun setupGestures() {

@@ -63,6 +63,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
     private fun setupTextSizeSlider() {
         binding.textSizeSlider.addOnChangeListener { _: Slider, value, fromUser ->
             if (fromUser) {
+                com.rifters.riftedreader.util.AppLogger.userAction("ReaderTextSettingsBottomSheet", "Text size slider changed to ${value.roundToInt()}sp", "ui/settings/change")
                 settingsViewModel.updateTextSize(value)
             }
             binding.textSizeValue.text = getString(R.string.reader_text_size_value, value.roundToInt())
@@ -72,6 +73,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
     private fun setupLineHeightSlider() {
         binding.lineHeightSlider.addOnChangeListener { _: Slider, value, fromUser ->
             if (fromUser) {
+                com.rifters.riftedreader.util.AppLogger.userAction("ReaderTextSettingsBottomSheet", "Line height slider changed to $value", "ui/settings/change")
                 settingsViewModel.updateLineHeight(value)
             }
             binding.lineHeightValue.text = getString(R.string.reader_line_height_value, value)
@@ -83,6 +85,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
             val id = checkedIds.firstOrNull() ?: return@setOnCheckedStateChangeListener
             val chip = group.findViewById<Chip>(id)
             val theme = chip?.tag as? ReaderTheme ?: return@setOnCheckedStateChangeListener
+            com.rifters.riftedreader.util.AppLogger.userAction("ReaderTextSettingsBottomSheet", "Theme changed to $theme", "ui/settings/change")
             settingsViewModel.updateTheme(theme)
         }
 
@@ -97,6 +100,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
             val id = checkedIds.firstOrNull() ?: return@setOnCheckedStateChangeListener
             val chip = group.findViewById<Chip>(id)
             val mode = chip?.tag as? com.rifters.riftedreader.data.preferences.ReaderMode ?: return@setOnCheckedStateChangeListener
+            com.rifters.riftedreader.util.AppLogger.userAction("ReaderTextSettingsBottomSheet", "Reader mode changed to $mode", "ui/settings/change")
             settingsViewModel.updateMode(mode)
         }
 

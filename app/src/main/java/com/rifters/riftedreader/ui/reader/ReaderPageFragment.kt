@@ -60,6 +60,7 @@ class ReaderPageFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        com.rifters.riftedreader.util.AppLogger.event("ReaderPageFragment", "onViewCreated for page $pageIndex", "ui/webview/lifecycle")
         
         // Configure WebView for EPUB rendering
         binding.pageWebView.apply {
@@ -79,10 +80,12 @@ class ReaderPageFragment : Fragment() {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
+                    com.rifters.riftedreader.util.AppLogger.event("ReaderPageFragment", "WebView onPageFinished for page $pageIndex", "ui/webview/lifecycle")
                     isWebViewReady = true
                     
                     // Initialize the in-page paginator
                     val settings = readerViewModel.readerSettings.value
+                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Initializing paginator with fontSize=${settings.textSizeSp}px")
                     WebViewPaginatorBridge.setFontSize(binding.pageWebView, settings.textSizeSp.toInt())
                     
                     // Initialize TTS chunks when page is loaded
@@ -98,6 +101,7 @@ class ReaderPageFragment : Fragment() {
                     super.onReceivedError(view, errorCode, description, failingUrl)
                     // Log error but don't crash
                     android.util.Log.e("ReaderPageFragment", "WebView error: $description")
+                    com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "WebView error: $description", Exception("WebView error code: $errorCode"))
                 }
             }
             
@@ -156,6 +160,23 @@ class ReaderPageFragment : Fragment() {
                     val themeChanged = previousSettings?.theme != settings.theme
                     val fontSizeChanged = previousSettings?.textSizeSp != settings.textSizeSp
                     val lineHeightChanged = previousSettings?.lineHeightMultiplier != settings.lineHeightMultiplier
+                    val modeChanged = previousSettings?.mode != settings.mode
+                    
+                    // Log settings changes
+                    if (previousSettings != null) {
+                        val changes = mutableListOf<String>()
+                        if (themeChanged) changes.add("theme=${settings.theme}")
+                        if (fontSizeChanged) changes.add("fontSize=${settings.textSizeSp}px")
+                        if (lineHeightChanged) changes.add("lineHeight=${settings.lineHeightMultiplier}")
+                        if (modeChanged) changes.add("mode=${settings.mode}")
+                        if (changes.isNotEmpty()) {
+                            com.rifters.riftedreader.util.AppLogger.event(
+                                "ReaderPageFragment", 
+                                "Settings changed on page $pageIndex: ${changes.joinToString(", ")}", 
+                                "ui/settings/change"
+                            )
+                        }
+                    }
                     
                     // Update theme-related properties
                     val palette = ReaderThemePaletteResolver.resolve(requireContext(), settings.theme)
@@ -168,11 +189,13 @@ class ReaderPageFragment : Fragment() {
                         if (!latestPageHtml.isNullOrEmpty() && fontSizeChanged && !themeChanged && !lineHeightChanged) {
                             // For HTML content with font size change only, use paginator API
                             // This preserves reading position without reloading
+                            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Applying font size change without reload")
                             if (isWebViewReady && binding.pageWebView.visibility == View.VISIBLE) {
                                 WebViewPaginatorBridge.setFontSize(binding.pageWebView, settings.textSizeSp.toInt())
                             }
                         } else if (themeChanged || lineHeightChanged) {
                             // Theme or line height change requires full reload to update styles
+                            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Reloading content due to theme or line height change")
                             if (highlightedRange == null) {
                                 renderBaseContent()
                             } else {
@@ -244,13 +267,20 @@ class ReaderPageFragment : Fragment() {
                                 val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
                                 val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
                                 
+                                com.rifters.riftedreader.util.AppLogger.d(
+                                    "ReaderPageFragment", 
+                                    "Horizontal swipe detected on page $pageIndex: currentPage=$currentPage/$pageCount, velocityX=$velocityX"
+                                )
+                                
                                 if (velocityX < 0) {
                                     // Swipe left (next page)
                                     if (currentPage < pageCount - 1) {
                                         // Not at last page, navigate within chapter
+                                        com.rifters.riftedreader.util.AppLogger.userAction("ReaderPageFragment", "Navigating to next page within chapter", "ui/webview/pagination")
                                         WebViewPaginatorBridge.nextPage(binding.pageWebView)
                                         return@launch
                                     }
+                                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "At last page, letting ViewPager2 handle")
                                     // At last page, let ViewPager2 handle (go to next chapter)
                                 } else {
                                     // Swipe right (previous page)

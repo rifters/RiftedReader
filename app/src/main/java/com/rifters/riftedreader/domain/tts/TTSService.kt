@@ -25,6 +25,7 @@ import androidx.media.AudioManagerCompat
 import androidx.media.app.NotificationCompat as MediaNotificationCompat
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.preferences.TTSPreferences
+import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -93,6 +94,7 @@ class TTSService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        AppLogger.event("TTSService", "onCreate - TTS Service starting", "domain/tts/TTSService/lifecycle")
         preferences = TTSPreferences(this)
         replacementEngine = TTSReplacementEngine()
         preferences.loadReplacementRules()?.let { replacementEngine.loadRulesFromText(it) }
@@ -182,8 +184,10 @@ class TTSService : Service() {
     }
 
     private fun handlePlay(intent: Intent) {
+        AppLogger.event("TTSService", "handlePlay - Starting TTS playback", "domain/tts/TTSService/playback")
         // If TTS is not ready yet, queue this intent for later
         if (!ttsEngine.isReady()) {
+            AppLogger.w("TTSService", "TTS engine not ready, queuing play intent")
             pendingPlayIntents.add(intent)
             return
         }
@@ -245,6 +249,7 @@ class TTSService : Service() {
     }
 
     private fun handleStop() {
+        AppLogger.event("TTSService", "handleStop - Stopping TTS playback", "domain/tts/TTSService/playback")
         ttsEngine.stop()
         // Save the current position so we can resume from here later
         lastStoppedIndex = currentSentenceIndex.coerceIn(0, sentences.lastIndex.coerceAtLeast(0))
@@ -308,11 +313,13 @@ class TTSService : Service() {
     }
 
     private fun handleResume() {
+        AppLogger.event("TTSService", "handleResume - Resuming TTS playback", "domain/tts/TTSService/playback")
         if (sentences.isEmpty()) return
         if (currentSentenceIndex !in sentences.indices) {
             currentSentenceIndex = sentences.lastIndex.coerceAtLeast(0)
         }
         if (!ensureAudioFocus()) {
+            AppLogger.w("TTSService", "Failed to gain audio focus")
             return
         }
         shouldFlushQueue = true  // Flush queue when resuming
