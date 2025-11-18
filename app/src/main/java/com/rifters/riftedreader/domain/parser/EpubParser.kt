@@ -22,6 +22,17 @@ class EpubParser : BookParser {
         private const val CONTAINER_PATH = "META-INF/container.xml"
     }
     
+    // Store cover path to use when rendering pages
+    private var cachedCoverPath: String? = null
+    
+    /**
+     * Set the cover path extracted during metadata extraction
+     * This allows reusing the already-extracted cover when rendering pages
+     */
+    fun setCoverPath(coverPath: String?) {
+        cachedCoverPath = coverPath
+    }
+    
     override fun canParse(file: File): Boolean {
         return file.extension.lowercase() in SUPPORTED_EXTENSIONS
     }
@@ -111,6 +122,27 @@ class EpubParser : BookParser {
                     try {
                         // Resolve relative path
                         val imagePath = resolveRelativePath(contentDir, originalSrc)
+                        
+                        // Check if this image is likely the cover image
+                        val isCoverImage = imagePath.lowercase().contains("cover") || 
+                                         originalSrc.lowercase().contains("cover")
+                        
+                        // If we have a cached cover path and this looks like a cover image, use the cached version
+                        val coverPath = cachedCoverPath
+                        if (isCoverImage && coverPath != null && File(coverPath).exists()) {
+                            AppLogger.d("EpubParser", "Using cached cover image from: $coverPath")
+                            try {
+                                val coverFile = File(coverPath)
+                                val coverBytes = coverFile.readBytes()
+                                val base64Cover = Base64.encodeToString(coverBytes, Base64.NO_WRAP)
+                                val dataUri = "data:image/jpeg;base64,$base64Cover"
+                                img.attr("src", dataUri)
+                                return@forEach // Successfully used cached cover
+                            } catch (e: Exception) {
+                                AppLogger.e("EpubParser", "Error using cached cover, falling back to ZIP extraction", e)
+                                // Fall through to normal processing
+                            }
+                        }
                         
                         // Try to load image from EPUB
                         val imageEntry = zip.getEntry(imagePath)
