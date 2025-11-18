@@ -2,7 +2,9 @@ package com.rifters.riftedreader.domain.parser
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.Base64
 import com.rifters.riftedreader.data.database.entities.BookMeta
+import com.rifters.riftedreader.util.AppLogger
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -94,6 +96,51 @@ class EpubParser : BookParser {
                 
                 // Remove script and style tags for security, preserve all other HTML
                 body.select("script, style").remove()
+                
+                // Convert image src attributes to base64 data URIs
+                val contentDir = contentPath.substringBeforeLast('/', "")
+                val images = body.select("img[src]")
+                AppLogger.d("EpubParser", "Found ${images.size} images on page $page")
+                
+                images.forEach { img ->
+                    val originalSrc = img.attr("src")
+                    AppLogger.d("EpubParser", "Processing image: $originalSrc")
+                    
+                    try {
+                        // Resolve relative path
+                        val imagePath = resolveRelativePath(contentDir, originalSrc)
+                        AppLogger.d("EpubParser", "Resolved image path: $imagePath")
+                        
+                        // Try to load image from EPUB
+                        val imageEntry = zip.getEntry(imagePath)
+                        if (imageEntry != null) {
+                            val imageBytes = zip.getInputStream(imageEntry).readBytes()
+                            
+                            // Determine MIME type from file extension
+                            val mimeType = when (imagePath.substringAfterLast('.').lowercase()) {
+                                "jpg", "jpeg" -> "image/jpeg"
+                                "png" -> "image/png"
+                                "gif" -> "image/gif"
+                                "webp" -> "image/webp"
+                                "svg" -> "image/svg+xml"
+                                else -> "image/jpeg" // default
+                            }
+                            
+                            // Convert to base64
+                            val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+                            val dataUri = "data:$mimeType;base64,$base64Image"
+                            
+                            // Update src attribute
+                            img.attr("src", dataUri)
+                            AppLogger.d("EpubParser", "Converted image to base64 (${imageBytes.size} bytes)")
+                        } else {
+                            AppLogger.w("EpubParser", "Image not found in EPUB: $imagePath")
+                        }
+                    } catch (e: Exception) {
+                        AppLogger.e("EpubParser", "Error converting image: $originalSrc", e)
+                    }
+                }
+                
                 val html = body.html()
                 
                 return PageContent(text = text, html = html.takeIf { it.isNotBlank() } ?: "")
@@ -412,5 +459,46 @@ class EpubParser : BookParser {
                 parseNavList(nestedList, entries, level + 1, hrefToIndex)
             }
         }
+    }
+    
+    /**
+     * Resolve a relative path from a content file to an image file
+     * @param contentDir Directory containing the content file (e.g., "OEBPS/Text")
+     * @param imageSrc Image source path from HTML (e.g., "../Images/photo.jpg")
+     * @return Resolved path within the EPUB (e.g., "OEBPS/Images/photo.jpg")
+     */
+    private fun resolveRelativePath(contentDir: String, imageSrc: String): String {
+        // Handle absolute paths
+        if (imageSrc.startsWith("/")) {
+            return imageSrc.removePrefix("/")
+        }
+        
+        // Handle data URIs (already base64)
+        if (imageSrc.startsWith("data:")) {
+            return imageSrc
+        }
+        
+        // Split paths into parts
+        val contentParts = contentDir.split("/").filter { it.isNotEmpty() }
+        val imageParts = imageSrc.split("/").filter { it.isNotEmpty() }
+        
+        // Start with content directory
+        val resolvedParts = contentParts.toMutableList()
+        
+        // Process each part of the image path
+        for (part in imageParts) {
+            when (part) {
+                "." -> continue // Current directory, ignore
+                ".." -> {
+                    // Parent directory
+                    if (resolvedParts.isNotEmpty()) {
+                        resolvedParts.removeAt(resolvedParts.lastIndex)
+                    }
+                }
+                else -> resolvedParts.add(part)
+            }
+        }
+        
+        return resolvedParts.joinToString("/")
     }
 }
