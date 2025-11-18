@@ -128,10 +128,11 @@ class EpubParser : BookParser {
                                          originalSrc.lowercase().contains("cover")
                         
                         // If we have a cached cover path and this looks like a cover image, use the cached version
-                        if (isCoverImage && cachedCoverPath != null && File(cachedCoverPath).exists()) {
-                            AppLogger.d("EpubParser", "Using cached cover image from: $cachedCoverPath")
+                        val coverPath = cachedCoverPath
+                        if (isCoverImage && coverPath != null && File(coverPath).exists()) {
+                            AppLogger.d("EpubParser", "Using cached cover image from: $coverPath")
                             try {
-                                val coverFile = File(cachedCoverPath)
+                                val coverFile = File(coverPath)
                                 val coverBytes = coverFile.readBytes()
                                 val base64Cover = Base64.encodeToString(coverBytes, Base64.NO_WRAP)
                                 val dataUri = "data:image/jpeg;base64,$base64Cover"
