@@ -214,27 +214,34 @@ class ReaderPageFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "onDestroyView called for page $pageIndex - beginning WebView cleanup")
+        
         // Properly clean up WebView to prevent memory leaks and crashes
         // Fix: Reset isWebViewReady FIRST to prevent any JavaScript execution during cleanup
         isWebViewReady = false
         
-        binding.pageWebView.apply {
-            // Stop any loading
-            stopLoading()
-            // Fix: Replace webViewClient BEFORE calling loadUrl to prevent onPageFinished callback
-            // This prevents race condition where onPageFinished could trigger prepareTtsChunks
-            webViewClient = WebViewClient()
-            // Remove JavaScript interface
-            removeJavascriptInterface("AndroidTtsBridge")
-            // Load blank page to clear memory
-            loadUrl("about:blank")
-            // Clear history and cache
-            clearHistory()
-            clearCache(true)
-            // Remove WebView from parent
-            (parent as? ViewGroup)?.removeView(this)
-            // Destroy the WebView
-            destroy()
+        try {
+            binding.pageWebView.apply {
+                // Stop any loading
+                stopLoading()
+                // Fix: Replace webViewClient BEFORE calling loadUrl to prevent onPageFinished callback
+                // This prevents race condition where onPageFinished could trigger prepareTtsChunks
+                webViewClient = WebViewClient()
+                // Remove JavaScript interface
+                removeJavascriptInterface("AndroidTtsBridge")
+                // Load blank page to clear memory
+                loadUrl("about:blank")
+                // Clear history and cache
+                clearHistory()
+                clearCache(true)
+                // Remove WebView from parent
+                (parent as? ViewGroup)?.removeView(this)
+                // Destroy the WebView
+                destroy()
+            }
+            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "WebView destroyed successfully for page $pageIndex")
+        } catch (e: Exception) {
+            com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "Exception during WebView destruction for page $pageIndex", e)
         }
         _binding = null
     }
@@ -256,6 +263,10 @@ class ReaderPageFragment : Fragment() {
                 ): Boolean {
                     // Only handle if WebView is visible and ready
                     if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment", 
+                            "Swipe ignored on page $pageIndex: isWebViewReady=$isWebViewReady, visibility=${binding.pageWebView.visibility}"
+                        )
                         return false
                     }
                     
@@ -269,31 +280,47 @@ class ReaderPageFragment : Fragment() {
                                 
                                 com.rifters.riftedreader.util.AppLogger.d(
                                     "ReaderPageFragment", 
-                                    "Horizontal swipe detected on page $pageIndex: currentPage=$currentPage/$pageCount, velocityX=$velocityX"
+                                    "Horizontal swipe detected on chapter page $pageIndex: currentPage=$currentPage/$pageCount, velocityX=$velocityX"
                                 )
                                 
                                 if (velocityX < 0) {
                                     // Swipe left (next page)
                                     if (currentPage < pageCount - 1) {
                                         // Not at last page, navigate within chapter
-                                        com.rifters.riftedreader.util.AppLogger.userAction("ReaderPageFragment", "Navigating to next page within chapter", "ui/webview/pagination")
+                                        com.rifters.riftedreader.util.AppLogger.userAction(
+                                            "ReaderPageFragment", 
+                                            "Navigating to next in-page (${currentPage + 1}/$pageCount) within chapter page $pageIndex", 
+                                            "ui/webview/pagination"
+                                        )
                                         WebViewPaginatorBridge.nextPage(binding.pageWebView)
                                         return@launch
                                     }
-                                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "At last page, letting ViewPager2 handle")
+                                    com.rifters.riftedreader.util.AppLogger.d(
+                                        "ReaderPageFragment", 
+                                        "At last in-page ($currentPage/$pageCount), swipe falls through to ViewPager2 for chapter navigation"
+                                    )
                                     // At last page, let ViewPager2 handle (go to next chapter)
                                 } else {
                                     // Swipe right (previous page)
                                     if (currentPage > 0) {
                                         // Not at first page, navigate within chapter
+                                        com.rifters.riftedreader.util.AppLogger.userAction(
+                                            "ReaderPageFragment", 
+                                            "Navigating to previous in-page (${currentPage - 1}/$pageCount) within chapter page $pageIndex", 
+                                            "ui/webview/pagination"
+                                        )
                                         WebViewPaginatorBridge.prevPage(binding.pageWebView)
                                         return@launch
                                     }
+                                    com.rifters.riftedreader.util.AppLogger.d(
+                                        "ReaderPageFragment", 
+                                        "At first in-page ($currentPage/$pageCount), swipe falls through to ViewPager2 for chapter navigation"
+                                    )
                                     // At first page, let ViewPager2 handle (go to previous chapter)
                                 }
                             } catch (e: Exception) {
                                 // If anything goes wrong, let ViewPager2 handle it
-                                android.util.Log.e("ReaderPageFragment", "Error in swipe handling", e)
+                                com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "Error in swipe handling for page $pageIndex", e)
                             }
                         }
                     }
