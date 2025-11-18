@@ -85,6 +85,11 @@ class ReaderViewModel(
             try {
                 val book = repository.getBookById(bookId)
                 val savedPage = book?.currentPage ?: 0
+                
+                // If parser is EpubParser and we have a cover path, set it
+                if (parser is com.rifters.riftedreader.domain.parser.EpubParser && book?.coverPath != null) {
+                    parser.setCoverPath(book.coverPath)
+                }
 
                 val pages = withContext(Dispatchers.IO) { generatePages() }
 
