@@ -3,6 +3,7 @@ package com.rifters.riftedreader.ui.reader
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
+import com.rifters.riftedreader.util.AppLogger
 
 class ReaderPagerAdapter(
     activity: FragmentActivity
@@ -10,9 +11,13 @@ class ReaderPagerAdapter(
 
     private var pageCount: Int = 0
 
-    override fun getItemCount(): Int = pageCount
+    override fun getItemCount(): Int {
+        AppLogger.d("ReaderPagerAdapter", "getItemCount: $pageCount")
+        return pageCount
+    }
 
     override fun createFragment(position: Int): Fragment {
+        AppLogger.d("ReaderPagerAdapter", "createFragment: position=$position")
         return ReaderPageFragment.newInstance(position)
     }
 
@@ -20,6 +25,7 @@ class ReaderPagerAdapter(
         if (pageCount == count) {
             return
         }
+        AppLogger.d("ReaderPagerAdapter", "submitPageCount: $count (was $pageCount)")
         pageCount = count
         notifyDataSetChanged()
     }

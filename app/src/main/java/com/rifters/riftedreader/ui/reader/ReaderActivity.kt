@@ -129,12 +129,34 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         // Set up touch listeners that coordinate gestures with scrolling/paging
         // Always pass events to gesture detector to ensure tap zones work
         val scrollTouchListener = View.OnTouchListener { _, event ->
+            val actionName = when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> "DOWN"
+                MotionEvent.ACTION_MOVE -> "MOVE"
+                MotionEvent.ACTION_UP -> "UP"
+                MotionEvent.ACTION_CANCEL -> "CANCEL"
+                else -> "OTHER(${event.actionMasked})"
+            }
+            AppLogger.d(
+                "ReaderActivity",
+                "ScrollView.onTouch: action=$actionName x=${event.x} y=${event.y} mode=$readerMode"
+            )
             gestureDetector.onTouchEvent(event)
             // Don't consume the event - let ScrollView handle scrolling
             false
         }
         
         val pagerTouchListener = View.OnTouchListener { _, event ->
+            val actionName = when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> "DOWN"
+                MotionEvent.ACTION_MOVE -> "MOVE"
+                MotionEvent.ACTION_UP -> "UP"
+                MotionEvent.ACTION_CANCEL -> "CANCEL"
+                else -> "OTHER(${event.actionMasked})"
+            }
+            AppLogger.d(
+                "ReaderActivity",
+                "ViewPager2.onTouch: action=$actionName x=${event.x} y=${event.y} mode=$readerMode currentPage=${viewModel.currentPage.value}"
+            )
             gestureDetector.onTouchEvent(event)
             // Don't consume the event - let ViewPager handle paging
             false
