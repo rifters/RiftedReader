@@ -4,7 +4,7 @@
     android:layout_height="match_parent">
 
     <!-- WebView for rich HTML rendering (EPUB with formatting) -->
-    <WebView
+    <com.rifters.riftedreader.ui.reader.DebugWebView
         android:id="@+id/pageWebView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"

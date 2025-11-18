@@ -536,7 +536,8 @@ class ReaderPageFragment : Fragment() {
         
         // Set touch listener on WebView to intercept swipes
         binding.pageWebView.setOnTouchListener { _, event ->
-            val actionName = when (event.actionMasked) {
+            val actionMasked = event.actionMasked
+            val actionName = when (actionMasked) {
                 MotionEvent.ACTION_DOWN -> "DOWN"
                 MotionEvent.ACTION_MOVE -> "MOVE"
                 MotionEvent.ACTION_UP -> {
@@ -553,19 +554,27 @@ class ReaderPageFragment : Fragment() {
                     // Reset scroll tracking on touch cancel
                     com.rifters.riftedreader.util.AppLogger.d(
                         "ReaderPageFragment",
-                        "Touch CANCEL: page=$pageIndex finalCumulativeX=$cumulativeScrollX intercepted=$scrollIntercepted [GESTURE_CANCELLED]"
+                        "Touch CANCEL from Fragment.onTouch: page=$pageIndex finalCumulativeX=$cumulativeScrollX intercepted=$scrollIntercepted [GESTURE_CANCELLED_BY_PARENT]"
                     )
                     cumulativeScrollX = 0f
                     scrollIntercepted = false
                     "CANCEL"
                 }
+                MotionEvent.ACTION_POINTER_DOWN -> "POINTER_DOWN"
+                MotionEvent.ACTION_POINTER_UP -> "POINTER_UP"
                 else -> "OTHER(${event.actionMasked})"
             }
+            
+            // Get pointer information for multi-touch debugging
+            val pointerCount = event.pointerCount
+            val pointerIndex = event.actionIndex
+            val pointerId = if (pointerCount > pointerIndex) event.getPointerId(pointerIndex) else -1
             
             // DEBUG-ONLY: Log all touch events including MOVE for gesture tracing
             com.rifters.riftedreader.util.AppLogger.d(
                 "ReaderPageFragment",
-                "DEBUG-ONLY: pageWebView.onTouch: page=$pageIndex action=$actionName x=${event.x} y=${event.y}"
+                "DEBUG-ONLY: Fragment.onTouch: page=$pageIndex action=$actionName(masked=$actionMasked) " +
+                        "x=${event.x} y=${event.y} pointerCount=$pointerCount pointerIndex=$pointerIndex pointerId=$pointerId"
             )
             
             val handled = gestureDetector.onTouchEvent(event)
@@ -573,7 +582,7 @@ class ReaderPageFragment : Fragment() {
             // DEBUG-ONLY: Log gesture detector result
             com.rifters.riftedreader.util.AppLogger.d(
                 "ReaderPageFragment",
-                "DEBUG-ONLY: gestureDetector.onTouchEvent returned $handled for page $pageIndex action=$actionName"
+                "DEBUG-ONLY: Fragment.onTouch RETURNED=$handled for page=$pageIndex action=$actionName"
             )
             
             // Return the handled value - consume only if gesture detector handled it

@@ -129,35 +129,61 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         // Set up touch listeners that coordinate gestures with scrolling/paging
         // Always pass events to gesture detector to ensure tap zones work
         val scrollTouchListener = View.OnTouchListener { _, event ->
-            val actionName = when (event.actionMasked) {
+            val actionMasked = event.actionMasked
+            val actionName = when (actionMasked) {
                 MotionEvent.ACTION_DOWN -> "DOWN"
                 MotionEvent.ACTION_MOVE -> "MOVE"
                 MotionEvent.ACTION_UP -> "UP"
                 MotionEvent.ACTION_CANCEL -> "CANCEL"
-                else -> "OTHER(${event.actionMasked})"
+                MotionEvent.ACTION_POINTER_DOWN -> "POINTER_DOWN"
+                MotionEvent.ACTION_POINTER_UP -> "POINTER_UP"
+                else -> "OTHER($actionMasked)"
             }
+            
+            val pointerCount = event.pointerCount
+            val pointerIndex = event.actionIndex
+            val pointerId = if (pointerCount > pointerIndex) event.getPointerId(pointerIndex) else -1
+            
             AppLogger.d(
                 "ReaderActivity",
-                "ScrollView.onTouch: action=$actionName x=${event.x} y=${event.y} mode=$readerMode"
+                "ScrollView.onTouch: action=$actionName(masked=$actionMasked) x=${event.x} y=${event.y} " +
+                        "pointerCount=$pointerCount pointerIndex=$pointerIndex pointerId=$pointerId mode=$readerMode"
             )
-            gestureDetector.onTouchEvent(event)
+            val result = gestureDetector.onTouchEvent(event)
+            AppLogger.d(
+                "ReaderActivity",
+                "ScrollView.onTouch RETURNED=$result for action=$actionName"
+            )
             // Don't consume the event - let ScrollView handle scrolling
             false
         }
         
         val pagerTouchListener = View.OnTouchListener { _, event ->
-            val actionName = when (event.actionMasked) {
+            val actionMasked = event.actionMasked
+            val actionName = when (actionMasked) {
                 MotionEvent.ACTION_DOWN -> "DOWN"
                 MotionEvent.ACTION_MOVE -> "MOVE"
                 MotionEvent.ACTION_UP -> "UP"
                 MotionEvent.ACTION_CANCEL -> "CANCEL"
-                else -> "OTHER(${event.actionMasked})"
+                MotionEvent.ACTION_POINTER_DOWN -> "POINTER_DOWN"
+                MotionEvent.ACTION_POINTER_UP -> "POINTER_UP"
+                else -> "OTHER($actionMasked)"
             }
+            
+            val pointerCount = event.pointerCount
+            val pointerIndex = event.actionIndex
+            val pointerId = if (pointerCount > pointerIndex) event.getPointerId(pointerIndex) else -1
+            
             AppLogger.d(
                 "ReaderActivity",
-                "ViewPager2.onTouch: action=$actionName x=${event.x} y=${event.y} mode=$readerMode currentPage=${viewModel.currentPage.value}"
+                "ViewPager2.onTouch: action=$actionName(masked=$actionMasked) x=${event.x} y=${event.y} " +
+                        "pointerCount=$pointerCount pointerIndex=$pointerIndex pointerId=$pointerId mode=$readerMode currentPage=${viewModel.currentPage.value}"
             )
-            gestureDetector.onTouchEvent(event)
+            val result = gestureDetector.onTouchEvent(event)
+            AppLogger.d(
+                "ReaderActivity",
+                "ViewPager2.onTouch RETURNED=$result for action=$actionName"
+            )
             // Don't consume the event - let ViewPager handle paging
             false
         }
@@ -204,18 +230,27 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             if (binding.pageViewPager.childCount > 0) {
                 val recyclerView = binding.pageViewPager.getChildAt(0)
                 recyclerView.setOnTouchListener { _, event ->
-                    val actionName = when (event.actionMasked) {
+                    val actionMasked = event.actionMasked
+                    val actionName = when (actionMasked) {
                         MotionEvent.ACTION_DOWN -> "DOWN"
                         MotionEvent.ACTION_MOVE -> "MOVE"
                         MotionEvent.ACTION_UP -> "UP"
                         MotionEvent.ACTION_CANCEL -> "CANCEL"
-                        else -> "OTHER(${event.actionMasked})"
+                        MotionEvent.ACTION_POINTER_DOWN -> "POINTER_DOWN"
+                        MotionEvent.ACTION_POINTER_UP -> "POINTER_UP"
+                        else -> "OTHER($actionMasked)"
                     }
                     val timestamp = System.currentTimeMillis()
                     val currentPage = viewModel.currentPage.value
+                    val pointerCount = event.pointerCount
+                    val pointerIndex = event.actionIndex
+                    val pointerId = if (pointerCount > pointerIndex) event.getPointerId(pointerIndex) else -1
+                    
                     AppLogger.d(
                         "ReaderActivity",
-                        "DEBUG-ONLY: ViewPager2.RecyclerView.onTouch: action=$actionName x=${event.x} y=${event.y} timestamp=$timestamp currentPage=$currentPage"
+                        "DEBUG-ONLY: ViewPager2.RecyclerView.onTouch: action=$actionName(masked=$actionMasked) " +
+                                "x=${event.x} y=${event.y} pointerCount=$pointerCount pointerIndex=$pointerIndex " +
+                                "pointerId=$pointerId timestamp=$timestamp currentPage=$currentPage"
                     )
                     // Don't consume - let RecyclerView handle its touch events
                     false
@@ -229,10 +264,34 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         binding.pageViewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 super.onPageSelected(position)
+                val previousPage = viewModel.currentPage.value
+                AppLogger.d(
+                    "ReaderActivity",
+                    "ViewPager2.onPageSelected: position=$position previousPage=$previousPage " +
+                            "mode=$readerMode [PAGE_CHANGE_FROM_VIEWPAGER2]"
+                )
                 if (readerMode == ReaderMode.PAGE && viewModel.currentPage.value != position) {
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "Updating ViewModel page: $previousPage -> $position (triggered by ViewPager2 gesture/animation) [PAGE_SWITCH_REASON]"
+                    )
                     viewModel.goToPage(position)
                 }
                 controlsManager.onUserInteraction()
+            }
+            
+            override fun onPageScrollStateChanged(state: Int) {
+                super.onPageScrollStateChanged(state)
+                val stateName = when (state) {
+                    ViewPager2.SCROLL_STATE_IDLE -> "IDLE"
+                    ViewPager2.SCROLL_STATE_DRAGGING -> "DRAGGING"
+                    ViewPager2.SCROLL_STATE_SETTLING -> "SETTLING"
+                    else -> "UNKNOWN($state)"
+                }
+                AppLogger.d(
+                    "ReaderActivity",
+                    "ViewPager2.onPageScrollStateChanged: state=$stateName currentPage=${viewModel.currentPage.value} [PAGE_SCROLL_STATE]"
+                )
             }
         })
 
@@ -384,6 +443,34 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         viewModel.saveProgress()
     }
 
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        // Handle hardware volume keys for page navigation in PAGE mode only
+        if (readerMode == ReaderMode.PAGE) {
+            when (keyCode) {
+                android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "VOLUME_DOWN pressed in PAGE mode - navigating to next page [HARDWARE_KEY_NAV]"
+                    )
+                    navigateToNextPage(animated = true)
+                    // Return true to consume the event and prevent volume change
+                    return true
+                }
+                android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "VOLUME_UP pressed in PAGE mode - navigating to previous page [HARDWARE_KEY_NAV]"
+                    )
+                    navigateToPreviousPage(animated = true)
+                    // Return true to consume the event and prevent volume change
+                    return true
+                }
+            }
+        }
+        // If not in PAGE mode or not a volume key, use default behavior
+        return super.onKeyDown(keyCode, event)
+    }
+
     private fun handleTapZone(zone: ReaderTapZone) {
         val action = tapActions[zone] ?: ReaderTapAction.NONE
         performTapAction(action)
@@ -449,17 +536,37 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     }
 
     private fun navigateToNextPage(animated: Boolean = true) {
-        val nextIndex = viewModel.currentPage.value + 1
+        val currentIndex = viewModel.currentPage.value
+        val nextIndex = currentIndex + 1
+        AppLogger.d(
+            "ReaderActivity",
+            "navigateToNextPage called: currentPage=$currentIndex -> nextPage=$nextIndex mode=$readerMode " +
+                    "[PAGE_SWITCH_REASON:USER_TAP_OR_BUTTON]"
+        )
         val moved = viewModel.goToPage(nextIndex)
         if (readerMode == ReaderMode.PAGE && moved) {
+            AppLogger.d(
+                "ReaderActivity",
+                "Programmatically setting ViewPager2 to page $nextIndex (user navigation) [PROGRAMMATIC_PAGE_CHANGE]"
+            )
             binding.pageViewPager.setCurrentItem(nextIndex, animated)
         }
     }
 
     private fun navigateToPreviousPage(animated: Boolean = true) {
-        val previousIndex = viewModel.currentPage.value - 1
+        val currentIndex = viewModel.currentPage.value
+        val previousIndex = currentIndex - 1
+        AppLogger.d(
+            "ReaderActivity",
+            "navigateToPreviousPage called: currentPage=$currentIndex -> previousPage=$previousIndex mode=$readerMode " +
+                    "[PAGE_SWITCH_REASON:USER_TAP_OR_BUTTON]"
+        )
         val moved = viewModel.goToPage(previousIndex)
         if (readerMode == ReaderMode.PAGE && moved) {
+            AppLogger.d(
+                "ReaderActivity",
+                "Programmatically setting ViewPager2 to page $previousIndex (user navigation) [PROGRAMMATIC_PAGE_CHANGE]"
+            )
             binding.pageViewPager.setCurrentItem(previousIndex, animated)
         }
     }
