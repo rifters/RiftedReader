@@ -56,6 +56,7 @@ import com.rifters.riftedreader.domain.library.SmartCollectionSnapshot
 import com.rifters.riftedreader.domain.library.TagsUpdateMode
 import com.rifters.riftedreader.domain.parser.FormatCatalog
 import com.rifters.riftedreader.ui.reader.ReaderActivity
+import com.rifters.riftedreader.util.AppLogger
 import com.rifters.riftedreader.util.FileScanner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -154,6 +155,7 @@ class LibraryFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        AppLogger.event("LibraryFragment", "onViewCreated", "ui/LibraryFragment/lifecycle")
 
         val database = BookDatabase.getDatabase(requireContext())
         val repository = BookRepository(database.bookMetaDao())
@@ -180,6 +182,7 @@ class LibraryFragment : Fragment() {
 
     private fun setupRecyclerView() {
         adapter = BooksAdapter { book ->
+            AppLogger.userAction("LibraryFragment", "Opening book: ${book.title}", "ui/LibraryFragment/book")
             val intent = Intent(requireContext(), ReaderActivity::class.java).apply {
                 putExtra("BOOK_ID", book.id)
                 putExtra("BOOK_PATH", book.path)

@@ -26,14 +26,19 @@ class FileScanner(
     suspend fun scanForBooks(
         onProgress: (scanned: Int, found: Int) -> Unit = { _, _ -> }
     ): List<BookMeta> = withContext(Dispatchers.IO) {
+        AppLogger.task("FileScanner", "Starting book scan", "util/FileScanner/scan")
+        val startTime = System.currentTimeMillis()
+        
         ParserFactory.enablePreviewParsers()
         val foundBooks = mutableListOf<BookMeta>()
         var scannedCount = 0
         
         val directories = getDefaultScanDirectories()
+        AppLogger.d("FileScanner", "Scanning ${directories.size} directories")
         
         for (directory in directories) {
             if (directory.exists() && directory.isDirectory) {
+                AppLogger.d("FileScanner", "Scanning directory: ${directory.absolutePath}")
                 scanDirectory(directory, foundBooks) { count ->
                     scannedCount += count
                     onProgress(scannedCount, foundBooks.size)
@@ -43,8 +48,12 @@ class FileScanner(
         
         // Save to database
         if (foundBooks.isNotEmpty()) {
+            AppLogger.d("FileScanner", "Saving ${foundBooks.size} books to database")
             repository.insertBooks(foundBooks)
         }
+        
+        val duration = System.currentTimeMillis() - startTime
+        AppLogger.performance("FileScanner", "Book scan completed: found ${foundBooks.size} books, scanned $scannedCount files", duration, "util/FileScanner/scan")
         
         foundBooks
     }
@@ -75,6 +84,7 @@ class FileScanner(
                             // Extract metadata
                             val parser = ParserFactory.getParser(file)
                             if (parser != null) {
+                                AppLogger.d("FileScanner", "Found new book: ${file.name}")
                                 val metadata = parser.extractMetadata(file)
                                 foundBooks.add(metadata)
                             }
@@ -83,6 +93,7 @@ class FileScanner(
                 }
             } catch (e: Exception) {
                 // Skip files that cause errors
+                AppLogger.w("FileScanner", "Error scanning file: ${file.name}", e)
                 e.printStackTrace()
             }
         }
