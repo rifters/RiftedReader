@@ -50,9 +50,9 @@
         android:id="@+id/lineHeightSlider"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:valueFrom="1.0"
-        android:valueTo="2.0"
-        android:stepSize="0.1"
+        android:valueFrom="10"
+        android:valueTo="20"
+        android:stepSize="1"
         app:labelBehavior="gone" />
 
     <TextView
