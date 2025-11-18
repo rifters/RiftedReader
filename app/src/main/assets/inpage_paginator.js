@@ -29,8 +29,11 @@
      */
     function init() {
         if (isInitialized) {
+            console.log('inpage_paginator: Already initialized, skipping');
             return;
         }
+        
+        console.log('inpage_paginator: Initializing paginator');
         
         // Get the body content
         const body = document.body;
@@ -77,6 +80,15 @@
         window.addEventListener('resize', handleResize);
         
         isInitialized = true;
+        
+        const pageCount = getPageCount();
+        console.log('inpage_paginator: Initialization complete - pageCount=' + pageCount + ', viewportWidth=' + viewportWidth);
+        
+        // Notify Android if callback exists
+        if (window.AndroidBridge && window.AndroidBridge.onPaginationReady) {
+            console.log('inpage_paginator: Calling AndroidBridge.onPaginationReady with pageCount=' + pageCount);
+            window.AndroidBridge.onPaginationReady(pageCount);
+        }
     }
     
     /**
@@ -127,6 +139,8 @@
             return;
         }
         
+        console.log('inpage_paginator: Reflow triggered');
+        
         const contentWrapper = document.getElementById('paginator-content');
         if (contentWrapper) {
             updateColumnStyles(contentWrapper);
@@ -138,6 +152,16 @@
         columnContainer.offsetHeight; // Force reflow
         columnContainer.style.display = '';
         columnContainer.scrollLeft = currentScroll;
+        
+        const pageCount = getPageCount();
+        const currentPage = getCurrentPage();
+        console.log('inpage_paginator: Reflow complete - pageCount=' + pageCount + ', currentPage=' + currentPage);
+        
+        // Notify Android if callback exists
+        if (window.AndroidBridge && window.AndroidBridge.onPaginationReady) {
+            console.log('inpage_paginator: Calling AndroidBridge.onPaginationReady after reflow with pageCount=' + pageCount);
+            window.AndroidBridge.onPaginationReady(pageCount);
+        }
     }
     
     /**
@@ -148,6 +172,8 @@
             console.warn('inpage_paginator: invalid font size', px);
             return;
         }
+        
+        console.log('inpage_paginator: Setting font size to ' + px + 'px');
         
         currentFontSize = px;
         
@@ -216,12 +242,20 @@
         const pageWidth = viewportWidth || window.innerWidth;
         const targetScroll = safeIndex * pageWidth;
         
+        console.log('inpage_paginator: goToPage - index=' + index + ', safeIndex=' + safeIndex + ', pageCount=' + pageCount + ', smooth=' + smooth);
+        
         const behavior = smooth ? SCROLL_BEHAVIOR_SMOOTH : SCROLL_BEHAVIOR_AUTO;
         
         columnContainer.scrollTo({
             left: targetScroll,
             behavior: behavior
         });
+        
+        // Notify Android if callback exists
+        if (window.AndroidBridge && window.AndroidBridge.onPageChanged) {
+            console.log('inpage_paginator: Calling AndroidBridge.onPageChanged with page=' + safeIndex);
+            window.AndroidBridge.onPageChanged(safeIndex);
+        }
     }
     
     /**
@@ -231,11 +265,14 @@
         const currentPage = getCurrentPage();
         const pageCount = getPageCount();
         
+        console.log('inpage_paginator: nextPage called - currentPage=' + currentPage + ', pageCount=' + pageCount);
+        
         if (currentPage < pageCount - 1) {
             goToPage(currentPage + 1, true);
             return true;
         }
         
+        console.log('inpage_paginator: nextPage - already at last page');
         return false;
     }
     
@@ -244,12 +281,16 @@
      */
     function prevPage() {
         const currentPage = getCurrentPage();
+        const pageCount = getPageCount();
+        
+        console.log('inpage_paginator: prevPage called - currentPage=' + currentPage + ', pageCount=' + pageCount);
         
         if (currentPage > 0) {
             goToPage(currentPage - 1, true);
             return true;
         }
         
+        console.log('inpage_paginator: prevPage - already at first page');
         return false;
     }
     

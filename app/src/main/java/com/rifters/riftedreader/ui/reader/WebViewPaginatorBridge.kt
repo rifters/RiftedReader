@@ -44,14 +44,17 @@ object WebViewPaginatorBridge {
      */
     suspend fun evaluateString(webView: WebView, expression: String): String = 
         suspendCancellableCoroutine { continuation ->
+            AppLogger.d("WebViewPaginatorBridge", "evaluateJavascript: $expression")
             mainHandler.post {
                 try {
                     webView.evaluateJavascript(expression) { result ->
                         // Remove quotes from string results
                         val cleanResult = result?.trim()?.removeSurrounding("\"") ?: "null"
+                        AppLogger.d("WebViewPaginatorBridge", "evaluateJavascript result: $cleanResult")
                         continuation.resume(cleanResult)
                     }
                 } catch (e: Exception) {
+                    AppLogger.e("WebViewPaginatorBridge", "evaluateJavascript exception for: $expression", e)
                     continuation.resumeWithException(e)
                 }
             }
@@ -88,7 +91,9 @@ object WebViewPaginatorBridge {
      * @return The current page index
      */
     suspend fun getCurrentPage(webView: WebView): Int {
-        return evaluateInt(webView, "window.inpagePaginator.getCurrentPage()")
+        val page = evaluateInt(webView, "window.inpagePaginator.getCurrentPage()")
+        AppLogger.d("WebViewPaginatorBridge", "getCurrentPage: $page")
+        return page
     }
     
     /**
@@ -134,6 +139,7 @@ object WebViewPaginatorBridge {
      * @param webView The WebView containing the paginated content
      */
     fun nextPage(webView: WebView) {
+        AppLogger.d("WebViewPaginatorBridge", "nextPage: navigating to next in-page")
         mainHandler.post {
             webView.evaluateJavascript(
                 "window.inpagePaginator.nextPage()",
@@ -149,6 +155,7 @@ object WebViewPaginatorBridge {
      * @param webView The WebView containing the paginated content
      */
     fun prevPage(webView: WebView) {
+        AppLogger.d("WebViewPaginatorBridge", "prevPage: navigating to previous in-page")
         mainHandler.post {
             webView.evaluateJavascript(
                 "window.inpagePaginator.prevPage()",
