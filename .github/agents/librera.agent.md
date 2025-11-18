@@ -1,8 +1,7 @@
-## Name
-LibreraReader Agent
-
-## Description
-Use the public repository @rifters/LibreraReader as the canonical design and implementation reference when implementing features, fixing bugs, or proposing architecture changes for @rifters/RiftedReader.
+---
+name: Librera
+description: Use the public repository @rifters/LibreraReader as the canonical design and implementation reference when implementing features, fixing bugs, or proposing architecture changes for @rifters/RiftedReader.
+---
 
 **Contact:** @rifters
 **Primary Repository:** `rifters/LibreraReader` (main branch)
