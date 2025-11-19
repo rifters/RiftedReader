@@ -335,8 +335,17 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             if (fromUser) {
                 val target = value.toInt()
                 if (readerMode == ReaderMode.PAGE) {
-                    binding.pageViewPager.setCurrentItem(target, true)
+                    // In PAGE mode, check if we have WebView pagination data
+                    val totalWebViewPages = viewModel.totalWebViewPages.value
+                    if (totalWebViewPages > 0) {
+                        // Navigate within current chapter's WebView pages
+                        navigateToWebViewPage(target)
+                    } else {
+                        // Fallback to chapter navigation (e.g., during initial load)
+                        binding.pageViewPager.setCurrentItem(target, true)
+                    }
                 } else {
+                    // SCROLL mode: navigate between chapters
                     viewModel.goToPage(target)
                 }
                 controlsManager.onUserInteraction()
@@ -422,6 +431,18 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 launch {
                     viewModel.pages.collect { pages ->
                         pagerAdapter.submitPageCount(pages.size)
+                    }
+                }
+                
+                launch {
+                    viewModel.currentWebViewPage.collect { webViewPage ->
+                        updateSliderForWebViewPage()
+                    }
+                }
+                
+                launch {
+                    viewModel.totalWebViewPages.collect { totalWebViewPages ->
+                        updateSliderForWebViewPage()
                     }
                 }
             }
@@ -825,6 +846,84 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     binding.ttsPlayPauseButton.contentDescription = getString(R.string.tts_action_play)
                     binding.ttsPlayPauseButton.setIconResource(R.drawable.ic_tts_play_24)
                     binding.ttsStopButton.isVisible = true
+                }
+            }
+        }
+    }
+    
+    /**
+     * Update slider configuration and position based on WebView page state.
+     * Called when WebView page count or current page changes.
+     */
+    private fun updateSliderForWebViewPage() {
+        // Only apply WebView pagination to slider in PAGE mode
+        if (readerMode != ReaderMode.PAGE) {
+            return
+        }
+        
+        val totalWebViewPages = viewModel.totalWebViewPages.value
+        val currentWebViewPage = viewModel.currentWebViewPage.value
+        
+        // If we have WebView pagination info, use it for the slider
+        if (totalWebViewPages > 0) {
+            val maxValue = (totalWebViewPages - 1).coerceAtLeast(0)
+            val safeValueTo = maxValue.toFloat().coerceAtLeast(1f)
+            
+            // Update slider range
+            if (binding.pageSlider.valueTo != safeValueTo) {
+                binding.pageSlider.valueTo = safeValueTo
+            }
+            
+            // Update slider position
+            val safeCurrentPage = currentWebViewPage.coerceIn(0, maxValue)
+            if (binding.pageSlider.value != safeCurrentPage.toFloat()) {
+                binding.pageSlider.value = safeCurrentPage.toFloat()
+            }
+            
+            // Update page indicator to show WebView page numbers
+            updatePageIndicatorForWebView(currentWebViewPage, totalWebViewPages)
+        }
+    }
+    
+    /**
+     * Update page indicator to show WebView page within current chapter.
+     */
+    private fun updatePageIndicatorForWebView(currentPage: Int, totalPages: Int) {
+        val displayPage = (currentPage + 1).coerceAtMost(totalPages.coerceAtLeast(1))
+        val safeTotal = totalPages.coerceAtLeast(1)
+        binding.pageIndicator.text = getString(R.string.reader_page_indicator, displayPage, safeTotal)
+    }
+    
+    /**
+     * Navigate to a specific WebView page within the current chapter.
+     * Called when user moves the slider in PAGE mode.
+     */
+    private fun navigateToWebViewPage(pageIndex: Int) {
+        val currentPosition = viewModel.currentPage.value
+        val fragTag = "f$currentPosition"
+        val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
+        
+        if (frag != null) {
+            AppLogger.d(
+                "ReaderActivity",
+                "Navigating to WebView page $pageIndex within chapter $currentPosition via slider"
+            )
+            // Get the WebView from the fragment and navigate
+            lifecycleScope.launch {
+                try {
+                    // Use the bridge to navigate to the target page
+                    val webView = frag.view?.findViewById<android.webkit.WebView>(
+                        R.id.pageWebView
+                    )
+                    if (webView != null) {
+                        WebViewPaginatorBridge.goToPage(webView, pageIndex, smooth = true)
+                    }
+                } catch (e: Exception) {
+                    AppLogger.e(
+                        "ReaderActivity",
+                        "Error navigating to WebView page $pageIndex",
+                        e
+                    )
                 }
             }
         }

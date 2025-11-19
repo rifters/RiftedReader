@@ -81,6 +81,9 @@ class ReaderPageFragment : Fragment() {
             // Add JavaScript interface for TTS communication
             addJavascriptInterface(TtsWebBridge(), "AndroidTtsBridge")
             
+            // Add JavaScript interface for pagination callbacks
+            addJavascriptInterface(PaginationBridge(), "AndroidBridge")
+            
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
@@ -266,6 +269,7 @@ class ReaderPageFragment : Fragment() {
                 webViewClient = WebViewClient()
                 // Remove JavaScript interface
                 removeJavascriptInterface("AndroidTtsBridge")
+                removeJavascriptInterface("AndroidBridge")
                 // Load blank page to clear memory
                 loadUrl("about:blank")
                 // Clear history and cache
@@ -963,6 +967,62 @@ class ReaderPageFragment : Fragment() {
             """.trimIndent(),
             null
         )
+    }
+    
+    /**
+     * JavaScript interface for pagination callbacks from the WebView paginator.
+     * Called by inpage_paginator.js to notify Android of page changes.
+     */
+    private inner class PaginationBridge {
+        @JavascriptInterface
+        fun onPaginationReady(totalPages: Int) {
+            // Called when pagination is complete and total page count is known
+            activity?.runOnUiThread {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "PaginationBridge.onPaginationReady: chapter=$pageIndex, totalPages=$totalPages"
+                )
+                
+                // Update ViewModel with initial pagination state
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
+                        readerViewModel.updateWebViewPageState(currentPage, totalPages)
+                    } catch (e: Exception) {
+                        com.rifters.riftedreader.util.AppLogger.e(
+                            "ReaderPageFragment",
+                            "Error getting current page in onPaginationReady",
+                            e
+                        )
+                    }
+                }
+            }
+        }
+        
+        @JavascriptInterface
+        fun onPageChanged(newPage: Int) {
+            // Called when user navigates to a different page within the chapter
+            activity?.runOnUiThread {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "PaginationBridge.onPageChanged: chapter=$pageIndex, newPage=$newPage"
+                )
+                
+                // Update ViewModel with new page position
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        val totalPages = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
+                        readerViewModel.updateWebViewPageState(newPage, totalPages)
+                    } catch (e: Exception) {
+                        com.rifters.riftedreader.util.AppLogger.e(
+                            "ReaderPageFragment",
+                            "Error getting page count in onPageChanged",
+                            e
+                        )
+                    }
+                }
+            }
+        }
     }
     
     /**

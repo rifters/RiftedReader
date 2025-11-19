@@ -47,6 +47,13 @@ class ReaderViewModel(
     private val _shouldJumpToLastPage = MutableStateFlow(false)
     val shouldJumpToLastPage: StateFlow<Boolean> = _shouldJumpToLastPage.asStateFlow()
 
+    // WebView in-page navigation tracking (for PAGE mode with WebView)
+    private val _currentWebViewPage = MutableStateFlow(0)
+    val currentWebViewPage: StateFlow<Int> = _currentWebViewPage.asStateFlow()
+    
+    private val _totalWebViewPages = MutableStateFlow(0)
+    val totalWebViewPages: StateFlow<Int> = _totalWebViewPages.asStateFlow()
+
     val readerSettings: StateFlow<ReaderSettings> = readerPreferences.settings
 
     class Factory(
@@ -238,15 +245,38 @@ class ReaderViewModel(
         if (pages.isEmpty()) {
             _currentPage.value = 0
             _content.value = PageContent.EMPTY
+            resetWebViewPageState()
             return
         }
         val safeIndex = index.coerceIn(0, pages.lastIndex)
         _currentPage.value = safeIndex
         _content.value = pages.getOrNull(safeIndex) ?: PageContent.EMPTY
+        // Reset WebView page state when changing chapters
+        resetWebViewPageState()
     }
 
     fun publishHighlight(pageIndex: Int, range: IntRange?) {
         _highlight.value = TtsHighlight(pageIndex, range)
+    }
+    
+    /**
+     * Update WebView page state from the current fragment.
+     * Called by ReaderPageFragment when WebView pagination changes.
+     * 
+     * @param currentPage Current WebView page index (0-based)
+     * @param totalPages Total number of WebView pages in current chapter
+     */
+    fun updateWebViewPageState(currentPage: Int, totalPages: Int) {
+        _currentWebViewPage.value = currentPage
+        _totalWebViewPages.value = totalPages
+    }
+    
+    /**
+     * Reset WebView page state (e.g., when switching chapters or to scroll mode).
+     */
+    fun resetWebViewPageState() {
+        _currentWebViewPage.value = 0
+        _totalWebViewPages.value = 0
     }
 }
 
