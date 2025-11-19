@@ -687,10 +687,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 AppLogger.d("ReaderActivity", "ViewPager2 user input disabled for PAGE mode")
                 viewModel.publishHighlight(viewModel.currentPage.value, currentHighlightRange)
             } else {
+                // Switching to SCROLL mode
                 binding.pageViewPager.isVisible = false
                 binding.pageViewPager.isUserInputEnabled = true
                 binding.contentScrollView.isVisible = true
                 currentHighlightRange?.let { applyScrollHighlight(it) }
+                
+                // Reset WebView page tracking and restore slider to chapter navigation
+                viewModel.resetWebViewPageState()
+                restoreSliderToChapterNavigation()
             }
         }
     }
@@ -927,6 +932,30 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 }
             }
         }
+    }
+    
+    /**
+     * Restore slider to chapter-level navigation (used when switching to SCROLL mode).
+     */
+    private fun restoreSliderToChapterNavigation() {
+        val total = viewModel.totalPages.value
+        val currentPage = viewModel.currentPage.value
+        
+        val maxValue = (total - 1).coerceAtLeast(0)
+        val safeValueTo = maxValue.toFloat().coerceAtLeast(1f)
+        
+        // Restore slider range to chapter count
+        if (binding.pageSlider.valueTo != safeValueTo) {
+            binding.pageSlider.valueTo = safeValueTo
+        }
+        
+        // Restore slider position to current chapter
+        if (binding.pageSlider.value != currentPage.toFloat()) {
+            binding.pageSlider.value = currentPage.toFloat()
+        }
+        
+        // Restore page indicator to show chapter numbers
+        updatePageIndicator(currentPage)
     }
 
 }
