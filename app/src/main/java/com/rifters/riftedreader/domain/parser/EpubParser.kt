@@ -113,91 +113,92 @@ class EpubParser : BookParser {
                 // Remove script and style tags for security, preserve all other HTML
                 body.select("script, style").remove()
                 
-                // Convert image src attributes to base64 data URIs
+                // Process images: cache them on disk and use file:// URLs
                 val contentDir = contentPath.substringBeforeLast('/', "")
                 val images = body.select("img[src]")
                 
                 if (images.isNotEmpty()) {
                     AppLogger.d("EpubParser", "Found ${images.size} images on page $page")
+                    
+                    // Clean up old chapter caches to prevent disk bloat
+                    cleanOldChapterCaches(file, page)
                 }
                 
                 images.forEach { img ->
                     val originalSrc = img.attr("src")
                     
-                    AppLogger.d("EpubParser", "[COVER_DEBUG] Processing image on page $page: src='$originalSrc'")
+                    AppLogger.d("EpubParser", "Processing image on page $page: src='$originalSrc'")
                     
                     try {
                         // Resolve relative path
                         val imagePath = resolveRelativePath(contentDir, originalSrc)
-                        AppLogger.d("EpubParser", "[COVER_DEBUG] Resolved image path: '$imagePath' (from contentDir='$contentDir', originalSrc='$originalSrc')")
+                        AppLogger.d("EpubParser", "Resolved image path: '$imagePath' (from contentDir='$contentDir', originalSrc='$originalSrc')")
                         
                         // Check if this image is likely the cover image
                         val isCoverImage = imagePath.lowercase().contains("cover") || 
                                          originalSrc.lowercase().contains("cover")
                         
-                        AppLogger.d("EpubParser", "[COVER_DEBUG] Is cover image: $isCoverImage (imagePath.contains('cover'): ${imagePath.lowercase().contains("cover")}, originalSrc.contains('cover'): ${originalSrc.lowercase().contains("cover")})")
-                        
-                        // If we have a cached cover path and this looks like a cover image, use the cached version
+                        // If we have a cached cover path and this looks like a cover image, use it as base64 (existing behavior)
                         val coverPath = cachedCoverPath
-                        AppLogger.d("EpubParser", "[COVER_DEBUG] cachedCoverPath: $coverPath")
                         
                         if (isCoverImage && coverPath != null && File(coverPath).exists()) {
-                            AppLogger.d("EpubParser", "[COVER_DEBUG] Attempting to use cached cover image from: $coverPath")
+                            AppLogger.d("EpubParser", "Using cached cover image (base64) from: $coverPath")
                             try {
                                 val coverFile = File(coverPath)
-                                AppLogger.d("EpubParser", "[COVER_DEBUG] Cover file details: exists=${coverFile.exists()}, canRead=${coverFile.canRead()}, length=${coverFile.length()}")
                                 val coverBytes = coverFile.readBytes()
-                                AppLogger.d("EpubParser", "[COVER_DEBUG] Successfully read ${coverBytes.size} bytes from cached cover")
                                 val base64Cover = Base64.encodeToString(coverBytes, Base64.NO_WRAP)
-                                AppLogger.d("EpubParser", "[COVER_DEBUG] Base64 encoded cover (length: ${base64Cover.length}, first 50 chars: ${base64Cover.take(50)}...)")
                                 val dataUri = "data:image/jpeg;base64,$base64Cover"
-                                AppLogger.d("EpubParser", "[COVER_DEBUG] Setting img.src to data URI (total length: ${dataUri.length})")
                                 img.attr("src", dataUri)
-                                AppLogger.d("EpubParser", "[COVER_DEBUG] Successfully set cached cover as img.src for image: $originalSrc")
+                                AppLogger.d("EpubParser", "Successfully set cached cover as img.src for image: $originalSrc")
                                 return@forEach // Successfully used cached cover
                             } catch (e: Exception) {
-                                AppLogger.e("EpubParser", "[COVER_DEBUG] Error using cached cover, falling back to ZIP extraction. Error: ${e.message}", e)
+                                AppLogger.e("EpubParser", "Error using cached cover, falling back to normal processing. Error: ${e.message}", e)
                                 // Fall through to normal processing
                             }
-                        } else if (isCoverImage && coverPath != null) {
-                            AppLogger.w("EpubParser", "[COVER_DEBUG] Cover image detected but cached file doesn't exist: $coverPath (exists: ${File(coverPath).exists()})")
-                        } else if (isCoverImage) {
-                            AppLogger.w("EpubParser", "[COVER_DEBUG] Cover image detected but no cached cover path available")
                         }
                         
-                        // Try to load image from EPUB
-                        AppLogger.d("EpubParser", "[COVER_DEBUG] Attempting to load image from EPUB ZIP: $imagePath")
+                        // For all other images (non-cover), cache to disk and use file:// URL
                         val imageEntry = zip.getEntry(imagePath)
                         if (imageEntry != null) {
-                            AppLogger.d("EpubParser", "[COVER_DEBUG] Found image in ZIP: $imagePath (size: ${imageEntry.size})")
+                            AppLogger.d("EpubParser", "Found image in ZIP: $imagePath (size: ${imageEntry.size})")
                             val imageBytes = zip.getInputStream(imageEntry).readBytes()
-                            AppLogger.d("EpubParser", "[COVER_DEBUG] Read ${imageBytes.size} bytes from ZIP entry")
                             
-                            // Determine MIME type from file extension
-                            val mimeType = when (imagePath.substringAfterLast('.').lowercase()) {
-                                "jpg", "jpeg" -> "image/jpeg"
-                                "png" -> "image/png"
-                                "gif" -> "image/gif"
-                                "webp" -> "image/webp"
-                                "svg" -> "image/svg+xml"
-                                else -> "image/jpeg" // default
+                            // Create a sanitized filename from the original path
+                            val sanitizedFileName = imagePath.replace('/', '_').replace('\\', '_')
+                            val chapterCacheDir = getChapterImageCacheDir(file, page)
+                            val cachedImageFile = File(chapterCacheDir, sanitizedFileName)
+                            
+                            // Write image to cache file
+                            try {
+                                FileOutputStream(cachedImageFile).use { output ->
+                                    output.write(imageBytes)
+                                }
+                                
+                                // Update img src to file:// URL
+                                val fileUrl = "file://${cachedImageFile.absolutePath}"
+                                img.attr("src", fileUrl)
+                                AppLogger.d("EpubParser", "Cached image to: ${cachedImageFile.absolutePath}")
+                            } catch (e: Exception) {
+                                AppLogger.e("EpubParser", "Failed to cache image to disk: ${e.message}", e)
+                                // Fall back to base64 if file caching fails
+                                val mimeType = when (imagePath.substringAfterLast('.').lowercase()) {
+                                    "jpg", "jpeg" -> "image/jpeg"
+                                    "png" -> "image/png"
+                                    "gif" -> "image/gif"
+                                    "webp" -> "image/webp"
+                                    "svg" -> "image/svg+xml"
+                                    else -> "image/jpeg"
+                                }
+                                val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+                                val dataUri = "data:$mimeType;base64,$base64Image"
+                                img.attr("src", dataUri)
+                                AppLogger.w("EpubParser", "Fell back to base64 for image: $originalSrc")
                             }
-                            
-                            AppLogger.d("EpubParser", "[COVER_DEBUG] Detected MIME type: $mimeType")
-                            
-                            // Convert to base64
-                            val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
-                            AppLogger.d("EpubParser", "[COVER_DEBUG] Base64 encoded image from ZIP (length: ${base64Image.length})")
-                            val dataUri = "data:$mimeType;base64,$base64Image"
-                            
-                            // Update src attribute
-                            img.attr("src", dataUri)
-                            AppLogger.d("EpubParser", "[COVER_DEBUG] Successfully set img.src from ZIP for image: $originalSrc")
                         } else {
-                            AppLogger.w("EpubParser", "[COVER_DEBUG] Image not found in EPUB ZIP: $imagePath (originalSrc: $originalSrc)")
+                            AppLogger.w("EpubParser", "Image not found in EPUB ZIP: $imagePath (originalSrc: $originalSrc)")
                         }
                     } catch (e: Exception) {
-                        AppLogger.e("EpubParser", "[COVER_DEBUG] Error converting image: $originalSrc. Error: ${e.message}", e)
+                        AppLogger.e("EpubParser", "Error processing image: $originalSrc. Error: ${e.message}", e)
                     }
                 }
                 
@@ -590,5 +591,52 @@ class EpubParser : BookParser {
         }
         
         return resolvedParts.joinToString("/")
+    }
+    
+    /**
+     * Get the image cache directory for a specific chapter
+     * @param bookFile The book file
+     * @param chapterIndex The chapter/page index
+     * @return The cache directory for this chapter, created if needed
+     */
+    private fun getChapterImageCacheDir(bookFile: File, chapterIndex: Int): File {
+        val cacheRoot = File(bookFile.parentFile, ".image_cache")
+        val bookCache = File(cacheRoot, bookFile.nameWithoutExtension)
+        val chapterCache = File(bookCache, "chapter_$chapterIndex")
+        chapterCache.mkdirs()
+        return chapterCache
+    }
+    
+    /**
+     * Clean up old chapter caches to prevent disk bloat
+     * Keeps caches for current chapter +/- keepRange
+     * @param bookFile The book file
+     * @param currentChapter The current chapter index
+     * @param keepRange How many chapters before/after to keep (default: 2)
+     */
+    private fun cleanOldChapterCaches(bookFile: File, currentChapter: Int, keepRange: Int = 2) {
+        val cacheRoot = File(bookFile.parentFile, ".image_cache")
+        val bookCache = File(cacheRoot, bookFile.nameWithoutExtension)
+        
+        if (!bookCache.exists() || !bookCache.isDirectory) {
+            return
+        }
+        
+        val minKeep = (currentChapter - keepRange).coerceAtLeast(0)
+        val maxKeep = currentChapter + keepRange
+        
+        bookCache.listFiles()?.forEach { chapterDir ->
+            if (chapterDir.isDirectory && chapterDir.name.startsWith("chapter_")) {
+                try {
+                    val chapterNum = chapterDir.name.removePrefix("chapter_").toIntOrNull()
+                    if (chapterNum != null && (chapterNum < minKeep || chapterNum > maxKeep)) {
+                        AppLogger.d("EpubParser", "Cleaning up old chapter cache: ${chapterDir.name}")
+                        chapterDir.deleteRecursively()
+                    }
+                } catch (e: Exception) {
+                    AppLogger.w("EpubParser", "Failed to clean up chapter cache: ${chapterDir.name}", e)
+                }
+            }
+        }
     }
 }
