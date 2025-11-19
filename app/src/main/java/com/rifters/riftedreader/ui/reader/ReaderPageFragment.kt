@@ -94,6 +94,39 @@ class ReaderPageFragment : Fragment() {
                     
                     // Initialize TTS chunks when page is loaded
                     prepareTtsChunks()
+                    
+                    // Check if we should jump to the last internal page (backward navigation)
+                    if (readerViewModel.shouldJumpToLastPage.value) {
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "Detected shouldJumpToLastPage flag - will jump to last page after pagination"
+                        )
+                        // Clear the flag immediately to prevent re-triggering
+                        readerViewModel.clearJumpToLastPageFlag()
+                        
+                        // Jump to last page after a short delay to ensure pagination is complete
+                        viewLifecycleOwner.lifecycleScope.launch {
+                            kotlinx.coroutines.delay(100) // Small delay for paginator to finish
+                            try {
+                                val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
+                                if (pageCount > 0) {
+                                    val lastPage = pageCount - 1
+                                    com.rifters.riftedreader.util.AppLogger.userAction(
+                                        "ReaderPageFragment",
+                                        "Jumping to last internal page ($lastPage) of chapter $pageIndex after backward navigation",
+                                        "ui/webview/pagination"
+                                    )
+                                    WebViewPaginatorBridge.goToPage(binding.pageWebView, lastPage, smooth = false)
+                                }
+                            } catch (e: Exception) {
+                                com.rifters.riftedreader.util.AppLogger.e(
+                                    "ReaderPageFragment",
+                                    "Error jumping to last page: ${e.message}",
+                                    e
+                                )
+                            }
+                        }
+                    }
                 }
                 
                 override fun onReceivedError(
@@ -369,9 +402,9 @@ class ReaderPageFragment : Fragment() {
                                             // At first in-page, trigger activity-based chapter navigation
                                             com.rifters.riftedreader.util.AppLogger.d(
                                                 "ReaderPageFragment", 
-                                                "SCROLL_EDGE: At first in-page ($currentPage/$pageCount), triggering activity chapter navigation [EDGE_REACHED]"
+                                                "SCROLL_EDGE: At first in-page ($currentPage/$pageCount), triggering backward chapter navigation to last page [EDGE_REACHED]"
                                             )
-                                            (activity as? ReaderActivity)?.navigateToPreviousPage(animated = true)
+                                            (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
                                         }
                                     }
                                 } catch (e: Exception) {
@@ -385,7 +418,7 @@ class ReaderPageFragment : Fragment() {
                                     if (cumulativeScrollX > 0) {
                                         (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
                                     } else {
-                                        (activity as? ReaderActivity)?.navigateToPreviousPage(animated = true)
+                                        (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
                                     }
                                 }
                             }
@@ -469,9 +502,9 @@ class ReaderPageFragment : Fragment() {
                                     // At first in-page, trigger activity-based chapter navigation
                                     com.rifters.riftedreader.util.AppLogger.d(
                                         "ReaderPageFragment", 
-                                        "FLING_EDGE: At first in-page ($currentPage/$pageCount), triggering activity chapter navigation [EDGE_REACHED]"
+                                        "FLING_EDGE: At first in-page ($currentPage/$pageCount), triggering backward chapter navigation to last page [EDGE_REACHED]"
                                     )
-                                    (activity as? ReaderActivity)?.navigateToPreviousPage(animated = true)
+                                    (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
                                 }
                             } catch (e: Exception) {
                                 // If anything goes wrong, fallback to activity navigation
@@ -484,7 +517,7 @@ class ReaderPageFragment : Fragment() {
                                 if (velocityX < 0) {
                                     (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
                                 } else {
-                                    (activity as? ReaderActivity)?.navigateToPreviousPage(animated = true)
+                                    (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
                                 }
                             }
                         }
@@ -1027,9 +1060,9 @@ class ReaderPageFragment : Fragment() {
                     } else {
                         com.rifters.riftedreader.util.AppLogger.d(
                             "ReaderPageFragment",
-                            "HARDWARE_FALLTHROUGH: at first in-page ($currentPage/$pageCount) - falling back to ViewPager chapter navigation"
+                            "HARDWARE_FALLTHROUGH: at first in-page ($currentPage/$pageCount) - triggering backward chapter navigation to last page"
                         )
-                        (activity as? ReaderActivity)?.navigateToPreviousPage(animated = true)
+                        (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
                     }
                 }
             } catch (e: Exception) {
@@ -1042,7 +1075,7 @@ class ReaderPageFragment : Fragment() {
                 if (isNext) {
                     (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
                 } else {
-                    (activity as? ReaderActivity)?.navigateToPreviousPage(animated = true)
+                    (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
                 }
             }
         }

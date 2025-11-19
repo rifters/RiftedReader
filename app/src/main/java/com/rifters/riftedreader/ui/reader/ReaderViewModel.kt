@@ -43,6 +43,10 @@ class ReaderViewModel(
     private val _tableOfContents = MutableStateFlow<List<com.rifters.riftedreader.domain.parser.TocEntry>>(emptyList())
     val tableOfContents: StateFlow<List<com.rifters.riftedreader.domain.parser.TocEntry>> = _tableOfContents.asStateFlow()
 
+    // Signal to fragments: when true, jump to last internal page after WebView loads
+    private val _shouldJumpToLastPage = MutableStateFlow(false)
+    val shouldJumpToLastPage: StateFlow<Boolean> = _shouldJumpToLastPage.asStateFlow()
+
     val readerSettings: StateFlow<ReaderSettings> = readerPreferences.settings
 
     class Factory(
@@ -167,6 +171,32 @@ class ReaderViewModel(
         }
         updateCurrentPage(current - 1)
         return true
+    }
+
+    /**
+     * Navigate to the previous chapter and signal to jump to its last internal page.
+     * This is specifically for backward navigation across chapter boundaries in PAGE mode.
+     * 
+     * @return true if navigation succeeded, false if already at first chapter
+     */
+    fun previousChapterToLastPage(): Boolean {
+        val pages = _pages.value
+        if (pages.isEmpty()) return false
+        val current = _currentPage.value
+        if (current <= 0) {
+            return false
+        }
+        // Set flag before changing page so fragment can react when it loads
+        _shouldJumpToLastPage.value = true
+        updateCurrentPage(current - 1)
+        return true
+    }
+
+    /**
+     * Clear the jump-to-last-page flag. Called by fragment after jumping.
+     */
+    fun clearJumpToLastPageFlag() {
+        _shouldJumpToLastPage.value = false
     }
 
     fun goToPage(page: Int): Boolean {
