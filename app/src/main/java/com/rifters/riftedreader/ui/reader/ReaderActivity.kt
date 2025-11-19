@@ -448,6 +448,16 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         if (readerMode == ReaderMode.PAGE) {
             when (keyCode) {
                 android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                    // Try to let the current fragment handle in-page navigation first.
+                    val currentPosition = viewModel.currentPage.value
+                    val fragTag = "f$currentPosition"
+                    val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
+                    if (frag?.handleHardwarePageKey(isNext = true) == true) {
+                        // Fragment will handle (consumed)
+                        return true
+                    }
+
+                    // Fallback: navigate chapters
                     AppLogger.d(
                         "ReaderActivity",
                         "VOLUME_DOWN pressed in PAGE mode - navigating to next page [HARDWARE_KEY_NAV]"
@@ -457,12 +467,18 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     return true
                 }
                 android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                    val currentPosition = viewModel.currentPage.value
+                    val fragTag = "f$currentPosition"
+                    val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
+                    if (frag?.handleHardwarePageKey(isNext = false) == true) {
+                        return true
+                    }
+
                     AppLogger.d(
                         "ReaderActivity",
                         "VOLUME_UP pressed in PAGE mode - navigating to previous page [HARDWARE_KEY_NAV]"
                     )
                     navigateToPreviousPage(animated = true)
-                    // Return true to consume the event and prevent volume change
                     return true
                 }
             }
@@ -535,7 +551,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         }
     }
 
-    private fun navigateToNextPage(animated: Boolean = true) {
+    internal fun navigateToNextPage(animated: Boolean = true) {
         val currentIndex = viewModel.currentPage.value
         val nextIndex = currentIndex + 1
         AppLogger.d(
@@ -553,7 +569,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         }
     }
 
-    private fun navigateToPreviousPage(animated: Boolean = true) {
+    internal fun navigateToPreviousPage(animated: Boolean = true) {
         val currentIndex = viewModel.currentPage.value
         val previousIndex = currentIndex - 1
         AppLogger.d(
