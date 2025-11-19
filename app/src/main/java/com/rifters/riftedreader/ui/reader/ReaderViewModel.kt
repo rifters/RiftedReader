@@ -100,7 +100,12 @@ class ReaderViewModel(
                 
                 // If parser is EpubParser and we have a cover path, set it
                 if (parser is com.rifters.riftedreader.domain.parser.EpubParser && book?.coverPath != null) {
+                    AppLogger.d("ReaderViewModel", "[COVER_DEBUG] Setting cover path for EPUB: ${book.coverPath}")
+                    val coverFile = java.io.File(book.coverPath)
+                    AppLogger.d("ReaderViewModel", "[COVER_DEBUG] Cover file exists: ${coverFile.exists()}, canRead: ${coverFile.canRead()}, size: ${coverFile.length()} bytes")
                     parser.setCoverPath(book.coverPath)
+                } else if (parser is com.rifters.riftedreader.domain.parser.EpubParser) {
+                    AppLogger.d("ReaderViewModel", "[COVER_DEBUG] No cover path available for EPUB (book.coverPath is null)")
                 }
 
                 val pages = withContext(Dispatchers.IO) { generatePages() }

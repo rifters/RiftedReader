@@ -31,6 +31,11 @@ class EpubParser : BookParser {
      */
     fun setCoverPath(coverPath: String?) {
         cachedCoverPath = coverPath
+        AppLogger.d("EpubParser", "[COVER_DEBUG] setCoverPath called with: $coverPath")
+        if (coverPath != null) {
+            val coverFile = File(coverPath)
+            AppLogger.d("EpubParser", "[COVER_DEBUG] Cached cover file exists: ${coverFile.exists()}, canRead: ${coverFile.canRead()}, absolutePath: ${coverFile.absolutePath}")
+        }
     }
     
     override fun canParse(file: File): Boolean {
@@ -119,35 +124,54 @@ class EpubParser : BookParser {
                 images.forEach { img ->
                     val originalSrc = img.attr("src")
                     
+                    AppLogger.d("EpubParser", "[COVER_DEBUG] Processing image on page $page: src='$originalSrc'")
+                    
                     try {
                         // Resolve relative path
                         val imagePath = resolveRelativePath(contentDir, originalSrc)
+                        AppLogger.d("EpubParser", "[COVER_DEBUG] Resolved image path: '$imagePath' (from contentDir='$contentDir', originalSrc='$originalSrc')")
                         
                         // Check if this image is likely the cover image
                         val isCoverImage = imagePath.lowercase().contains("cover") || 
                                          originalSrc.lowercase().contains("cover")
                         
+                        AppLogger.d("EpubParser", "[COVER_DEBUG] Is cover image: $isCoverImage (imagePath.contains('cover'): ${imagePath.lowercase().contains("cover")}, originalSrc.contains('cover'): ${originalSrc.lowercase().contains("cover")})")
+                        
                         // If we have a cached cover path and this looks like a cover image, use the cached version
                         val coverPath = cachedCoverPath
+                        AppLogger.d("EpubParser", "[COVER_DEBUG] cachedCoverPath: $coverPath")
+                        
                         if (isCoverImage && coverPath != null && File(coverPath).exists()) {
-                            AppLogger.d("EpubParser", "Using cached cover image from: $coverPath")
+                            AppLogger.d("EpubParser", "[COVER_DEBUG] Attempting to use cached cover image from: $coverPath")
                             try {
                                 val coverFile = File(coverPath)
+                                AppLogger.d("EpubParser", "[COVER_DEBUG] Cover file details: exists=${coverFile.exists()}, canRead=${coverFile.canRead()}, length=${coverFile.length()}")
                                 val coverBytes = coverFile.readBytes()
+                                AppLogger.d("EpubParser", "[COVER_DEBUG] Successfully read ${coverBytes.size} bytes from cached cover")
                                 val base64Cover = Base64.encodeToString(coverBytes, Base64.NO_WRAP)
+                                AppLogger.d("EpubParser", "[COVER_DEBUG] Base64 encoded cover (length: ${base64Cover.length}, first 50 chars: ${base64Cover.take(50)}...)")
                                 val dataUri = "data:image/jpeg;base64,$base64Cover"
+                                AppLogger.d("EpubParser", "[COVER_DEBUG] Setting img.src to data URI (total length: ${dataUri.length})")
                                 img.attr("src", dataUri)
+                                AppLogger.d("EpubParser", "[COVER_DEBUG] Successfully set cached cover as img.src for image: $originalSrc")
                                 return@forEach // Successfully used cached cover
                             } catch (e: Exception) {
-                                AppLogger.e("EpubParser", "Error using cached cover, falling back to ZIP extraction", e)
+                                AppLogger.e("EpubParser", "[COVER_DEBUG] Error using cached cover, falling back to ZIP extraction. Error: ${e.message}", e)
                                 // Fall through to normal processing
                             }
+                        } else if (isCoverImage && coverPath != null) {
+                            AppLogger.w("EpubParser", "[COVER_DEBUG] Cover image detected but cached file doesn't exist: $coverPath (exists: ${File(coverPath).exists()})")
+                        } else if (isCoverImage) {
+                            AppLogger.w("EpubParser", "[COVER_DEBUG] Cover image detected but no cached cover path available")
                         }
                         
                         // Try to load image from EPUB
+                        AppLogger.d("EpubParser", "[COVER_DEBUG] Attempting to load image from EPUB ZIP: $imagePath")
                         val imageEntry = zip.getEntry(imagePath)
                         if (imageEntry != null) {
+                            AppLogger.d("EpubParser", "[COVER_DEBUG] Found image in ZIP: $imagePath (size: ${imageEntry.size})")
                             val imageBytes = zip.getInputStream(imageEntry).readBytes()
+                            AppLogger.d("EpubParser", "[COVER_DEBUG] Read ${imageBytes.size} bytes from ZIP entry")
                             
                             // Determine MIME type from file extension
                             val mimeType = when (imagePath.substringAfterLast('.').lowercase()) {
@@ -159,17 +183,21 @@ class EpubParser : BookParser {
                                 else -> "image/jpeg" // default
                             }
                             
+                            AppLogger.d("EpubParser", "[COVER_DEBUG] Detected MIME type: $mimeType")
+                            
                             // Convert to base64
                             val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+                            AppLogger.d("EpubParser", "[COVER_DEBUG] Base64 encoded image from ZIP (length: ${base64Image.length})")
                             val dataUri = "data:$mimeType;base64,$base64Image"
                             
                             // Update src attribute
                             img.attr("src", dataUri)
+                            AppLogger.d("EpubParser", "[COVER_DEBUG] Successfully set img.src from ZIP for image: $originalSrc")
                         } else {
-                            AppLogger.w("EpubParser", "Image not found in EPUB: $imagePath")
+                            AppLogger.w("EpubParser", "[COVER_DEBUG] Image not found in EPUB ZIP: $imagePath (originalSrc: $originalSrc)")
                         }
                     } catch (e: Exception) {
-                        AppLogger.e("EpubParser", "Error converting image: $originalSrc", e)
+                        AppLogger.e("EpubParser", "[COVER_DEBUG] Error converting image: $originalSrc. Error: ${e.message}", e)
                     }
                 }
                 
@@ -251,12 +279,16 @@ class EpubParser : BookParser {
      */
     private fun extractCoverImage(bookFile: File, zip: ZipFile, opfDoc: Document, opfPath: String): String? {
         try {
+            AppLogger.d("EpubParser", "[COVER_DEBUG] Starting cover image extraction for: ${bookFile.name}")
+            
             // Method 1: Look for cover in metadata
             var coverId = opfDoc.select("metadata > meta[name=cover]").attr("content")
+            AppLogger.d("EpubParser", "[COVER_DEBUG] Method 1 (metadata): coverId='$coverId'")
             
             // Method 2: Look for cover-image property in manifest
             if (coverId.isBlank()) {
                 coverId = opfDoc.select("manifest > item[properties*=cover-image]").attr("id")
+                AppLogger.d("EpubParser", "[COVER_DEBUG] Method 2 (cover-image property): coverId='$coverId'")
             }
             
             // Method 3: Look for common cover file names in manifest
@@ -267,25 +299,32 @@ class EpubParser : BookParser {
                     href.contains("cover") || id.contains("cover")
                 }
                 coverId = coverItem?.attr("id") ?: ""
+                AppLogger.d("EpubParser", "[COVER_DEBUG] Method 3 (name search): coverId='$coverId', coverItem href='${coverItem?.attr("href")}', id='${coverItem?.attr("id")}'")
             }
             
             // Get the image path from manifest
             var imagePath: String? = null
             if (coverId.isNotBlank()) {
                 imagePath = opfDoc.select("manifest > item[id=$coverId]").attr("href")
+                AppLogger.d("EpubParser", "[COVER_DEBUG] Image path from manifest (coverId='$coverId'): '$imagePath'")
             }
             
             // If we still don't have a cover, try common file names directly
             if (imagePath.isNullOrBlank()) {
                 val commonCoverNames = listOf("cover.jpg", "cover.jpeg", "cover.png", "Cover.jpg", "Cover.jpeg", "Cover.png")
                 val opfDir = if (opfPath.contains('/')) opfPath.substringBeforeLast('/') else ""
+                AppLogger.d("EpubParser", "[COVER_DEBUG] Trying common cover names in opfDir='$opfDir'")
                 imagePath = commonCoverNames.firstOrNull { name ->
                     val fullPath = if (opfDir.isNotBlank()) "$opfDir/$name" else name
-                    zip.getEntry(fullPath) != null
+                    val exists = zip.getEntry(fullPath) != null
+                    AppLogger.d("EpubParser", "[COVER_DEBUG] Checking '$fullPath': exists=$exists")
+                    exists
                 }
+                AppLogger.d("EpubParser", "[COVER_DEBUG] Common name search result: '$imagePath'")
             }
             
             if (imagePath.isNullOrBlank()) {
+                AppLogger.w("EpubParser", "[COVER_DEBUG] No cover image found for: ${bookFile.name}")
                 return null
             }
             
@@ -297,24 +336,43 @@ class EpubParser : BookParser {
                 imagePath.removePrefix("/")
             }
             
+            AppLogger.d("EpubParser", "[COVER_DEBUG] Full image path in ZIP: '$fullImagePath'")
+            
             // Extract and save the image
-            val imageEntry = zip.getEntry(fullImagePath) ?: return null
+            val imageEntry = zip.getEntry(fullImagePath)
+            if (imageEntry == null) {
+                AppLogger.w("EpubParser", "[COVER_DEBUG] Image entry not found in ZIP: '$fullImagePath'")
+                return null
+            }
+            
+            AppLogger.d("EpubParser", "[COVER_DEBUG] Found image entry in ZIP (size: ${imageEntry.size})")
             val imageBytes = zip.getInputStream(imageEntry).readBytes()
+            AppLogger.d("EpubParser", "[COVER_DEBUG] Read ${imageBytes.size} bytes from ZIP")
             
             // Decode bitmap to verify it's a valid image
-            val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size) ?: return null
+            val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+            if (bitmap == null) {
+                AppLogger.w("EpubParser", "[COVER_DEBUG] Failed to decode image as bitmap (invalid image data)")
+                return null
+            }
+            AppLogger.d("EpubParser", "[COVER_DEBUG] Successfully decoded bitmap: ${bitmap.width}x${bitmap.height}")
             
             // Save to cache directory
             val cacheDir = File(bookFile.parentFile, ".covers")
             cacheDir.mkdirs()
             val coverFile = File(cacheDir, "${bookFile.nameWithoutExtension}_cover.jpg")
             
+            AppLogger.d("EpubParser", "[COVER_DEBUG] Saving cover to: ${coverFile.absolutePath}")
+            
             FileOutputStream(coverFile).use { out ->
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
             }
             
+            AppLogger.d("EpubParser", "[COVER_DEBUG] Cover saved successfully: ${coverFile.absolutePath} (size: ${coverFile.length()} bytes)")
+            
             return coverFile.absolutePath
         } catch (e: Exception) {
+            AppLogger.e("EpubParser", "[COVER_DEBUG] Exception during cover extraction: ${e.message}", e)
             e.printStackTrace()
             return null
         }
