@@ -375,9 +375,19 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
                 launch {
                     viewModel.content.collect { pageContent ->
+                        AppLogger.d(
+                            "ReaderActivity",
+                            "[CONTENT_LOADED] page=${viewModel.currentPage.value} textLength=${pageContent.text.length} " +
+                                    "hasHtml=${!pageContent.html.isNullOrBlank()} pendingTtsResume=$pendingTtsResume " +
+                                    "autoContinueTts=$autoContinueTts"
+                        )
                         currentPageText = pageContent.text
                         currentPageHtml = pageContent.html
                         sentenceBoundaries = buildSentenceBoundaries(pageContent.text)
+                        AppLogger.d(
+                            "ReaderActivity",
+                            "[CONTENT_LOADED] Built ${sentenceBoundaries.size} sentence boundaries for page ${viewModel.currentPage.value}"
+                        )
                         highlightedSentenceIndex = -1
                         currentHighlightRange = null
                         viewModel.publishHighlight(viewModel.currentPage.value, null)
@@ -389,8 +399,20 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         }
                         binding.contentScrollView.scrollTo(0, 0)
                         if (pendingTtsResume && autoContinueTts && currentPageText.isNotBlank()) {
+                            AppLogger.d(
+                                "ReaderActivity",
+                                "[TTS_RESUME_TRIGGERED] Conditions met: pendingTtsResume=$pendingTtsResume " +
+                                        "autoContinueTts=$autoContinueTts textNotBlank=${currentPageText.isNotBlank()}. " +
+                                        "Calling resumeTtsForCurrentPage()"
+                            )
                             pendingTtsResume = false
                             resumeTtsForCurrentPage()
+                        } else {
+                            AppLogger.d(
+                                "ReaderActivity",
+                                "[TTS_RESUME_SKIPPED] Conditions not met: pendingTtsResume=$pendingTtsResume " +
+                                        "autoContinueTts=$autoContinueTts textNotBlank=${currentPageText.isNotBlank()}"
+                            )
                         }
                     }
                 }
@@ -631,33 +653,75 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     }
 
     private fun handleTtsStatus(snapshot: TTSStatusSnapshot) {
+        AppLogger.d(
+            "ReaderActivity",
+            "[TTS_STATUS_CHANGE] state=${snapshot.state} sentenceIndex=${snapshot.sentenceIndex} " +
+                    "sentenceTotal=${snapshot.sentenceTotal} currentPage=${viewModel.currentPage.value} " +
+                    "autoContinueTts=$autoContinueTts pendingTtsResume=$pendingTtsResume"
+        )
+        
         // Update button UI based on TTS state
         updateTtsButtonStates(snapshot.state)
         
         when (snapshot.state) {
             TTSPlaybackState.PLAYING -> {
+                AppLogger.d(
+                    "ReaderActivity",
+                    "[TTS_STATE_PLAYING] Setting autoContinueTts=true, pendingTtsResume=false"
+                )
                 autoContinueTts = true
                 pendingTtsResume = false
             }
             TTSPlaybackState.PAUSED -> {
+                AppLogger.d(
+                    "ReaderActivity",
+                    "[TTS_STATE_PAUSED] Setting autoContinueTts=false, pendingTtsResume=false"
+                )
                 autoContinueTts = false
                 pendingTtsResume = false
             }
             TTSPlaybackState.STOPPED -> {
                 val reachedEnd = snapshot.sentenceTotal > 0 && snapshot.sentenceIndex >= snapshot.sentenceTotal
+                AppLogger.d(
+                    "ReaderActivity",
+                    "[TTS_STATE_STOPPED] reachedEnd=$reachedEnd (sentenceIndex=${snapshot.sentenceIndex} >= sentenceTotal=${snapshot.sentenceTotal}) " +
+                            "autoContinueTts=$autoContinueTts"
+                )
                 if (autoContinueTts && reachedEnd) {
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "[TTS_CHAPTER_ADVANCE] Attempting to advance to next chapter/page. Setting pendingTtsResume=true"
+                    )
                     pendingTtsResume = true
                     val advanced = viewModel.nextPage()
                     if (!advanced) {
+                        AppLogger.w(
+                            "ReaderActivity",
+                            "[TTS_CHAPTER_ADVANCE_FAILED] No more pages available. Setting autoContinueTts=false, pendingTtsResume=false"
+                        )
                         autoContinueTts = false
                         pendingTtsResume = false
+                    } else {
+                        AppLogger.d(
+                            "ReaderActivity",
+                            "[TTS_CHAPTER_ADVANCE_SUCCESS] Successfully advanced to next page. Waiting for content to load and trigger resume."
+                        )
                     }
                 } else {
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "[TTS_STOPPED_NO_ADVANCE] Not advancing (autoContinueTts=$autoContinueTts reachedEnd=$reachedEnd). " +
+                                "Setting autoContinueTts=false, pendingTtsResume=false"
+                    )
                     autoContinueTts = false
                     pendingTtsResume = false
                 }
             }
             TTSPlaybackState.IDLE -> {
+                AppLogger.d(
+                    "ReaderActivity",
+                    "[TTS_STATE_IDLE] Setting autoContinueTts=false, pendingTtsResume=false"
+                )
                 autoContinueTts = false
                 pendingTtsResume = false
             }
@@ -665,13 +729,29 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     }
 
     private fun resumeTtsForCurrentPage() {
-        if (currentPageText.isBlank()) return
+        AppLogger.d(
+            "ReaderActivity",
+            "[TTS_RESUME_REQUEST] Starting TTS for page ${viewModel.currentPage.value} with textLength=${currentPageText.length}"
+        )
+        if (currentPageText.isBlank()) {
+            AppLogger.w(
+                "ReaderActivity",
+                "[TTS_RESUME_ABORTED] Current page text is blank, cannot resume TTS"
+            )
+            return
+        }
         val configuration = TTSConfiguration(
             speed = ttsPreferences.speed,
             pitch = ttsPreferences.pitch,
             autoScroll = ttsPreferences.autoScroll,
             highlightSentence = ttsPreferences.highlightSentence,
             languageTag = ttsPreferences.languageTag
+        )
+        AppLogger.d(
+            "ReaderActivity",
+            "[TTS_RESUME_REQUEST] Configuration: speed=${configuration.speed} pitch=${configuration.pitch} " +
+                    "autoScroll=${configuration.autoScroll} highlightSentence=${configuration.highlightSentence} " +
+                    "languageTag=${configuration.languageTag}. Calling TTSService.start()"
         )
         TTSService.start(this, currentPageText, configuration)
     }

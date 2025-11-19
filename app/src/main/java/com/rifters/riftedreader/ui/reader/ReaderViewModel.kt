@@ -9,6 +9,7 @@ import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.domain.parser.BookParser
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.domain.parser.TxtParser
+import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -160,12 +161,27 @@ class ReaderViewModel(
 
     fun nextPage(): Boolean {
         val pages = _pages.value
-        if (pages.isEmpty()) return false
-        val current = _currentPage.value
-        if (current >= pages.lastIndex) {
+        if (pages.isEmpty()) {
+            AppLogger.d(
+                "ReaderViewModel",
+                "[NEXT_PAGE_FAILED] No pages available (pages.isEmpty())"
+            )
             return false
         }
-        updateCurrentPage(current + 1)
+        val current = _currentPage.value
+        if (current >= pages.lastIndex) {
+            AppLogger.d(
+                "ReaderViewModel",
+                "[NEXT_PAGE_FAILED] Already at last page (current=$current lastIndex=${pages.lastIndex})"
+            )
+            return false
+        }
+        val nextIndex = current + 1
+        AppLogger.d(
+            "ReaderViewModel",
+            "[NEXT_PAGE_SUCCESS] Advancing from page $current to $nextIndex (totalPages=${pages.size})"
+        )
+        updateCurrentPage(nextIndex)
         return true
     }
 
