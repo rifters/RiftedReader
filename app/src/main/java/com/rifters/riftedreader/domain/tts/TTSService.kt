@@ -187,7 +187,7 @@ class TTSService : Service() {
         AppLogger.event("TTSService", "handlePlay - Starting TTS playback", "domain/tts/TTSService/playback")
         // If TTS is not ready yet, queue this intent for later
         if (!ttsEngine.isReady()) {
-            AppLogger.w("TTSService", "TTS engine not ready, queuing play intent")
+            AppLogger.w("TTSService", "[TTS_ENGINE_NOT_READY] TTS engine not ready, queuing play intent")
             pendingPlayIntents.add(intent)
             return
         }
@@ -200,15 +200,34 @@ class TTSService : Service() {
         val languageExtra = intent.getStringExtra(EXTRA_LANGUAGE)
         val requestedLanguageTag = languageExtra?.takeIf { it.isNotBlank() }
 
+        AppLogger.d(
+            "TTSService",
+            "[HANDLE_PLAY_REQUEST] Received text (length=${text?.length ?: 0}) speed=$speed pitch=$pitch " +
+                    "autoScroll=$autoScroll highlight=$highlight languageTag=$requestedLanguageTag"
+        )
+
         if (!text.isNullOrBlank()) {
             // Only reset position if the text has changed
             if (text != currentText) {
+                AppLogger.d(
+                    "TTSService",
+                    "[TEXT_CHANGED] New text detected (old length=${currentText.length}, new length=${text.length}). " +
+                            "Resetting position to 0 and parsing sentences."
+                )
                 currentText = text
                 sentences = splitIntoSentences(text)
+                AppLogger.d(
+                    "TTSService",
+                    "[SENTENCES_PARSED] Split text into ${sentences.size} sentences"
+                )
                 currentSentenceIndex = 0
                 lastStoppedIndex = 0
                 shouldFlushQueue = true  // New text, flush the queue
             } else {
+                AppLogger.d(
+                    "TTSService",
+                    "[TEXT_UNCHANGED] Same text as before. Resuming from lastStoppedIndex=$lastStoppedIndex (${sentences.size} total sentences)"
+                )
                 // Same text, resume from last stopped position
                 currentSentenceIndex = lastStoppedIndex
                 shouldFlushQueue = true  // Resume from stopped, flush queue
@@ -216,6 +235,10 @@ class TTSService : Service() {
         }
 
         if (sentences.isEmpty()) {
+            AppLogger.w(
+                "TTSService",
+                "[NO_SENTENCES] No sentences to speak. Stopping service."
+            )
             currentSentenceIndex = 0
             lastStoppedIndex = 0
             broadcastStatus(TTSPlaybackState.STOPPED)
@@ -230,13 +253,26 @@ class TTSService : Service() {
         ttsEngine.setSpeed(speed)
         ttsEngine.setPitch(pitch)
         val languageTagToApply = requestedLanguageTag ?: preferences.languageTag
+        AppLogger.d(
+            "TTSService",
+            "[APPLYING_LANGUAGE] languageTag=$languageTagToApply"
+        )
         applyLanguage(languageTagToApply)
 
         if (!ensureAudioFocus()) {
+            AppLogger.w(
+                "TTSService",
+                "[AUDIO_FOCUS_FAILED] Could not obtain audio focus. Stopping."
+            )
             handleStop()
             return
         }
 
+        AppLogger.d(
+            "TTSService",
+            "[STARTING_PLAYBACK] Starting at sentence $currentSentenceIndex of ${sentences.size}. " +
+                    "Setting state to PLAYING and starting foreground service."
+        )
         mediaSession.isActive = true
         playbackState = TTSPlaybackState.PLAYING
         updatePlaybackState(playbackState)
@@ -250,9 +286,17 @@ class TTSService : Service() {
 
     private fun handleStop() {
         AppLogger.event("TTSService", "handleStop - Stopping TTS playback", "domain/tts/TTSService/playback")
+        AppLogger.d(
+            "TTSService",
+            "[HANDLE_STOP] Stopping at sentence $currentSentenceIndex of ${sentences.size}. Saving position as lastStoppedIndex."
+        )
         ttsEngine.stop()
         // Save the current position so we can resume from here later
         lastStoppedIndex = currentSentenceIndex.coerceIn(0, sentences.lastIndex.coerceAtLeast(0))
+        AppLogger.d(
+            "TTSService",
+            "[HANDLE_STOP] lastStoppedIndex set to $lastStoppedIndex"
+        )
         abandonAudioFocus()
         broadcastStatus(TTSPlaybackState.STOPPED)
         mediaSession.isActive = false
@@ -314,14 +358,32 @@ class TTSService : Service() {
 
     private fun handleResume() {
         AppLogger.event("TTSService", "handleResume - Resuming TTS playback", "domain/tts/TTSService/playback")
-        if (sentences.isEmpty()) return
-        if (currentSentenceIndex !in sentences.indices) {
-            currentSentenceIndex = sentences.lastIndex.coerceAtLeast(0)
-        }
-        if (!ensureAudioFocus()) {
-            AppLogger.w("TTSService", "Failed to gain audio focus")
+        if (sentences.isEmpty()) {
+            AppLogger.w(
+                "TTSService",
+                "[RESUME_FAILED] Cannot resume - no sentences available"
+            )
             return
         }
+        if (currentSentenceIndex !in sentences.indices) {
+            AppLogger.w(
+                "TTSService",
+                "[RESUME_INDEX_OUT_OF_RANGE] currentSentenceIndex=$currentSentenceIndex out of range, clamping to ${sentences.lastIndex}"
+            )
+            currentSentenceIndex = sentences.lastIndex.coerceAtLeast(0)
+        }
+        AppLogger.d(
+            "TTSService",
+            "[RESUME_ATTEMPT] Attempting to resume at sentence $currentSentenceIndex of ${sentences.size}"
+        )
+        if (!ensureAudioFocus()) {
+            AppLogger.w("TTSService", "[RESUME_FAILED] Failed to gain audio focus")
+            return
+        }
+        AppLogger.d(
+            "TTSService",
+            "[RESUME_SUCCESS] Audio focus obtained. Setting shouldFlushQueue=true and calling speakCurrentSentence()"
+        )
         shouldFlushQueue = true  // Flush queue when resuming
         speakCurrentSentence()
     }
@@ -379,14 +441,26 @@ class TTSService : Service() {
 
     private fun speakCurrentSentence() {
         if (currentSentenceIndex !in sentences.indices) {
+            AppLogger.d(
+                "TTSService",
+                "[SPEAK_SENTENCE_END] currentSentenceIndex=$currentSentenceIndex is out of range (0..${sentences.lastIndex}). Calling handleStop()."
+            )
             handleStop()
             return
         }
 
         val sentence = sentences[currentSentenceIndex]
+        AppLogger.d(
+            "TTSService",
+            "[SPEAK_SENTENCE] Speaking sentence $currentSentenceIndex of ${sentences.size}: \"${sentence.take(50)}${if (sentence.length > 50) "..." else ""}\""
+        )
         val result = replacementEngine.applyReplacements(sentence)
         when (result.command) {
             TTSCommand.SKIP -> {
+                AppLogger.d(
+                    "TTSService",
+                    "[TTS_COMMAND_SKIP] Skipping sentence $currentSentenceIndex"
+                )
                 currentSentenceIndex++
                 serviceScope.launch {
                     delay(50)
@@ -395,27 +469,47 @@ class TTSService : Service() {
                 return
             }
             TTSCommand.STOP -> {
+                AppLogger.d(
+                    "TTSService",
+                    "[TTS_COMMAND_STOP] STOP command received at sentence $currentSentenceIndex"
+                )
                 handleStop()
                 return
             }
             TTSCommand.NEXT -> {
+                AppLogger.d(
+                    "TTSService",
+                    "[TTS_COMMAND_NEXT] NEXT command received. Moving to end (sentence ${sentences.size}) to trigger chapter advance."
+                )
                 // Move to the end so reader can advance externally.
                 currentSentenceIndex = sentences.size
                 handleStop()
                 return
             }
             TTSCommand.PAUSE -> {
+                AppLogger.d(
+                    "TTSService",
+                    "[TTS_COMMAND_PAUSE] PAUSE command received at sentence $currentSentenceIndex"
+                )
                 pausePlayback()
                 return
             }
             null -> {
                 if (!ensureAudioFocus()) {
+                    AppLogger.w(
+                        "TTSService",
+                        "[AUDIO_FOCUS_LOST] Lost audio focus while trying to speak sentence $currentSentenceIndex"
+                    )
                     handleStop()
                     return
                 }
                 val textToSpeak = result.text.ifBlank { sentence }
                 val flushQueue = shouldFlushQueue
                 shouldFlushQueue = false  // Only flush the first utterance
+                AppLogger.d(
+                    "TTSService",
+                    "[SPEAKING] Sentence $currentSentenceIndex: speaking ${textToSpeak.length} chars (flushQueue=$flushQueue)"
+                )
                 ttsEngine.speak(textToSpeak, utteranceId(), flushQueue)
                 broadcastStatus(TTSPlaybackState.PLAYING)
             }
@@ -445,7 +539,16 @@ class TTSService : Service() {
     }
 
     private fun handleUtteranceCompletion() {
+        AppLogger.d(
+            "TTSService",
+            "[UTTERANCE_COMPLETED] Sentence $currentSentenceIndex completed. Moving to next sentence."
+        )
         currentSentenceIndex++
+        AppLogger.d(
+            "TTSService",
+            "[UTTERANCE_COMPLETED] New currentSentenceIndex=$currentSentenceIndex (total=${sentences.size}). " +
+                    "Scheduling speakCurrentSentence() after 200ms delay."
+        )
         serviceScope.launch {
             delay(200)
             speakCurrentSentence()
