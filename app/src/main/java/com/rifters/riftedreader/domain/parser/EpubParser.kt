@@ -115,7 +115,9 @@ class EpubParser : BookParser {
                 
                 // Process images: cache them on disk and use file:// URLs
                 val contentDir = contentPath.substringBeforeLast('/', "")
-                val images = body.select("img[src]")
+                // Match both HTML img tags and SVG image elements
+                // Note: We select all 'image' elements because JSoup has issues with xlink:href in CSS selectors
+                val images = body.select("img[src], image[href], image")
                 
                 if (images.isNotEmpty()) {
                     AppLogger.d("EpubParser", "Found ${images.size} images on page $page")
@@ -125,9 +127,18 @@ class EpubParser : BookParser {
                 }
                 
                 images.forEach { img ->
-                    val originalSrc = img.attr("src")
+                    // Get src from either img[src], image[href], or image[xlink:href]
+                    val originalSrc = when {
+                        img.hasAttr("src") -> img.attr("src")
+                        img.hasAttr("href") -> img.attr("href")
+                        img.hasAttr("xlink:href") -> img.attr("xlink:href")
+                        else -> {
+                            AppLogger.w("EpubParser", "Image element has no src/href attribute on page $page")
+                            return@forEach
+                        }
+                    }
                     
-                    AppLogger.d("EpubParser", "Processing image on page $page: src='$originalSrc'")
+                    AppLogger.d("EpubParser", "Processing image on page $page: src='$originalSrc' (tag=${img.tagName()})")
                     
                     try {
                         // Resolve relative path
@@ -148,8 +159,17 @@ class EpubParser : BookParser {
                                 val coverBytes = coverFile.readBytes()
                                 val base64Cover = Base64.encodeToString(coverBytes, Base64.NO_WRAP)
                                 val dataUri = "data:image/jpeg;base64,$base64Cover"
-                                img.attr("src", dataUri)
-                                AppLogger.d("EpubParser", "Successfully set cached cover as img.src for image: $originalSrc")
+                                
+                                // Set appropriate attribute based on element type
+                                if (img.tagName() == "img") {
+                                    img.attr("src", dataUri)
+                                } else {
+                                    // For SVG <image> elements, update both href and xlink:href for compatibility
+                                    img.attr("href", dataUri)
+                                    img.attr("xlink:href", dataUri)
+                                }
+                                
+                                AppLogger.d("EpubParser", "Successfully set cached cover as ${img.tagName()} ${if (img.tagName() == "img") "src" else "href"} for image: $originalSrc")
                                 return@forEach // Successfully used cached cover
                             } catch (e: Exception) {
                                 AppLogger.e("EpubParser", "Error using cached cover, falling back to normal processing. Error: ${e.message}", e)
@@ -174,9 +194,16 @@ class EpubParser : BookParser {
                                     output.write(imageBytes)
                                 }
                                 
-                                // Update img src to file:// URL
+                                // Update appropriate attribute based on element type
                                 val fileUrl = "file://${cachedImageFile.absolutePath}"
-                                img.attr("src", fileUrl)
+                                if (img.tagName() == "img") {
+                                    img.attr("src", fileUrl)
+                                } else {
+                                    // For SVG <image> elements, update both href and xlink:href for compatibility
+                                    img.attr("href", fileUrl)
+                                    img.attr("xlink:href", fileUrl)
+                                }
+                                
                                 AppLogger.d("EpubParser", "Cached image to: ${cachedImageFile.absolutePath}")
                             } catch (e: Exception) {
                                 AppLogger.e("EpubParser", "Failed to cache image to disk: ${e.message}", e)
@@ -191,7 +218,16 @@ class EpubParser : BookParser {
                                 }
                                 val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
                                 val dataUri = "data:$mimeType;base64,$base64Image"
-                                img.attr("src", dataUri)
+                                
+                                // Set appropriate attribute based on element type
+                                if (img.tagName() == "img") {
+                                    img.attr("src", dataUri)
+                                } else {
+                                    // For SVG <image> elements, update both href and xlink:href for compatibility
+                                    img.attr("href", dataUri)
+                                    img.attr("xlink:href", dataUri)
+                                }
+                                
                                 AppLogger.w("EpubParser", "Fell back to base64 for image: $originalSrc")
                             }
                         } else {
