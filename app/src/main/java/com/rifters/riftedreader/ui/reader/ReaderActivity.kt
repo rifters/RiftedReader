@@ -638,9 +638,14 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             if (readerMode == ReaderMode.PAGE) {
                 binding.contentScrollView.isVisible = false
                 binding.pageViewPager.isVisible = true
+                // Disable ViewPager2 user input to let WebView handle swipes
+                // and enable tap zones to work properly
+                binding.pageViewPager.isUserInputEnabled = false
+                AppLogger.d("ReaderActivity", "ViewPager2 user input disabled for PAGE mode")
                 viewModel.publishHighlight(viewModel.currentPage.value, currentHighlightRange)
             } else {
                 binding.pageViewPager.isVisible = false
+                binding.pageViewPager.isUserInputEnabled = true
                 binding.contentScrollView.isVisible = true
                 currentHighlightRange?.let { applyScrollHighlight(it) }
             }
