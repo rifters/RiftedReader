@@ -587,6 +587,28 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         }
     }
 
+    /**
+     * Navigate to the previous chapter and jump to its last internal page.
+     * Used when at the first page of current chapter and navigating backward.
+     */
+    internal fun navigateToPreviousChapterToLastPage(animated: Boolean = true) {
+        val currentIndex = viewModel.currentPage.value
+        val previousIndex = currentIndex - 1
+        AppLogger.d(
+            "ReaderActivity",
+            "navigateToPreviousChapterToLastPage called: currentPage=$currentIndex -> previousPage=$previousIndex mode=$readerMode " +
+                    "[PAGE_SWITCH_REASON:BACKWARD_CHAPTER_NAVIGATION]"
+        )
+        val moved = viewModel.previousChapterToLastPage()
+        if (readerMode == ReaderMode.PAGE && moved) {
+            AppLogger.d(
+                "ReaderActivity",
+                "Programmatically setting ViewPager2 to page $previousIndex with jump-to-last-page flag [PROGRAMMATIC_PAGE_CHANGE]"
+            )
+            binding.pageViewPager.setCurrentItem(previousIndex, animated)
+        }
+    }
+
     private fun handleTtsStatus(snapshot: TTSStatusSnapshot) {
         // Update button UI based on TTS state
         updateTtsButtonStates(snapshot.state)
