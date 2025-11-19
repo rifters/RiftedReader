@@ -114,6 +114,16 @@
         if (preservedFontSize) {
             wrapper.style.fontSize = preservedFontSize;
         }
+        
+        // CRITICAL FIX: Set explicit width on wrapper to enable horizontal scrolling
+        // Without this, scrollWidth reports correctly but scrollLeft stays 0
+        // Force a layout to get accurate scrollWidth measurement
+        wrapper.offsetHeight; // Force reflow
+        const totalWidth = wrapper.scrollWidth;
+        if (totalWidth > 0) {
+            wrapper.style.width = totalWidth + 'px';
+            console.log('inpage_paginator: Set wrapper width to ' + totalWidth + 'px for scrolling');
+        }
     }
     
     /**
@@ -141,19 +151,27 @@
         
         console.log('inpage_paginator: Reflow triggered');
         
+        // Save current page before reflow
+        const currentPageBeforeReflow = getCurrentPage();
+        console.log('inpage_paginator: Current page before reflow: ' + currentPageBeforeReflow);
+        
         const contentWrapper = document.getElementById('paginator-content');
         if (contentWrapper) {
             updateColumnStyles(contentWrapper);
         }
         
         // Force reflow by temporarily changing a property
-        const currentScroll = columnContainer.scrollLeft;
         columnContainer.style.display = 'none';
         columnContainer.offsetHeight; // Force reflow
         columnContainer.style.display = '';
-        columnContainer.scrollLeft = currentScroll;
         
+        // Restore to same page (not same scroll position, because width may have changed)
         const pageCount = getPageCount();
+        const targetPage = Math.min(currentPageBeforeReflow, pageCount - 1);
+        if (targetPage >= 0) {
+            goToPage(targetPage, false);
+        }
+        
         const currentPage = getCurrentPage();
         console.log('inpage_paginator: Reflow complete - pageCount=' + pageCount + ', currentPage=' + currentPage);
         
