@@ -785,17 +785,17 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         binding.root.post {
             when (state) {
                 TTSPlaybackState.IDLE, TTSPlaybackState.STOPPED -> {
-                    binding.ttsPlayPauseButton.text = getString(R.string.tts_action_play)
+                    binding.ttsPlayPauseButton.contentDescription = getString(R.string.tts_action_play)
                     binding.ttsPlayPauseButton.setIconResource(R.drawable.ic_tts_play_24)
                     binding.ttsStopButton.isVisible = false
                 }
                 TTSPlaybackState.PLAYING -> {
-                    binding.ttsPlayPauseButton.text = getString(R.string.tts_action_pause)
+                    binding.ttsPlayPauseButton.contentDescription = getString(R.string.tts_action_pause)
                     binding.ttsPlayPauseButton.setIconResource(R.drawable.ic_tts_pause_24)
                     binding.ttsStopButton.isVisible = true
                 }
                 TTSPlaybackState.PAUSED -> {
-                    binding.ttsPlayPauseButton.text = getString(R.string.tts_action_play)
+                    binding.ttsPlayPauseButton.contentDescription = getString(R.string.tts_action_play)
                     binding.ttsPlayPauseButton.setIconResource(R.drawable.ic_tts_play_24)
                     binding.ttsStopButton.isVisible = true
                 }
