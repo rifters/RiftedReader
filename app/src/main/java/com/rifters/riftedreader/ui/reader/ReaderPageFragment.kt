@@ -1017,6 +1017,76 @@ class ReaderPageFragment : Fragment() {
             }
         }
     }
+    
+    /**
+     * Handle a hardware page key (volume key) coming from the Activity.
+     *
+     * Returns true if the fragment will consume the key (suppresses the volume change).
+     * The actual navigation may happen asynchronously: if an in-page navigation is possible
+     * we call the WebView paginator; otherwise we fall back to activity chapter navigation.
+     */
+    fun handleHardwarePageKey(isNext: Boolean): Boolean {
+        // If WebView is not ready or not visible, don't consume — let activity handle fallback.
+        if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+            return false
+        }
+
+        // Consume the key immediately to suppress volume change; resolve navigation asynchronously.
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
+                val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
+
+                if (isNext) {
+                    if (currentPage < pageCount - 1) {
+                        // Navigate in-page
+                        com.rifters.riftedreader.util.AppLogger.userAction(
+                            "ReaderPageFragment",
+                            "HARDWARE_INTERCEPT: volume -> next in-page (${currentPage + 1}/$pageCount) within page $pageIndex",
+                            "ui/webview/pagination"
+                        )
+                        WebViewPaginatorBridge.nextPage(binding.pageWebView)
+                    } else {
+                        // At last in-page: fall back to chapter navigation in Activity
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "HARDWARE_FALLTHROUGH: at last in-page ($currentPage/$pageCount) - falling back to ViewPager chapter navigation"
+                        )
+                        (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
+                    }
+                } else {
+                    if (currentPage > 0) {
+                        com.rifters.riftedreader.util.AppLogger.userAction(
+                            "ReaderPageFragment",
+                            "HARDWARE_INTERCEPT: volume -> prev in-page (${currentPage - 1}/$pageCount) within page $pageIndex",
+                            "ui/webview/pagination"
+                        )
+                        WebViewPaginatorBridge.prevPage(binding.pageWebView)
+                    } else {
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "HARDWARE_FALLTHROUGH: at first in-page ($currentPage/$pageCount) - falling back to ViewPager chapter navigation"
+                        )
+                        (activity as? ReaderActivity)?.navigateToPreviousPage(animated = true)
+                    }
+                }
+            } catch (e: Exception) {
+                // If anything goes wrong, fallback to activity navigation
+                com.rifters.riftedreader.util.AppLogger.e(
+                    "ReaderPageFragment",
+                    "ERROR handling hardware page key for page $pageIndex: ${e.message} - falling back to ViewPager",
+                    e
+                )
+                if (isNext) {
+                    (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
+                } else {
+                    (activity as? ReaderActivity)?.navigateToPreviousPage(animated = true)
+                }
+            }
+        }
+
+        return true
+    }
 
     companion object {
         private const val ARG_PAGE_INDEX = "arg_page_index"
