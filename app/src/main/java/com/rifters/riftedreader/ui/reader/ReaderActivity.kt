@@ -431,7 +431,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         val maxValue = (total - 1).coerceAtLeast(0)
                         // Ensure valueTo is always greater than valueFrom (0) to avoid IllegalStateException
                         val safeValueTo = maxValue.toFloat().coerceAtLeast(1f)
+                        
+                        // CRITICAL: Reduce value BEFORE updating valueTo to avoid IllegalStateException
+                        if (binding.pageSlider.value > safeValueTo) {
+                            binding.pageSlider.value = maxValue.toFloat()
+                        }
+                        
                         binding.pageSlider.valueTo = safeValueTo
+                        
+                        // Ensure value is within range (in case it wasn't caught above)
                         if (binding.pageSlider.value > maxValue) {
                             binding.pageSlider.value = maxValue.toFloat()
                         }
@@ -954,13 +962,19 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             val maxValue = (totalWebViewPages - 1).coerceAtLeast(0)
             val safeValueTo = maxValue.toFloat().coerceAtLeast(1f)
             
+            // CRITICAL: Reduce value BEFORE updating valueTo to avoid IllegalStateException
+            // If current value would exceed new valueTo, reduce it first
+            val safeCurrentPage = currentWebViewPage.coerceIn(0, maxValue)
+            if (binding.pageSlider.value > safeValueTo) {
+                binding.pageSlider.value = safeCurrentPage.toFloat()
+            }
+            
             // Update slider range
             if (binding.pageSlider.valueTo != safeValueTo) {
                 binding.pageSlider.valueTo = safeValueTo
             }
             
-            // Update slider position
-            val safeCurrentPage = currentWebViewPage.coerceIn(0, maxValue)
+            // Update slider position (if not already set above)
             if (binding.pageSlider.value != safeCurrentPage.toFloat()) {
                 binding.pageSlider.value = safeCurrentPage.toFloat()
             }
