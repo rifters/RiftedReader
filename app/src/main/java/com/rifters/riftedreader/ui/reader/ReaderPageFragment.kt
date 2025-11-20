@@ -45,6 +45,10 @@ class ReaderPageFragment : Fragment() {
     // Track current in-page position to preserve during reloads
     private var currentInPageIndex: Int = 0
     
+    // Track if paginator has completed initialization (onPaginationReady callback received)
+    // This prevents navigation logic from using stale/default values before paginator is ready
+    private var isPaginatorInitialized: Boolean = false
+    
     // Track previous settings to detect what changed
     private var previousSettings: com.rifters.riftedreader.data.preferences.ReaderSettings? = null
     
@@ -227,6 +231,8 @@ class ReaderPageFragment : Fragment() {
                         ttsChunks = emptyList()
                         // Reset in-page position for new content
                         currentInPageIndex = 0
+                        // Reset paginator initialization flag for new chapter content
+                        isPaginatorInitialized = false
                         if (highlightedRange == null) {
                             renderBaseContent()
                         } else {
@@ -238,6 +244,7 @@ class ReaderPageFragment : Fragment() {
                         highlightedRange = null
                         ttsChunks = emptyList()
                         currentInPageIndex = 0
+                        isPaginatorInitialized = false
                         binding.pageTextView.text = ""
                         binding.pageWebView.loadUrl("about:blank")
                     }
@@ -379,6 +386,7 @@ class ReaderPageFragment : Fragment() {
         // Properly clean up WebView to prevent memory leaks and crashes
         // Fix: Reset isWebViewReady FIRST to prevent any JavaScript execution during cleanup
         isWebViewReady = false
+        isPaginatorInitialized = false
         
         try {
             binding.pageWebView.apply {
@@ -448,11 +456,11 @@ class ReaderPageFragment : Fragment() {
                         "onScroll: page=$pageIndex distanceX=$distanceX distanceY=$distanceY cumulative=$cumulativeScrollX"
                     )
                     
-                    // Only handle if WebView is visible and ready
-                    if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+                    // Only handle if WebView is visible and ready AND paginator is initialized
+                    if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE || !isPaginatorInitialized) {
                         com.rifters.riftedreader.util.AppLogger.d(
                             "ReaderPageFragment", 
-                            "onScroll ignored on page $pageIndex: isWebViewReady=$isWebViewReady, visibility=${binding.pageWebView.visibility}"
+                            "onScroll ignored on page $pageIndex: isWebViewReady=$isWebViewReady, visibility=${binding.pageWebView.visibility}, isPaginatorInitialized=$isPaginatorInitialized"
                         )
                         return false
                     }
@@ -566,11 +574,11 @@ class ReaderPageFragment : Fragment() {
                         "onFling: page=$pageIndex vx=$velocityX vy=$velocityY mode=${settings.mode}"
                     )
                     
-                    // Only handle if WebView is visible and ready
-                    if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+                    // Only handle if WebView is visible and ready AND paginator is initialized
+                    if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE || !isPaginatorInitialized) {
                         com.rifters.riftedreader.util.AppLogger.d(
                             "ReaderPageFragment", 
-                            "Fling ignored on page $pageIndex: isWebViewReady=$isWebViewReady, visibility=${binding.pageWebView.visibility}"
+                            "Fling ignored on page $pageIndex: isWebViewReady=$isWebViewReady, visibility=${binding.pageWebView.visibility}, isPaginatorInitialized=$isPaginatorInitialized"
                         )
                         return false
                     }
@@ -831,6 +839,8 @@ class ReaderPageFragment : Fragment() {
             val wrappedHtml = wrapHtmlForWebView(html, settings.textSizeSp, settings.lineHeightMultiplier, palette)
             // Bug Fix 2: Reset isWebViewReady flag when loading new content to prevent race conditions
             isWebViewReady = false
+            // Reset paginator initialization flag - will be set to true in onPaginationReady callback
+            isPaginatorInitialized = false
             // Use file:///android_asset/ as base URL to allow loading of inpage_paginator.js
             binding.pageWebView.loadDataWithBaseURL(
                 "file:///android_asset/", 
@@ -1103,6 +1113,10 @@ class ReaderPageFragment : Fragment() {
                     "PaginationBridge.onPaginationReady: chapter=$pageIndex, totalPages=$totalPages"
                 )
                 
+                // CRITICAL: Set paginator initialized flag now that JS paginator is ready
+                // This prevents navigation logic from using stale/default values
+                isPaginatorInitialized = true
+                
                 // Update ViewModel with initial pagination state
                 viewLifecycleOwner.lifecycleScope.launch {
                     try {
@@ -1208,8 +1222,12 @@ class ReaderPageFragment : Fragment() {
      * we call the WebView paginator; otherwise we fall back to activity chapter navigation.
      */
     fun handleHardwarePageKey(isNext: Boolean): Boolean {
-        // If WebView is not ready or not visible, don't consume — let activity handle fallback.
-        if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+        // If WebView is not ready or not visible, or paginator not initialized, don't consume
+        if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE || !isPaginatorInitialized) {
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "handleHardwarePageKey ignored: isWebViewReady=$isWebViewReady, visibility=${binding.pageWebView.visibility}, isPaginatorInitialized=$isPaginatorInitialized"
+            )
             return false
         }
 
@@ -1268,6 +1286,33 @@ class ReaderPageFragment : Fragment() {
         }
 
         return true
+    }
+    
+    /**
+     * Safely get the current in-page position.
+     * If paginator is not initialized yet, returns the cached Kotlin value instead of querying JS.
+     * This prevents using stale/default values (0) before paginator is ready.
+     */
+    private suspend fun getSafeCurrentPage(): Int {
+        return if (isPaginatorInitialized) {
+            try {
+                WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
+            } catch (e: Exception) {
+                com.rifters.riftedreader.util.AppLogger.e(
+                    "ReaderPageFragment",
+                    "Error getting current page, using cached value: $currentInPageIndex",
+                    e
+                )
+                currentInPageIndex
+            }
+        } else {
+            // Paginator not initialized, use last known Kotlin value
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "Paginator not initialized, using cached currentInPageIndex: $currentInPageIndex"
+            )
+            currentInPageIndex
+        }
     }
 
     companion object {
