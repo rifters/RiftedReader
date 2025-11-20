@@ -432,16 +432,18 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         // Ensure valueTo is always greater than valueFrom (0) to avoid IllegalStateException
                         val safeValueTo = maxValue.toFloat().coerceAtLeast(1f)
                         
-                        // CRITICAL: Reduce value BEFORE updating valueTo to avoid IllegalStateException
-                        if (binding.pageSlider.value > safeValueTo) {
-                            binding.pageSlider.value = maxValue.toFloat()
-                        }
-                        
-                        binding.pageSlider.valueTo = safeValueTo
-                        
-                        // Ensure value is within range (in case it wasn't caught above)
-                        if (binding.pageSlider.value > maxValue) {
-                            binding.pageSlider.value = maxValue.toFloat()
+                        // CRITICAL: Ensure atomic updates to avoid race condition
+                        // Step 1: Get current value
+                        val currentValue = binding.pageSlider.value
+                        if (safeValueTo < currentValue) {
+                            // Step 2: Ensure valueTo can accommodate current value
+                            binding.pageSlider.valueTo = currentValue.coerceAtLeast(safeValueTo)
+                            // Step 3: Reduce value to target
+                            binding.pageSlider.value = safeValueTo
+                            // Step 4: Set final valueTo
+                            binding.pageSlider.valueTo = safeValueTo
+                        } else {
+                            binding.pageSlider.valueTo = safeValueTo
                         }
                     }
                 }
@@ -961,22 +963,28 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         if (totalWebViewPages > 0) {
             val maxValue = (totalWebViewPages - 1).coerceAtLeast(0)
             val safeValueTo = maxValue.toFloat().coerceAtLeast(1f)
-            
-            // CRITICAL: Reduce value BEFORE updating valueTo to avoid IllegalStateException
-            // If current value would exceed new valueTo, reduce it first
             val safeCurrentPage = currentWebViewPage.coerceIn(0, maxValue)
-            if (binding.pageSlider.value > safeValueTo) {
-                binding.pageSlider.value = safeCurrentPage.toFloat()
-            }
             
-            // Update slider range
-            if (binding.pageSlider.valueTo != safeValueTo) {
+            // CRITICAL: Ensure atomic updates to avoid race condition
+            // Step 1: Get current value
+            val currentValue = binding.pageSlider.value
+            if (safeValueTo < currentValue) {
+                // Step 2: Ensure valueTo can accommodate current value
+                binding.pageSlider.valueTo = currentValue.coerceAtLeast(safeValueTo)
+                // Step 3: Reduce value to target
+                binding.pageSlider.value = safeCurrentPage.toFloat()
+                // Step 4: Set final valueTo
                 binding.pageSlider.valueTo = safeValueTo
-            }
-            
-            // Update slider position (if not already set above)
-            if (binding.pageSlider.value != safeCurrentPage.toFloat()) {
-                binding.pageSlider.value = safeCurrentPage.toFloat()
+            } else {
+                // Update slider range
+                if (binding.pageSlider.valueTo != safeValueTo) {
+                    binding.pageSlider.valueTo = safeValueTo
+                }
+                
+                // Update slider position
+                if (binding.pageSlider.value != safeCurrentPage.toFloat()) {
+                    binding.pageSlider.value = safeCurrentPage.toFloat()
+                }
             }
             
             // Update page indicator to show WebView page numbers

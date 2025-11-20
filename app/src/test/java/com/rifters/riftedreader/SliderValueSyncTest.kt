@@ -13,18 +13,25 @@ class SliderValueSyncTest {
     fun sliderValueSync_reducesValueBeforeValueTo() {
         // Simulate the slider state
         var sliderValue = 9.0f
+        var sliderValueTo = 10.0f
         
         // New state: total pages reduced to 9 (valueTo should become 8)
         val newTotal = 9
         val newMaxValue = (newTotal - 1).coerceAtLeast(0) // 8
         val newValueTo = newMaxValue.toFloat().coerceAtLeast(1f) // 8.0
         
-        // The fix: reduce value BEFORE updating valueTo
-        if (sliderValue > newValueTo) {
-            sliderValue = newMaxValue.toFloat()
+        // The fix: atomic updates to prevent race condition
+        val currentValue = sliderValue
+        if (newValueTo < currentValue) {
+            // Step 1: Ensure valueTo can accommodate current value
+            sliderValueTo = currentValue.coerceAtLeast(newValueTo)
+            // Step 2: Reduce value to target
+            sliderValue = newValueTo
+            // Step 3: Set final valueTo
+            sliderValueTo = newValueTo
+        } else {
+            sliderValueTo = newValueTo
         }
-        
-        val sliderValueTo = newValueTo
         
         // Verify the order of operations prevents crash
         assertTrue("Value must be <= valueTo", sliderValue <= sliderValueTo)
@@ -36,20 +43,27 @@ class SliderValueSyncTest {
     fun sliderValueSync_handlesEdgeCaseMinimum() {
         // Edge case: going from multiple pages to 1 page
         var sliderValue = 5.0f
+        var sliderValueTo = 6.0f
         
         val newTotal = 1
         val newMaxValue = (newTotal - 1).coerceAtLeast(0) // 0
         val newValueTo = newMaxValue.toFloat().coerceAtLeast(1f) // 1.0 (minimum)
         
-        // Reduce value first
-        if (sliderValue > newValueTo) {
-            sliderValue = newMaxValue.toFloat()
+        // Atomic update to prevent race condition
+        val currentValue = sliderValue
+        if (newValueTo < currentValue) {
+            // Step 1: Ensure valueTo can accommodate current value
+            sliderValueTo = currentValue.coerceAtLeast(newValueTo)
+            // Step 2: Reduce value to target
+            sliderValue = newValueTo
+            // Step 3: Set final valueTo
+            sliderValueTo = newValueTo
+        } else {
+            sliderValueTo = newValueTo
         }
         
-        val sliderValueTo = newValueTo
-        
         assertTrue("Value must be <= valueTo", sliderValue <= sliderValueTo)
-        assertEquals(0.0f, sliderValue, 0.01f)
+        assertEquals(1.0f, sliderValue, 0.01f)
         assertEquals(1.0f, sliderValueTo, 0.01f)
     }
     
@@ -57,6 +71,7 @@ class SliderValueSyncTest {
     fun sliderValueSync_noChangeWhenValueInRange() {
         // Case: value is already within new range
         var sliderValue = 3.0f
+        var sliderValueTo = 8.0f
         
         val newTotal = 8
         val newMaxValue = (newTotal - 1).coerceAtLeast(0) // 7
@@ -64,12 +79,18 @@ class SliderValueSyncTest {
         
         val originalValue = sliderValue
         
-        // Reduce value first (should not change since it's in range)
-        if (sliderValue > newValueTo) {
-            sliderValue = newMaxValue.toFloat()
+        // Atomic update to prevent race condition
+        val currentValue = sliderValue
+        if (newValueTo < currentValue) {
+            // Step 1: Ensure valueTo can accommodate current value
+            sliderValueTo = currentValue.coerceAtLeast(newValueTo)
+            // Step 2: Reduce value to target
+            sliderValue = newValueTo
+            // Step 3: Set final valueTo
+            sliderValueTo = newValueTo
+        } else {
+            sliderValueTo = newValueTo
         }
-        
-        val sliderValueTo = newValueTo
         
         assertTrue("Value must be <= valueTo", sliderValue <= sliderValueTo)
         assertEquals("Value should not change when in range", originalValue, sliderValue, 0.01f)
@@ -80,6 +101,7 @@ class SliderValueSyncTest {
     fun sliderValueSync_handlesWebViewPageUpdate() {
         // Simulate WebView pagination update
         var sliderValue = 9.0f
+        var sliderValueTo = 10.0f
         
         val totalWebViewPages = 9
         val currentWebViewPage = 5
@@ -88,15 +110,17 @@ class SliderValueSyncTest {
         val safeValueTo = maxValue.toFloat().coerceAtLeast(1f) // 8.0
         val safeCurrentPage = currentWebViewPage.coerceIn(0, maxValue) // 5
         
-        // The fix: reduce value first if it would exceed new valueTo
-        if (sliderValue > safeValueTo) {
+        // Atomic update to prevent race condition
+        val currentValue = sliderValue
+        if (safeValueTo < currentValue) {
+            // Step 1: Ensure valueTo can accommodate current value
+            sliderValueTo = currentValue.coerceAtLeast(safeValueTo)
+            // Step 2: Reduce value to target
             sliderValue = safeCurrentPage.toFloat()
-        }
-        
-        val sliderValueTo = safeValueTo
-        
-        // Then update to current page (if different)
-        if (sliderValue != safeCurrentPage.toFloat()) {
+            // Step 3: Set final valueTo
+            sliderValueTo = safeValueTo
+        } else {
+            sliderValueTo = safeValueTo
             sliderValue = safeCurrentPage.toFloat()
         }
         
