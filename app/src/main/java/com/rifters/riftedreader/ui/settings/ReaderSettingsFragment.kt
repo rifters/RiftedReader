@@ -3,6 +3,7 @@ package com.rifters.riftedreader.ui.settings
 import android.os.Bundle
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.SwitchPreferenceCompat
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
@@ -40,6 +41,17 @@ class ReaderSettingsFragment : PreferenceFragmentCompat() {
             AppLogger.event("ReaderSettingsFragment", "Reader mode changed to $mode", "ui/settings/change")
             readerPreferences.updateSettings { it.copy(mode = mode) }
         }
+        bindSwitchPreference(
+            key = "reader_continuous_streaming",
+            currentValue = settings.continuousStreamingEnabled
+        ) { isEnabled ->
+            AppLogger.event(
+                "ReaderSettingsFragment",
+                "Continuous streaming toggled to $isEnabled",
+                "ui/settings/change"
+            )
+            readerPreferences.updateSettings { it.copy(continuousStreamingEnabled = isEnabled) }
+        }
     }
 
     private fun bindListPreference(key: String, currentValue: String, onChanged: (String) -> Unit) {
@@ -49,6 +61,17 @@ class ReaderSettingsFragment : PreferenceFragmentCompat() {
         }
         preference.setOnPreferenceChangeListener { _, newValue ->
             (newValue as? String)?.let { onChanged(it) }
+            true
+        }
+    }
+
+    private fun bindSwitchPreference(key: String, currentValue: Boolean, onChanged: (Boolean) -> Unit) {
+        val preference = findPreference<SwitchPreferenceCompat>(key) ?: return
+        if (preference.isChecked != currentValue) {
+            preference.isChecked = currentValue
+        }
+        preference.setOnPreferenceChangeListener { _, newValue ->
+            (newValue as? Boolean)?.let { onChanged(it) }
             true
         }
     }

@@ -126,6 +126,8 @@
     <string name="reader_previous">Previous</string>
     <string name="reader_next">Next</string>
     <string name="reader_page_indicator">Page %1$d / %2$d</string>
+    <string name="reader_page_indicator_with_chapter">Chapter %1$d • Page %2$d/%3$d
+Page %4$d/%5$d (%6$d%%)</string>
     <string name="reader_text_settings">Reading settings</string>
     <string name="reader_title_placeholder">RiftedReader</string>
     <string name="reader_tts">Listen</string>
@@ -173,6 +175,10 @@
     <string name="reader_mode_label">Reading mode</string>
     <string name="reader_mode_scroll">Scrolling</string>
     <string name="reader_mode_page">Page flipping</string>
+    <string name="reader_pagination_label">Pagination mode</string>
+    <string name="reader_pagination_chapter">Chapter-based</string>
+    <string name="reader_pagination_continuous">Continuous (beta)</string>
+    <string name="reader_pagination_continuous_hint">Continuous pagination keeps a sliding window of chapters in memory for large books. This experimental mode may impact performance.</string>
 
     <!-- TTS -->
     <string name="tts_controls_title">Text-to-Speech</string>
@@ -245,11 +251,14 @@
     <string name="settings_reader_line_height">Line spacing</string>
     <string name="settings_reader_theme">Theme</string>
     <string name="settings_reader_mode">Reading mode</string>
+    <string name="settings_reader_continuous_streaming_title">Continuous pagination streaming (beta)</string>
+    <string name="settings_reader_continuous_streaming_summary">Keep nearby chapters streaming in the background. Disable if you notice repeated fallback jumps or prefer the classic chapter-by-chapter loading.</string>
     <string name="settings_tts_speed">Default speed</string>
     <string name="settings_tts_pitch">Default pitch</string>
     <string name="settings_tts_highlight">Highlight sentences during playback</string>
     <string name="settings_tts_auto_scroll">Auto-scroll with speech</string>
     <string name="settings_tts_manage_replacements">Pronunciation rules</string>
+    <string name="reader_streaming_failed_toast">Continuous pagination couldn't load the next chapter. Falling back to chapter jumps. You can disable streaming in Reader settings.</string>
 
     
     <!-- Permissions -->

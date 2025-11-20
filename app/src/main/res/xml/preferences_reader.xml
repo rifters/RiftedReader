@@ -34,4 +34,10 @@
         app:entryValues="@array/reader_mode_values"
         app:useSimpleSummaryProvider="true" />
 
+    <androidx.preference.SwitchPreferenceCompat
+        android:key="reader_continuous_streaming"
+        android:title="@string/settings_reader_continuous_streaming_title"
+        android:summary="@string/settings_reader_continuous_streaming_summary"
+        android:defaultValue="true" />
+
 </PreferenceScreen>
