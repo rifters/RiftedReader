@@ -262,6 +262,13 @@
         
         console.log('inpage_paginator: goToPage - index=' + index + ', safeIndex=' + safeIndex + ', pageCount=' + pageCount + ', smooth=' + smooth);
         
+        // Debug unexpected page resets
+        const currentPage = getCurrentPage();
+        if (index === 0 && currentPage > 0) {
+            console.log('inpage_paginator: WARNING - Resetting to page 0 from page ' + currentPage);
+            console.log('inpage_paginator: Call stack:', new Error().stack);
+        }
+        
         const behavior = smooth ? SCROLL_BEHAVIOR_SMOOTH : SCROLL_BEHAVIOR_AUTO;
         
         columnContainer.scrollTo({
@@ -286,7 +293,7 @@
         console.log('inpage_paginator: nextPage called - currentPage=' + currentPage + ', pageCount=' + pageCount);
         
         if (currentPage < pageCount - 1) {
-            goToPage(currentPage + 1, true);
+            goToPage(currentPage + 1, false);  // Changed from true to false - instant navigation
             return true;
         }
         
@@ -304,7 +311,7 @@
         console.log('inpage_paginator: prevPage called - currentPage=' + currentPage + ', pageCount=' + pageCount);
         
         if (currentPage > 0) {
-            goToPage(currentPage - 1, true);
+            goToPage(currentPage - 1, false);  // Changed from true to false - instant navigation
             return true;
         }
         
