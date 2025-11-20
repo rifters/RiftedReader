@@ -180,8 +180,6 @@ class ReaderViewModel(
 
                 // Try to restore position using chapter + in-page index first
                 val initialGlobalPage = paginator.navigateToChapter(startChapter, startInPage)
-                    ?: paginator.navigateToChapter(startChapter, 0) // Fallback to chapter start
-                    ?: 0 // Ultimate fallback
 
                 updateForGlobalPage(initialGlobalPage)
                 
