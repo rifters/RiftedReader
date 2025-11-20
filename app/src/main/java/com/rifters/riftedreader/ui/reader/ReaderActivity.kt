@@ -443,6 +443,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         }
 
                         pagerAdapter.notifyDataSetChanged()
+                        
+                        // Update page indicator when total pages changes (e.g., during window shifts)
+                        // This ensures the display is always accurate and instant
+                        updatePageIndicator(viewModel.currentPage.value)
                     }
                 }
 
