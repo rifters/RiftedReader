@@ -101,9 +101,32 @@ class ReaderPageFragment : Fragment() {
                     WebViewPaginatorBridge.setFontSize(binding.pageWebView, settings.textSizeSp.toInt())
                     
                     // After font size is set and reflow completes, restore to saved in-page position
-                    // Use a small delay to ensure reflow has completed
+                    // Use a longer delay to ensure paginator initialization and reflow complete
                     viewLifecycleOwner.lifecycleScope.launch {
-                        kotlinx.coroutines.delay(50) // Small delay for reflow to complete
+                        // Wait for paginator to be ready
+                        var attempts = 0
+                        while (attempts < 20) { // Try for up to 1 second (20 * 50ms)
+                            kotlinx.coroutines.delay(50)
+                            try {
+                                if (WebViewPaginatorBridge.isReady(binding.pageWebView)) {
+                                    com.rifters.riftedreader.util.AppLogger.d(
+                                        "ReaderPageFragment",
+                                        "Paginator ready after ${(attempts + 1) * 50}ms"
+                                    )
+                                    break
+                                }
+                            } catch (e: Exception) {
+                                com.rifters.riftedreader.util.AppLogger.d(
+                                    "ReaderPageFragment",
+                                    "Waiting for paginator readiness (attempt ${attempts + 1})"
+                                )
+                            }
+                            attempts++
+                        }
+                        
+                        // Additional delay after ready check to ensure reflow completes
+                        kotlinx.coroutines.delay(100)
+                        
                         try {
                             val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
                             if (pageCount > 0 && currentInPageIndex > 0) {
@@ -135,9 +158,25 @@ class ReaderPageFragment : Fragment() {
                         // Clear the flag immediately to prevent re-triggering
                         readerViewModel.clearJumpToLastPageFlag()
                         
-                        // Jump to last page after a short delay to ensure pagination is complete
+                        // Jump to last page after paginator is ready
                         viewLifecycleOwner.lifecycleScope.launch {
-                            kotlinx.coroutines.delay(100) // Small delay for paginator to finish
+                            // Wait for paginator to be ready
+                            var attempts = 0
+                            while (attempts < 20) {
+                                kotlinx.coroutines.delay(50)
+                                try {
+                                    if (WebViewPaginatorBridge.isReady(binding.pageWebView)) {
+                                        break
+                                    }
+                                } catch (e: Exception) {
+                                    // Continue waiting
+                                }
+                                attempts++
+                            }
+                            
+                            // Additional delay to ensure reflow completes
+                            kotlinx.coroutines.delay(100)
+                            
                             try {
                                 val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
                                 if (pageCount > 0) {
@@ -275,8 +314,27 @@ class ReaderPageFragment : Fragment() {
                                         // Apply font size change
                                         WebViewPaginatorBridge.setFontSize(binding.pageWebView, settings.textSizeSp.toInt())
                                         
-                                        // Restore position after reflow
-                                        kotlinx.coroutines.delay(50) // Small delay for reflow to complete
+                                        // Wait for paginator to be ready after reflow
+                                        var attempts = 0
+                                        while (attempts < 20) {
+                                            kotlinx.coroutines.delay(50)
+                                            try {
+                                                if (WebViewPaginatorBridge.isReady(binding.pageWebView)) {
+                                                    com.rifters.riftedreader.util.AppLogger.d(
+                                                        "ReaderPageFragment",
+                                                        "Paginator ready after font size change (${(attempts + 1) * 50}ms)"
+                                                    )
+                                                    break
+                                                }
+                                            } catch (e: Exception) {
+                                                // Continue waiting
+                                            }
+                                            attempts++
+                                        }
+                                        
+                                        // Additional delay to ensure reflow completes
+                                        kotlinx.coroutines.delay(100)
+                                        
                                         val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
                                         if (pageCount > 0 && currentInPageIndex > 0) {
                                             val targetPage = currentInPageIndex.coerceIn(0, pageCount - 1)

@@ -62,8 +62,14 @@
         contentWrapper.id = 'paginator-content';
         
         // Move all body children to content wrapper
+        // Add null check to prevent errors on empty body
         while (body.firstChild) {
-            contentWrapper.appendChild(body.firstChild);
+            const child = body.firstChild;
+            if (child) {
+                contentWrapper.appendChild(child);
+            } else {
+                break;
+            }
         }
         
         // Set up column CSS for content wrapper
@@ -213,8 +219,15 @@
             init();
         }
         
+        // Double check after init - if still not ready, return safe default
+        if (!columnContainer || !isInitialized) {
+            console.warn('inpage_paginator: getPageCount called before initialization complete');
+            return 1;
+        }
+        
         const contentWrapper = document.getElementById('paginator-content');
         if (!contentWrapper) {
+            console.warn('inpage_paginator: contentWrapper not found in getPageCount');
             return 1;
         }
         
@@ -233,6 +246,13 @@
      */
     function getCurrentPage() {
         if (!columnContainer) {
+            console.warn('inpage_paginator: getCurrentPage called before initialization');
+            return 0;
+        }
+        
+        // Double check initialization
+        if (!isInitialized) {
+            console.warn('inpage_paginator: getCurrentPage called before initialization complete');
             return 0;
         }
         
@@ -251,7 +271,13 @@
      */
     function goToPage(index, smooth) {
         if (!columnContainer) {
+            console.warn('inpage_paginator: goToPage called before initialization');
             init();
+        }
+        
+        // Double check after init
+        if (!columnContainer || !isInitialized) {
+            console.error('inpage_paginator: goToPage - paginator not ready, cannot navigate');
             return;
         }
         
@@ -287,6 +313,11 @@
      * Go to next page
      */
     function nextPage() {
+        if (!columnContainer || !isInitialized) {
+            console.warn('inpage_paginator: nextPage called before initialization complete');
+            return false;
+        }
+        
         const currentPage = getCurrentPage();
         const pageCount = getPageCount();
         
@@ -305,6 +336,11 @@
      * Go to previous page
      */
     function prevPage() {
+        if (!columnContainer || !isInitialized) {
+            console.warn('inpage_paginator: prevPage called before initialization complete');
+            return false;
+        }
+        
         const currentPage = getCurrentPage();
         const pageCount = getPageCount();
         
@@ -432,6 +468,13 @@
         }
     }
     
+    /**
+     * Check if paginator is initialized and ready for operations
+     */
+    function isReady() {
+        return isInitialized && columnContainer !== null && document.getElementById('paginator-content') !== null;
+    }
+    
     // Initialize on DOM ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
@@ -441,6 +484,7 @@
     
     // Expose global API
     window.inpagePaginator = {
+        isReady: isReady,
         reflow: reflow,
         setFontSize: setFontSize,
         getPageCount: getPageCount,
