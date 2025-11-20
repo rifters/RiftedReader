@@ -30,10 +30,15 @@ data class BookMeta(
     val language: String? = null,
     val description: String? = null,
     
-    // Reading progress
+    // Reading progress - chapter-based (legacy)
     val currentPage: Int = 0,
     val totalPages: Int = 0,
     val percentComplete: Float = 0f,
+    
+    // Reading progress - enhanced for continuous pagination
+    val currentChapterIndex: Int = 0,
+    val currentInPageIndex: Int = 0,
+    val currentCharacterOffset: Int = 0,
     
     // Visual
     val coverPath: String? = null,

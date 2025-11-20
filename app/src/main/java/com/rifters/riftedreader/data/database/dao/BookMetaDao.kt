@@ -52,6 +52,22 @@ interface BookMetaDao {
     @Query("UPDATE books SET currentPage = :page, percentComplete = :percent, lastOpened = :timestamp WHERE id = :bookId")
     suspend fun updateReadingProgress(bookId: String, page: Int, percent: Float, timestamp: Long)
     
+    @Query("""UPDATE books SET 
+        currentChapterIndex = :chapterIndex, 
+        currentInPageIndex = :inPageIndex,
+        currentCharacterOffset = :characterOffset,
+        percentComplete = :percentComplete,
+        lastOpened = :timestamp 
+        WHERE id = :bookId""")
+    suspend fun updateReadingProgressEnhanced(
+        bookId: String, 
+        chapterIndex: Int, 
+        inPageIndex: Int,
+        characterOffset: Int, 
+        percentComplete: Float, 
+        timestamp: Long
+    )
+    
     @Query("UPDATE books SET isFavorite = :isFavorite WHERE id = :bookId")
     suspend fun setFavorite(bookId: String, isFavorite: Boolean)
 }

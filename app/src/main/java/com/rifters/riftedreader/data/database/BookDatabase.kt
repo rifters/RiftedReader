@@ -16,7 +16,7 @@ import com.rifters.riftedreader.data.database.entities.CollectionEntity
  */
 @Database(
     entities = [BookMeta::class, CollectionEntity::class, BookCollectionCrossRef::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
