@@ -42,6 +42,9 @@ class ReaderPageFragment : Fragment() {
     private var highlightedRange: IntRange? = null
     private var isWebViewReady = false
     
+    // Track current in-page position to preserve during reloads
+    private var currentInPageIndex: Int = 0
+    
     // Track previous settings to detect what changed
     private var previousSettings: com.rifters.riftedreader.data.preferences.ReaderSettings? = null
     
@@ -93,7 +96,32 @@ class ReaderPageFragment : Fragment() {
                     // Initialize the in-page paginator
                     val settings = readerViewModel.readerSettings.value
                     com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Initializing paginator with fontSize=${settings.textSizeSp}px")
+                    
+                    // Set font size, which will trigger a reflow
                     WebViewPaginatorBridge.setFontSize(binding.pageWebView, settings.textSizeSp.toInt())
+                    
+                    // After font size is set and reflow completes, restore to saved in-page position
+                    // Use a small delay to ensure reflow has completed
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        kotlinx.coroutines.delay(50) // Small delay for reflow to complete
+                        try {
+                            val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
+                            if (pageCount > 0 && currentInPageIndex > 0) {
+                                val targetPage = currentInPageIndex.coerceIn(0, pageCount - 1)
+                                com.rifters.riftedreader.util.AppLogger.d(
+                                    "ReaderPageFragment",
+                                    "Restoring to saved in-page position: $targetPage/$pageCount"
+                                )
+                                WebViewPaginatorBridge.goToPage(binding.pageWebView, targetPage, smooth = false)
+                            }
+                        } catch (e: Exception) {
+                            com.rifters.riftedreader.util.AppLogger.e(
+                                "ReaderPageFragment",
+                                "Error restoring in-page position after font size init",
+                                e
+                            )
+                        }
+                    }
                     
                     // Initialize TTS chunks when page is loaded
                     prepareTtsChunks()
@@ -158,6 +186,8 @@ class ReaderPageFragment : Fragment() {
                         latestPageHtml = page.html
                         // Clear chunks when content changes - they'll be rebuilt by prepareTtsChunks
                         ttsChunks = emptyList()
+                        // Reset in-page position for new content
+                        currentInPageIndex = 0
                         if (highlightedRange == null) {
                             renderBaseContent()
                         } else {
@@ -168,6 +198,7 @@ class ReaderPageFragment : Fragment() {
                         latestPageHtml = null
                         highlightedRange = null
                         ttsChunks = emptyList()
+                        currentInPageIndex = 0
                         binding.pageTextView.text = ""
                         binding.pageWebView.loadUrl("about:blank")
                     }
@@ -231,7 +262,38 @@ class ReaderPageFragment : Fragment() {
                             // This preserves reading position without reloading
                             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Applying font size change without reload")
                             if (isWebViewReady && binding.pageWebView.visibility == View.VISIBLE) {
-                                WebViewPaginatorBridge.setFontSize(binding.pageWebView, settings.textSizeSp.toInt())
+                                // Save current position before font size change
+                                viewLifecycleOwner.lifecycleScope.launch {
+                                    try {
+                                        val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
+                                        currentInPageIndex = currentPage
+                                        com.rifters.riftedreader.util.AppLogger.d(
+                                            "ReaderPageFragment",
+                                            "Saved current in-page position before font size change: $currentPage"
+                                        )
+                                        
+                                        // Apply font size change
+                                        WebViewPaginatorBridge.setFontSize(binding.pageWebView, settings.textSizeSp.toInt())
+                                        
+                                        // Restore position after reflow
+                                        kotlinx.coroutines.delay(50) // Small delay for reflow to complete
+                                        val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
+                                        if (pageCount > 0 && currentInPageIndex > 0) {
+                                            val targetPage = currentInPageIndex.coerceIn(0, pageCount - 1)
+                                            com.rifters.riftedreader.util.AppLogger.d(
+                                                "ReaderPageFragment",
+                                                "Restoring to saved in-page position after font size change: $targetPage/$pageCount"
+                                            )
+                                            WebViewPaginatorBridge.goToPage(binding.pageWebView, targetPage, smooth = false)
+                                        }
+                                    } catch (e: Exception) {
+                                        com.rifters.riftedreader.util.AppLogger.e(
+                                            "ReaderPageFragment",
+                                            "Error preserving position during font size change",
+                                            e
+                                        )
+                                    }
+                                }
                             }
                         } else if (themeChanged || lineHeightChanged) {
                             // Theme or line height change requires full reload to update styles
@@ -987,6 +1049,10 @@ class ReaderPageFragment : Fragment() {
                 viewLifecycleOwner.lifecycleScope.launch {
                     try {
                         val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
+                        // Initialize tracked position if it's the first pagination
+                        if (currentInPageIndex == 0) {
+                            currentInPageIndex = currentPage
+                        }
                         readerViewModel.updateWebViewPageState(currentPage, totalPages)
                     } catch (e: Exception) {
                         com.rifters.riftedreader.util.AppLogger.e(
@@ -1007,6 +1073,9 @@ class ReaderPageFragment : Fragment() {
                     "ReaderPageFragment",
                     "PaginationBridge.onPageChanged: chapter=$pageIndex, newPage=$newPage"
                 )
+                
+                // Update tracked in-page position
+                currentInPageIndex = newPage
                 
                 // Update ViewModel with new page position
                 viewLifecycleOwner.lifecycleScope.launch {
