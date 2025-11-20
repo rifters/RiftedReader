@@ -2,6 +2,7 @@ package com.rifters.riftedreader.data.preferences
 
 import android.content.Context
 import androidx.core.content.edit
+import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.ui.reader.ReaderTapAction
 import com.rifters.riftedreader.ui.reader.ReaderTapZone
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,7 +16,8 @@ data class ReaderSettings(
     val textSizeSp: Float = DEFAULT_TEXT_SIZE_SP,
     val lineHeightMultiplier: Float = DEFAULT_LINE_HEIGHT_MULTIPLIER,
     val theme: ReaderTheme = ReaderTheme.LIGHT,
-    val mode: ReaderMode = ReaderMode.SCROLL
+    val mode: ReaderMode = ReaderMode.SCROLL,
+    val paginationMode: PaginationMode = PaginationMode.CHAPTER_BASED
 )
 
 enum class ReaderTheme {
@@ -52,7 +54,11 @@ class ReaderPreferences(context: Context) {
         val theme = runCatching { ReaderTheme.valueOf(themeName) }.getOrDefault(ReaderTheme.LIGHT)
         val modeName = prefs.getString(KEY_MODE, ReaderMode.SCROLL.name) ?: ReaderMode.SCROLL.name
         val mode = runCatching { ReaderMode.valueOf(modeName) }.getOrDefault(ReaderMode.SCROLL)
-        return ReaderSettings(size, lineHeight, theme, mode)
+        val paginationModeName = prefs.getString(KEY_PAGINATION_MODE, PaginationMode.CHAPTER_BASED.name) 
+            ?: PaginationMode.CHAPTER_BASED.name
+        val paginationMode = runCatching { PaginationMode.valueOf(paginationModeName) }
+            .getOrDefault(PaginationMode.CHAPTER_BASED)
+        return ReaderSettings(size, lineHeight, theme, mode, paginationMode)
     }
 
     private fun saveSettings(settings: ReaderSettings) {
@@ -61,6 +67,7 @@ class ReaderPreferences(context: Context) {
             putFloat(KEY_LINE_HEIGHT, settings.lineHeightMultiplier)
             putString(KEY_THEME, settings.theme.name)
             putString(KEY_MODE, settings.mode.name)
+            putString(KEY_PAGINATION_MODE, settings.paginationMode.name)
         }
     }
 
@@ -105,6 +112,7 @@ class ReaderPreferences(context: Context) {
         private const val KEY_LINE_HEIGHT = "line_height_multiplier"
         private const val KEY_THEME = "reader_theme"
         private const val KEY_MODE = "reader_mode"
+        private const val KEY_PAGINATION_MODE = "pagination_mode"
         private const val KEY_TAP_ACTIONS = "reader_tap_actions"
 
         private const val ENTRY_SEPARATOR = "|"

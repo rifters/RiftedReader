@@ -54,6 +54,27 @@ class BookRepository(private val bookMetaDao: BookMetaDao) {
         bookMetaDao.updateReadingProgress(bookId, page, percent, System.currentTimeMillis())
     }
     
+    /**
+     * Update reading progress with enhanced bookmark information.
+     * Used by continuous pagination mode.
+     */
+    suspend fun updateReadingProgressEnhanced(
+        bookId: String,
+        chapterIndex: Int,
+        inPageIndex: Int,
+        characterOffset: Int,
+        percentComplete: Float
+    ) {
+        bookMetaDao.updateReadingProgressEnhanced(
+            bookId, 
+            chapterIndex, 
+            inPageIndex, 
+            characterOffset, 
+            percentComplete,
+            System.currentTimeMillis()
+        )
+    }
+    
     suspend fun setFavorite(bookId: String, isFavorite: Boolean) {
         bookMetaDao.setFavorite(bookId, isFavorite)
     }
