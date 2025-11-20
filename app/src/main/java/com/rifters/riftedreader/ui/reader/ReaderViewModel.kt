@@ -171,11 +171,21 @@ class ReaderViewModel(
 
                 val book = repository.getBookById(bookId)
                 val startChapter = book?.currentChapterIndex ?: 0
-                val initialGlobalPage = paginator.loadInitialWindow(startChapter)
+                val startInPage = book?.currentInPageIndex ?: 0
+                
+                // Load the initial window
+                paginator.loadInitialWindow(startChapter)
                 _totalPages.value = paginator.getTotalGlobalPages()
                 isContinuousInitialized = true
 
+                // Try to restore position using chapter + in-page index first
+                val initialGlobalPage = paginator.navigateToChapter(startChapter, startInPage)
+                    ?: paginator.navigateToChapter(startChapter, 0) // Fallback to chapter start
+                    ?: 0 // Ultimate fallback
+
                 updateForGlobalPage(initialGlobalPage)
+                
+                AppLogger.d("ReaderViewModel", "Restored position: chapter=$startChapter, inPage=$startInPage, globalPage=$initialGlobalPage")
             } catch (e: Exception) {
                 AppLogger.e("ReaderViewModel", "Failed to initialize continuous paginator", e)
                 _pages.value = emptyList()
@@ -300,13 +310,17 @@ class ReaderViewModel(
                 if (isContinuousMode) {
                     val location = getPageLocation(_currentPage.value)
                     val total = _totalPages.value
+                    val content = _content.value
                     if (location != null && total > 0) {
                         val percent = ((location.globalPageIndex + 1).toFloat() / total) * 100f
+                        val previewText = com.rifters.riftedreader.util.BookmarkPreviewExtractor
+                            .extractPreview(content, location.characterOffset)
                         repository.updateReadingProgressEnhanced(
                             bookId,
                             location.chapterIndex,
                             location.inPageIndex,
                             location.characterOffset,
+                            previewText,
                             percent
                         )
                     }
@@ -361,11 +375,15 @@ class ReaderViewModel(
                 val total = _totalPages.value
                 if (total <= 0) return@launch
                 val percent = ((location.globalPageIndex + 1).toFloat() / total) * 100f
+                val content = _content.value
+                val previewText = com.rifters.riftedreader.util.BookmarkPreviewExtractor
+                    .extractPreview(content, location.characterOffset)
                 repository.updateReadingProgressEnhanced(
                     bookId,
                     location.chapterIndex,
                     location.inPageIndex,
                     location.characterOffset,
+                    previewText,
                     percent
                 )
             } catch (e: Exception) {

@@ -39,6 +39,7 @@ data class BookMeta(
     val currentChapterIndex: Int = 0,
     val currentInPageIndex: Int = 0,
     val currentCharacterOffset: Int = 0,
+    val currentPreviewText: String? = null,
     
     // Visual
     val coverPath: String? = null,
