@@ -1484,6 +1484,41 @@ class ReaderPageFragment : Fragment() {
                 readerViewModel.onChapterSegmentEvicted(chapterIndex)
             }
         }
+
+        @JavascriptInterface
+        fun onChapterJumped(chapterIndex: Int, pageIndex: Int) {
+            activity?.runOnUiThread {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "onChapterJumped callback: chapter=$chapterIndex, page=$pageIndex"
+                )
+                // Update page state after TOC jump
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        val totalPages = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
+                        readerViewModel.updateWebViewPageState(pageIndex, totalPages)
+                    } catch (e: Exception) {
+                        com.rifters.riftedreader.util.AppLogger.e(
+                            "ReaderPageFragment",
+                            "Error updating page state after chapter jump",
+                            e
+                        )
+                    }
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun onChapterNotLoaded(chapterIndex: Int) {
+            activity?.runOnUiThread {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "onChapterNotLoaded callback: chapter=$chapterIndex not found in loaded segments"
+                )
+                // Could trigger loading of the chapter here if needed
+                // For now, just log the event
+            }
+        }
     }
     
     /**

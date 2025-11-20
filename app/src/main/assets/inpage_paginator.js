@@ -9,6 +9,10 @@
  * - Scroll-snap for precise horizontal paging
  * - Dynamic font size adjustment with position preservation
  * - Anchor-based reading position mapping
+ * - Chapter streaming with append/prepend/remove operations
+ * - TOC-based navigation with chapter jump callbacks
+ * - Robust reflow and repagination
+ * - Memory-efficient segment management
  */
 (function() {
     'use strict';
@@ -170,43 +174,85 @@
     
     /**
      * Reflow the content - recalculate columns and page count
+     * Enhanced with better error handling and position preservation
+     * @param {boolean} preservePosition - Whether to try to preserve reading position (default: true)
+     * @returns {Object} - Result object with success status and new page count
      */
-    function reflow() {
+    function reflow(preservePosition) {
+        if (preservePosition === undefined) {
+            preservePosition = true;
+        }
+        
         if (!isInitialized || !columnContainer) {
+            console.warn('inpage_paginator: Reflow called before initialization, attempting init');
             init();
-            return;
+            return { success: false, pageCount: 0 };
         }
         
-        console.log('inpage_paginator: Reflow triggered');
+        console.log('inpage_paginator: Reflow triggered (preservePosition=' + preservePosition + ')');
         
-        // Save current page before reflow
-        const currentPageBeforeReflow = getCurrentPage();
-        console.log('inpage_paginator: Current page before reflow: ' + currentPageBeforeReflow);
-        
-        const contentWrapper = document.getElementById('paginator-content');
-        if (contentWrapper) {
+        try {
+            // Save current state before reflow
+            let currentPageBeforeReflow = 0;
+            let currentChapterBeforeReflow = -1;
+            
+            if (preservePosition) {
+                try {
+                    currentPageBeforeReflow = getCurrentPage();
+                    currentChapterBeforeReflow = getCurrentChapter();
+                    console.log('inpage_paginator: Saving position - page=' + currentPageBeforeReflow + ', chapter=' + currentChapterBeforeReflow);
+                } catch (e) {
+                    console.warn('inpage_paginator: Error saving position during reflow', e);
+                    preservePosition = false;
+                }
+            }
+            
+            const contentWrapper = document.getElementById('paginator-content');
+            if (!contentWrapper) {
+                console.error('inpage_paginator: Content wrapper not found during reflow');
+                return { success: false, pageCount: 0 };
+            }
+            
+            // Update column styles
             updateColumnStyles(contentWrapper);
-        }
-        
-        // Force reflow by temporarily changing a property
-        columnContainer.style.display = 'none';
-        columnContainer.offsetHeight; // Force reflow
-        columnContainer.style.display = '';
-        
-        // Restore to same page (not same scroll position, because width may have changed)
-        const pageCount = getPageCount();
-        const targetPage = Math.min(currentPageBeforeReflow, pageCount - 1);
-        if (targetPage >= 0) {
-            goToPage(targetPage, false);
-        }
-        
-        const currentPage = getCurrentPage();
-        console.log('inpage_paginator: Reflow complete - pageCount=' + pageCount + ', currentPage=' + currentPage);
-        
-        // Notify Android if callback exists
-        if (window.AndroidBridge && window.AndroidBridge.onPaginationReady) {
-            console.log('inpage_paginator: Calling AndroidBridge.onPaginationReady after reflow with pageCount=' + pageCount);
-            window.AndroidBridge.onPaginationReady(pageCount);
+            
+            // Force reflow by temporarily changing a property
+            const oldDisplay = columnContainer.style.display;
+            columnContainer.style.display = 'none';
+            columnContainer.offsetHeight; // Force reflow
+            columnContainer.style.display = oldDisplay || '';
+            
+            // Additional force reflow for all segments
+            chapterSegments.forEach(function(seg) {
+                if (seg) {
+                    seg.offsetHeight; // Force reflow on each segment
+                }
+            });
+            
+            // Get new page count
+            const pageCount = getPageCount();
+            console.log('inpage_paginator: Reflow calculated new pageCount=' + pageCount);
+            
+            // Restore position if requested
+            if (preservePosition && pageCount > 0) {
+                const targetPage = Math.max(0, Math.min(currentPageBeforeReflow, pageCount - 1));
+                console.log('inpage_paginator: Restoring to page=' + targetPage);
+                goToPage(targetPage, false);
+            }
+            
+            const currentPage = getCurrentPage();
+            console.log('inpage_paginator: Reflow complete - pageCount=' + pageCount + ', currentPage=' + currentPage);
+            
+            // Notify Android if callback exists
+            if (window.AndroidBridge && window.AndroidBridge.onPaginationReady) {
+                console.log('inpage_paginator: Calling AndroidBridge.onPaginationReady after reflow with pageCount=' + pageCount);
+                window.AndroidBridge.onPaginationReady(pageCount);
+            }
+            
+            return { success: true, pageCount: pageCount, currentPage: currentPage };
+        } catch (e) {
+            console.error('inpage_paginator: Reflow error', e);
+            return { success: false, pageCount: 0, error: e.message };
         }
     }
     
@@ -461,34 +507,114 @@
         }
     }
 
+    /**
+     * Append a chapter segment to the end of the content
+     * Enhanced with better error handling and scroll position preservation
+     * @param {number} chapterIndex - The chapter index to append
+     * @param {string} rawHtml - The HTML content to append
+     * @returns {boolean} - True if successful, false otherwise
+     */
     function appendChapterSegment(chapterIndex, rawHtml) {
         if (!contentWrapper) {
             console.warn('inpage_paginator: appendChapterSegment called before init');
             return false;
         }
-        const segment = buildSegmentFromHtml(chapterIndex, rawHtml);
-        contentWrapper.appendChild(segment);
-        chapterSegments.push(segment);
-        trimSegmentsFromStart();
-        reflow();
-        return true;
+        
+        if (!rawHtml || rawHtml.trim() === '') {
+            console.warn('inpage_paginator: appendChapterSegment called with empty HTML');
+            return false;
+        }
+        
+        try {
+            console.log('inpage_paginator: Appending chapter segment', chapterIndex);
+            
+            // Save current scroll position before modification
+            const currentPage = getCurrentPage();
+            const pageCountBefore = getPageCount();
+            
+            const segment = buildSegmentFromHtml(chapterIndex, rawHtml);
+            contentWrapper.appendChild(segment);
+            chapterSegments.push(segment);
+            
+            // Trim old segments if needed
+            trimSegmentsFromStart();
+            
+            // Reflow to recalculate layout
+            const reflowResult = reflow(true);
+            
+            console.log('inpage_paginator: Appended chapter', chapterIndex, 
+                       '- pages before=' + pageCountBefore + 
+                       ', pages after=' + reflowResult.pageCount);
+            
+            return reflowResult.success;
+        } catch (e) {
+            console.error('inpage_paginator: appendChapterSegment error', e);
+            return false;
+        }
     }
 
+    /**
+     * Prepend a chapter segment to the beginning of the content
+     * Enhanced with better error handling and scroll adjustment
+     * @param {number} chapterIndex - The chapter index to prepend
+     * @param {string} rawHtml - The HTML content to prepend
+     * @returns {boolean} - True if successful, false otherwise
+     */
     function prependChapterSegment(chapterIndex, rawHtml) {
         if (!contentWrapper) {
             console.warn('inpage_paginator: prependChapterSegment called before init');
             return false;
         }
-        const segment = buildSegmentFromHtml(chapterIndex, rawHtml);
-        if (contentWrapper.firstChild) {
-            contentWrapper.insertBefore(segment, contentWrapper.firstChild);
-        } else {
-            contentWrapper.appendChild(segment);
+        
+        if (!rawHtml || rawHtml.trim() === '') {
+            console.warn('inpage_paginator: prependChapterSegment called with empty HTML');
+            return false;
         }
-        chapterSegments.unshift(segment);
-        trimSegmentsFromEnd();
-        reflow();
-        return true;
+        
+        try {
+            console.log('inpage_paginator: Prepending chapter segment', chapterIndex);
+            
+            // Save current page and chapter info
+            const currentPage = getCurrentPage();
+            const pageCountBefore = getPageCount();
+            const currentChapter = getCurrentChapter();
+            
+            const segment = buildSegmentFromHtml(chapterIndex, rawHtml);
+            if (contentWrapper.firstChild) {
+                contentWrapper.insertBefore(segment, contentWrapper.firstChild);
+            } else {
+                contentWrapper.appendChild(segment);
+            }
+            chapterSegments.unshift(segment);
+            
+            // Trim old segments from end if needed
+            trimSegmentsFromEnd();
+            
+            // Reflow without preserving position initially
+            const reflowResult = reflow(false);
+            
+            // Calculate how many pages the new segment added
+            const pageCountAfter = reflowResult.pageCount || getPageCount();
+            const pagesAdded = pageCountAfter - pageCountBefore;
+            
+            // Adjust scroll position to account for prepended content
+            if (pagesAdded > 0 && currentPage >= 0) {
+                const newTargetPage = currentPage + pagesAdded;
+                console.log('inpage_paginator: Adjusting scroll after prepend - old page=' + currentPage + 
+                           ', pages added=' + pagesAdded + ', new target=' + newTargetPage);
+                goToPage(newTargetPage, false);
+            }
+            
+            console.log('inpage_paginator: Prepended chapter', chapterIndex, 
+                       '- pages before=' + pageCountBefore + 
+                       ', pages after=' + pageCountAfter +
+                       ', pages added=' + pagesAdded);
+            
+            return reflowResult.success;
+        } catch (e) {
+            console.error('inpage_paginator: prependChapterSegment error', e);
+            return false;
+        }
     }
 
     function getSegmentPageCount(chapterIndex) {
@@ -635,6 +761,226 @@
     }
     
     /**
+     * Jump to a specific chapter by chapter index
+     * Useful for TOC navigation - scrolls to the first page of the specified chapter
+     * @param {number} chapterIndex - The chapter index to jump to
+     * @param {boolean} smooth - Whether to animate the transition
+     * @returns {boolean} - True if successful, false otherwise
+     */
+    function jumpToChapter(chapterIndex, smooth) {
+        if (!contentWrapper || !columnContainer || !isInitialized) {
+            console.warn('inpage_paginator: jumpToChapter called before initialization');
+            return false;
+        }
+        
+        try {
+            // Find the segment with the matching chapter index
+            const segment = chapterSegments.find(seg => {
+                const idx = parseInt(seg.getAttribute('data-chapter-index'), 10);
+                return idx === chapterIndex;
+            });
+            
+            if (!segment) {
+                console.warn('inpage_paginator: Chapter segment not found for index', chapterIndex);
+                // Notify Android that chapter is not loaded
+                if (window.AndroidBridge && window.AndroidBridge.onChapterNotLoaded) {
+                    window.AndroidBridge.onChapterNotLoaded(chapterIndex);
+                }
+                return false;
+            }
+            
+            // Calculate the page index for this segment
+            const pageWidth = viewportWidth || window.innerWidth;
+            if (pageWidth === 0) {
+                return false;
+            }
+            
+            const contentRect = contentWrapper.getBoundingClientRect();
+            const segmentRect = segment.getBoundingClientRect();
+            const offsetLeft = segmentRect.left - contentRect.left + columnContainer.scrollLeft;
+            const pageIndex = Math.floor(Math.max(0, offsetLeft) / pageWidth);
+            
+            console.log('inpage_paginator: Jumping to chapter', chapterIndex, 'at page', pageIndex);
+            goToPage(pageIndex, smooth || false);
+            
+            // Notify Android of successful chapter jump
+            if (window.AndroidBridge && window.AndroidBridge.onChapterJumped) {
+                window.AndroidBridge.onChapterJumped(chapterIndex, pageIndex);
+            }
+            
+            return true;
+        } catch (e) {
+            console.error('inpage_paginator: jumpToChapter error', e);
+            return false;
+        }
+    }
+    
+    /**
+     * Remove a specific chapter segment by chapter index
+     * @param {number} chapterIndex - The chapter index to remove
+     * @returns {boolean} - True if successful, false otherwise
+     */
+    function removeChapterSegment(chapterIndex) {
+        if (!contentWrapper) {
+            console.warn('inpage_paginator: removeChapterSegment called before init');
+            return false;
+        }
+        
+        try {
+            // Find segment index
+            const segmentIndex = chapterSegments.findIndex(seg => {
+                const idx = parseInt(seg.getAttribute('data-chapter-index'), 10);
+                return idx === chapterIndex;
+            });
+            
+            if (segmentIndex === -1) {
+                console.warn('inpage_paginator: Chapter segment not found for removal', chapterIndex);
+                return false;
+            }
+            
+            // Save current page before removal
+            const currentPage = getCurrentPage();
+            
+            // Remove from DOM and array
+            const segment = chapterSegments[segmentIndex];
+            if (segment && segment.parentNode) {
+                segment.parentNode.removeChild(segment);
+            }
+            chapterSegments.splice(segmentIndex, 1);
+            
+            console.log('inpage_paginator: Removed chapter segment', chapterIndex);
+            
+            // Reflow after removal
+            reflow();
+            
+            // Try to restore a reasonable page position
+            const newPageCount = getPageCount();
+            if (newPageCount > 0) {
+                const targetPage = Math.min(currentPage, newPageCount - 1);
+                goToPage(targetPage, false);
+            }
+            
+            return true;
+        } catch (e) {
+            console.error('inpage_paginator: removeChapterSegment error', e);
+            return false;
+        }
+    }
+    
+    /**
+     * Clear all chapter segments except the initial one
+     * Useful for resetting the view or handling errors
+     */
+    function clearAllSegments() {
+        if (!contentWrapper) {
+            return false;
+        }
+        
+        try {
+            // Remove all segments from DOM
+            chapterSegments.forEach(seg => {
+                if (seg && seg.parentNode) {
+                    seg.parentNode.removeChild(seg);
+                }
+            });
+            
+            // Clear the array
+            chapterSegments = [];
+            
+            console.log('inpage_paginator: Cleared all chapter segments');
+            
+            // Reflow
+            reflow();
+            
+            return true;
+        } catch (e) {
+            console.error('inpage_paginator: clearAllSegments error', e);
+            return false;
+        }
+    }
+    
+    /**
+     * Get information about all loaded chapter segments
+     * @returns {Array} - Array of objects with chapter info
+     */
+    function getLoadedChapters() {
+        if (!contentWrapper || !columnContainer) {
+            return [];
+        }
+        
+        try {
+            const pageWidth = viewportWidth || window.innerWidth;
+            if (pageWidth === 0) {
+                return [];
+            }
+            
+            const contentRect = contentWrapper.getBoundingClientRect();
+            
+            return chapterSegments.map(seg => {
+                const chapterIndex = parseInt(seg.getAttribute('data-chapter-index'), 10);
+                const segmentRect = seg.getBoundingClientRect();
+                const offsetLeft = segmentRect.left - contentRect.left + columnContainer.scrollLeft;
+                const startPage = Math.floor(Math.max(0, offsetLeft) / pageWidth);
+                const endPage = Math.ceil((offsetLeft + segmentRect.width) / pageWidth);
+                const pageCount = Math.max(1, endPage - startPage);
+                
+                return {
+                    chapterIndex: chapterIndex,
+                    startPage: startPage,
+                    endPage: endPage,
+                    pageCount: pageCount
+                };
+            });
+        } catch (e) {
+            console.error('inpage_paginator: getLoadedChapters error', e);
+            return [];
+        }
+    }
+    
+    /**
+     * Get the chapter index for the currently visible page
+     * @returns {number} - Chapter index or -1 if not found
+     */
+    function getCurrentChapter() {
+        if (!contentWrapper || !columnContainer || !isInitialized) {
+            return -1;
+        }
+        
+        try {
+            const currentPage = getCurrentPage();
+            const pageWidth = viewportWidth || window.innerWidth;
+            if (pageWidth === 0) {
+                return -1;
+            }
+            
+            const currentScrollLeft = columnContainer.scrollLeft;
+            const contentRect = contentWrapper.getBoundingClientRect();
+            
+            // Find which segment contains the current scroll position
+            for (let i = 0; i < chapterSegments.length; i++) {
+                const seg = chapterSegments[i];
+                const segmentRect = seg.getBoundingClientRect();
+                const offsetLeft = segmentRect.left - contentRect.left + currentScrollLeft;
+                const segmentRight = offsetLeft + segmentRect.width;
+                
+                if (currentScrollLeft >= offsetLeft && currentScrollLeft < segmentRight) {
+                    return parseInt(seg.getAttribute('data-chapter-index'), 10);
+                }
+            }
+            
+            // Fallback: return the first segment's chapter
+            if (chapterSegments.length > 0) {
+                return parseInt(chapterSegments[0].getAttribute('data-chapter-index'), 10);
+            }
+            
+            return -1;
+        } catch (e) {
+            console.error('inpage_paginator: getCurrentChapter error', e);
+            return -1;
+        }
+    }
+    
+    /**
      * Check if paginator is initialized and ready for operations
      */
     function isReady() {
@@ -663,8 +1009,13 @@
         scrollToAnchor: scrollToAnchor,
         appendChapter: appendChapterSegment,
         prependChapter: prependChapterSegment,
+        removeChapter: removeChapterSegment,
+        clearAllSegments: clearAllSegments,
         setInitialChapter: setInitialChapterIndex,
-        getSegmentPageCount: getSegmentPageCount
+        getSegmentPageCount: getSegmentPageCount,
+        jumpToChapter: jumpToChapter,
+        getLoadedChapters: getLoadedChapters,
+        getCurrentChapter: getCurrentChapter
     };
     
 })();

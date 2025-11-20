@@ -266,18 +266,100 @@ object WebViewPaginatorBridge {
     }
     
     /**
-     * Trigger a reflow of the paginated content.
-     * Useful after dynamic content changes.
+     * Jump to a specific chapter by chapter index.
+     * Useful for TOC navigation - scrolls to the first page of the specified chapter.
      * This method does not suspend - it fires and forgets.
-     * Silently fails if paginator is not ready.
+     * Silently fails if paginator is not ready or chapter not loaded.
+     * 
+     * @param webView The WebView containing the paginated content
+     * @param chapterIndex The chapter index to jump to
+     * @param smooth Whether to animate the transition (default: true)
+     */
+    fun jumpToChapter(webView: WebView, chapterIndex: Int, smooth: Boolean = true) {
+        AppLogger.userAction("WebViewPaginatorBridge", "jumpToChapter: chapter=$chapterIndex, smooth=$smooth", "ui/webview/toc")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.inpagePaginator) { window.inpagePaginator.jumpToChapter($chapterIndex, $smooth); }",
+                null
+            )
+        }
+    }
+    
+    /**
+     * Remove a specific chapter segment by chapter index.
+     * This method does not suspend - it fires and forgets.
+     * 
+     * @param webView The WebView containing the paginated content
+     * @param chapterIndex The chapter index to remove
+     */
+    fun removeChapter(webView: WebView, chapterIndex: Int) {
+        AppLogger.d("WebViewPaginatorBridge", "removeChapter: chapter=$chapterIndex")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.inpagePaginator) { window.inpagePaginator.removeChapter($chapterIndex); }",
+                null
+            )
+        }
+    }
+    
+    /**
+     * Clear all chapter segments.
+     * This method does not suspend - it fires and forgets.
      * 
      * @param webView The WebView containing the paginated content
      */
-    fun reflow(webView: WebView) {
-        AppLogger.d("WebViewPaginatorBridge", "reflow: triggering content reflow")
+    fun clearAllSegments(webView: WebView) {
+        AppLogger.d("WebViewPaginatorBridge", "clearAllSegments")
         mainHandler.post {
             webView.evaluateJavascript(
-                "if (window.inpagePaginator) { window.inpagePaginator.reflow(); }",
+                "if (window.inpagePaginator) { window.inpagePaginator.clearAllSegments(); }",
+                null
+            )
+        }
+    }
+    
+    /**
+     * Get the chapter index for the currently visible page.
+     * 
+     * @param webView The WebView containing the paginated content
+     * @return The chapter index or -1 if not found
+     */
+    suspend fun getCurrentChapter(webView: WebView): Int {
+        return try {
+            evaluateInt(webView, "window.inpagePaginator.getCurrentChapter()")
+        } catch (e: Exception) {
+            AppLogger.e("WebViewPaginatorBridge", "Error getting current chapter", e)
+            -1
+        }
+    }
+    
+    /**
+     * Get information about all loaded chapter segments.
+     * 
+     * @param webView The WebView containing the paginated content
+     * @return JSON string with chapter info array
+     */
+    suspend fun getLoadedChapters(webView: WebView): String {
+        return try {
+            evaluateString(webView, "JSON.stringify(window.inpagePaginator.getLoadedChapters())")
+        } catch (e: Exception) {
+            AppLogger.e("WebViewPaginatorBridge", "Error getting loaded chapters", e)
+            "[]"
+        }
+    }
+    
+    /**
+     * Trigger a reflow of the paginated content with optional position preservation.
+     * This method does not suspend - it fires and forgets.
+     * 
+     * @param webView The WebView containing the paginated content
+     * @param preservePosition Whether to try to preserve the reading position (default: true)
+     */
+    fun reflow(webView: WebView, preservePosition: Boolean = true) {
+        AppLogger.d("WebViewPaginatorBridge", "reflow: preservePosition=$preservePosition")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.inpagePaginator) { window.inpagePaginator.reflow($preservePosition); }",
                 null
             )
         }
