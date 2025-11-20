@@ -12,6 +12,21 @@ import kotlin.math.abs
 /**
  * Manages bookmark creation and restoration.
  * Implements Approach C: Hybrid bookmark system with chapter + page + character offset.
+ * 
+ * Example usage:
+ * ```
+ * val manager = BookmarkManager(bookmarkRepository)
+ * val bookmark = manager.createBookmark(
+ *     bookId = "book-123",
+ *     chapterIndex = 10,
+ *     inChapterPage = 5,
+ *     characterOffset = 2584,
+ *     chapterTitle = "Chapter 11: The Discovery",
+ *     pageContent = currentPageContent,
+ *     percentageThrough = 0.42f,
+ *     fontSize = 16.0f
+ * )
+ * ```
  */
 class BookmarkManager(
     private val bookmarkRepository: BookmarkRepository
