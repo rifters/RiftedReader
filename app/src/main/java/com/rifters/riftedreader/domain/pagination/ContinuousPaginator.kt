@@ -183,6 +183,48 @@ class ContinuousPaginator(
     suspend fun getPageLocation(globalPageIndex: GlobalPageIndex): PageLocation? = mutex.withLock {
         globalPageMap.getOrNull(globalPageIndex)
     }
+
+    /**
+     * Get the total number of pages for a specific chapter.
+     */
+    suspend fun getChapterPageCount(chapterIndex: Int): Int = mutex.withLock {
+        val metadata = chapterMetadata.getOrNull(chapterIndex)
+            ?: return@withLock 0
+        metadata.actualPageCount ?: metadata.estimatedPageCount
+    }
+
+    /**
+     * Update the measured page count for a chapter (e.g., from WebView pagination).
+     * Recalculates the global page mapping if the value changed.
+     */
+    suspend fun updateChapterPageCount(chapterIndex: Int, pageCount: Int): Boolean = mutex.withLock {
+        val metadata = chapterMetadata.getOrNull(chapterIndex) ?: return@withLock false
+        val safeCount = pageCount.coerceAtLeast(1)
+        val currentCount = metadata.actualPageCount ?: metadata.estimatedPageCount
+        if (currentCount == safeCount) {
+            return@withLock false
+        }
+
+        AppLogger.d(TAG, "Updating chapter $chapterIndex page count: $currentCount -> $safeCount")
+        chapterMetadata[chapterIndex] = metadata.copy(actualPageCount = safeCount)
+        recalculateGlobalPageMapping()
+        true
+    }
+
+    /**
+     * Get the global page index for a specific chapter + in-page combination.
+     */
+    suspend fun getGlobalIndexForChapterPage(
+        chapterIndex: Int,
+        inPageIndex: Int
+    ): GlobalPageIndex? = mutex.withLock {
+        val metadata = chapterMetadata.getOrNull(chapterIndex) ?: return@withLock null
+        val pageCount = metadata.actualPageCount ?: metadata.estimatedPageCount
+        val safeInPage = inPageIndex.coerceIn(0, pageCount - 1)
+        val startIndex = metadata.globalPageStartIndex
+        if (startIndex < 0) return@withLock null
+        startIndex + safeInPage
+    }
     
     /**
      * Repaginate all loaded chapters (e.g., after font size change).
@@ -227,6 +269,21 @@ class ContinuousPaginator(
             totalChapters = totalChapters,
             totalGlobalPages = globalPageMap.size
         )
+    }
+
+    /**
+     * Hint from WebView streaming layer that a chapter segment was evicted.
+     * We remove the cached chapter content if it is not the actively centered one,
+     * allowing future loads to rehydrate it on demand.
+     */
+    suspend fun markChapterEvicted(chapterIndex: Int) = mutex.withLock {
+        if (chapterIndex == currentChapterIndex) {
+            AppLogger.d(TAG, "Ignoring eviction for current chapter $chapterIndex")
+            return@withLock
+        }
+        if (loadedChapters.remove(chapterIndex) != null) {
+            AppLogger.d(TAG, "Evicted streamed chapter $chapterIndex from loaded cache")
+        }
     }
     
     /**
@@ -288,9 +345,13 @@ class ContinuousPaginator(
      * Get the indices of chapters that should be in the window.
      */
     private fun getWindowIndices(centerChapterIndex: Int): List<Int> {
-        val halfWindow = windowSize / 2
-        val start = (centerChapterIndex - halfWindow).coerceAtLeast(0)
-        val end = (centerChapterIndex + halfWindow).coerceAtMost(totalChapters - 1)
+        if (totalChapters == 0) return emptyList()
+
+        val maxWindow = windowSize.coerceAtMost(totalChapters)
+        var start = (centerChapterIndex - windowSize / 2).coerceAtLeast(0)
+        var end = (start + maxWindow - 1).coerceAtMost(totalChapters - 1)
+        start = (end - maxWindow + 1).coerceAtLeast(0)
+
         return (start..end).toList()
     }
     
@@ -318,7 +379,8 @@ class ContinuousPaginator(
                     PageLocation(
                         globalPageIndex = globalIndex,
                         chapterIndex = chapterIndex,
-                        inPageIndex = inPageIndex
+                        inPageIndex = inPageIndex,
+                        characterOffset = 0
                     )
                 )
                 globalIndex++
@@ -364,7 +426,8 @@ typealias GlobalPageIndex = Int
 data class PageLocation(
     val globalPageIndex: GlobalPageIndex,
     val chapterIndex: Int,
-    val inPageIndex: Int
+    val inPageIndex: Int,
+    val characterOffset: Int = 0
 )
 
 /**

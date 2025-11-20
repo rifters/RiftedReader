@@ -356,6 +356,14 @@ class TestBookMetaDao(private val books: List<BookMeta>) : BookMetaDao {
     override suspend fun deleteBookById(bookId: String) {}
     override suspend fun deleteAllBooks() {}
     override suspend fun updateReadingProgress(bookId: String, page: Int, percent: Float, timestamp: Long) {}
+    override suspend fun updateReadingProgressEnhanced(
+        bookId: String,
+        chapterIndex: Int,
+        inPageIndex: Int,
+        characterOffset: Int,
+        percentComplete: Float,
+        timestamp: Long
+    ) {}
     override suspend fun setFavorite(bookId: String, isFavorite: Boolean) {}
 }
 

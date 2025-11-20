@@ -2,11 +2,13 @@ package com.rifters.riftedreader.ui.reader
 
 import android.os.Handler
 import android.os.Looper
+import android.util.Base64
 import android.webkit.WebView
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.text.Charsets
 
 /**
  * Bridge for communicating with the in-page paginator JavaScript API.
@@ -169,6 +171,53 @@ object WebViewPaginatorBridge {
             )
         }
     }
+
+    fun setInitialChapter(webView: WebView, chapterIndex: Int) {
+        AppLogger.d("WebViewPaginatorBridge", "setInitialChapter: chapter=$chapterIndex")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.inpagePaginator) { window.inpagePaginator.setInitialChapter($chapterIndex); }",
+                null
+            )
+        }
+    }
+
+    fun appendChapter(webView: WebView, chapterIndex: Int, html: String) {
+        AppLogger.userAction(
+            "WebViewPaginatorBridge",
+            "appendChapter: chapter=$chapterIndex length=${html.length}",
+            "ui/webview/streaming"
+        )
+        val encoded = html.toBase64()
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.inpagePaginator) { window.inpagePaginator.appendChapter($chapterIndex, atob('$encoded')); }",
+                null
+            )
+        }
+    }
+
+    fun prependChapter(webView: WebView, chapterIndex: Int, html: String) {
+        AppLogger.userAction(
+            "WebViewPaginatorBridge",
+            "prependChapter: chapter=$chapterIndex length=${html.length}",
+            "ui/webview/streaming"
+        )
+        val encoded = html.toBase64()
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.inpagePaginator) { window.inpagePaginator.prependChapter($chapterIndex, atob('$encoded')); }",
+                null
+            )
+        }
+    }
+
+    suspend fun getSegmentPageCount(webView: WebView, chapterIndex: Int): Int {
+        return evaluateInt(
+            webView,
+            "window.inpagePaginator.getSegmentPageCount($chapterIndex)"
+        )
+    }
     
     /**
      * Navigate to the next page.
@@ -261,4 +310,8 @@ object WebViewPaginatorBridge {
             "window.inpagePaginator.scrollToAnchor('$anchorId')"
         )
     }
+}
+
+private fun String.toBase64(): String {
+    return Base64.encodeToString(this.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
 }

@@ -17,12 +17,16 @@
     const COLUMN_GAP = 0; // No gap between columns for seamless pages
     const SCROLL_BEHAVIOR_SMOOTH = 'smooth';
     const SCROLL_BEHAVIOR_AUTO = 'auto';
+    const MAX_CHAPTER_SEGMENTS = 5; // Limit DOM growth when streaming chapters
     
     // State
     let currentFontSize = 16; // Default font size in pixels
     let columnContainer = null;
+    let contentWrapper = null;
     let viewportWidth = 0;
     let isInitialized = false;
+    let chapterSegments = [];
+    let initialChapterIndex = 0;
     
     /**
      * Initialize the paginator by wrapping content in a column container
@@ -58,7 +62,7 @@
         `;
         
         // Create content wrapper for columns
-        const contentWrapper = document.createElement('div');
+        contentWrapper = document.createElement('div');
         contentWrapper.id = 'paginator-content';
         
         // Move all body children to content wrapper
@@ -71,6 +75,8 @@
                 break;
             }
         }
+
+        wrapExistingContentAsSegment();
         
         // Set up column CSS for content wrapper
         updateColumnStyles(contentWrapper);
@@ -130,6 +136,22 @@
             wrapper.style.width = totalWidth + 'px';
             console.log('inpage_paginator: Set wrapper width to ' + totalWidth + 'px for scrolling');
         }
+    }
+
+    function wrapExistingContentAsSegment() {
+        if (!contentWrapper) {
+            return;
+        }
+        const segment = document.createElement('section');
+        segment.className = 'chapter-segment';
+        segment.setAttribute('data-chapter-index', initialChapterIndex);
+        const fragment = document.createDocumentFragment();
+        while (contentWrapper.firstChild) {
+            fragment.appendChild(contentWrapper.firstChild);
+        }
+        segment.appendChild(fragment);
+        contentWrapper.appendChild(segment);
+        chapterSegments = [segment];
     }
     
     /**
@@ -309,6 +331,26 @@
         }
     }
     
+    function notifyBoundary(direction, currentPage, pageCount) {
+        if (window.AndroidBridge && window.AndroidBridge.onBoundaryReached) {
+            try {
+                window.AndroidBridge.onBoundaryReached(direction, currentPage, pageCount);
+            } catch (err) {
+                console.error('inpage_paginator: onBoundaryReached failed', err);
+            }
+        }
+    }
+
+    function requestStreamingSegment(direction, boundaryPage, totalPages) {
+        if (window.AndroidBridge && window.AndroidBridge.onStreamingRequest) {
+            try {
+                window.AndroidBridge.onStreamingRequest(direction, boundaryPage, totalPages);
+            } catch (err) {
+                console.error('inpage_paginator: onStreamingRequest failed', err);
+            }
+        }
+    }
+
     /**
      * Go to next page
      */
@@ -329,6 +371,8 @@
         }
         
         console.log('inpage_paginator: nextPage - already at last page');
+        requestStreamingSegment('NEXT', currentPage, pageCount);
+        notifyBoundary('NEXT', currentPage, pageCount);
         return false;
     }
     
@@ -352,7 +396,129 @@
         }
         
         console.log('inpage_paginator: prevPage - already at first page');
+        requestStreamingSegment('PREVIOUS', currentPage, pageCount);
+        notifyBoundary('PREVIOUS', currentPage, pageCount);
         return false;
+    }
+
+    function buildSegmentFromHtml(chapterIndex, rawHtml) {
+        const segment = document.createElement('section');
+        segment.className = 'chapter-segment';
+        segment.setAttribute('data-chapter-index', chapterIndex);
+        try {
+            const parser = new DOMParser();
+            const parsed = parser.parseFromString(rawHtml, 'text/html');
+            const body = parsed.body || parsed.documentElement || parsed;
+            const fragment = document.createDocumentFragment();
+            Array.from(body.childNodes).forEach(node => {
+                fragment.appendChild(node.cloneNode(true));
+            });
+            segment.appendChild(fragment);
+        } catch (err) {
+            console.error('inpage_paginator: buildSegmentFromHtml failed', err);
+            segment.innerHTML = rawHtml;
+        }
+        return segment;
+    }
+
+    function trimSegmentsFromStart() {
+        if (chapterSegments.length <= MAX_CHAPTER_SEGMENTS) {
+            return;
+        }
+        while (chapterSegments.length > MAX_CHAPTER_SEGMENTS) {
+            const seg = chapterSegments.shift();
+            if (seg && seg.parentNode) {
+                const chapterIndex = seg.getAttribute('data-chapter-index');
+                seg.parentNode.removeChild(seg);
+                if (window.AndroidBridge && window.AndroidBridge.onSegmentEvicted) {
+                    try {
+                        window.AndroidBridge.onSegmentEvicted(parseInt(chapterIndex, 10));
+                    } catch (err) {
+                        console.warn('inpage_paginator: onSegmentEvicted callback failed', err);
+                    }
+                }
+            }
+        }
+    }
+
+    function trimSegmentsFromEnd() {
+        if (chapterSegments.length <= MAX_CHAPTER_SEGMENTS) {
+            return;
+        }
+        while (chapterSegments.length > MAX_CHAPTER_SEGMENTS) {
+            const seg = chapterSegments.pop();
+            if (seg && seg.parentNode) {
+                const chapterIndex = seg.getAttribute('data-chapter-index');
+                seg.parentNode.removeChild(seg);
+                if (window.AndroidBridge && window.AndroidBridge.onSegmentEvicted) {
+                    try {
+                        window.AndroidBridge.onSegmentEvicted(parseInt(chapterIndex, 10));
+                    } catch (err) {
+                        console.warn('inpage_paginator: onSegmentEvicted callback failed', err);
+                    }
+                }
+            }
+        }
+    }
+
+    function appendChapterSegment(chapterIndex, rawHtml) {
+        if (!contentWrapper) {
+            console.warn('inpage_paginator: appendChapterSegment called before init');
+            return false;
+        }
+        const segment = buildSegmentFromHtml(chapterIndex, rawHtml);
+        contentWrapper.appendChild(segment);
+        chapterSegments.push(segment);
+        trimSegmentsFromStart();
+        reflow();
+        return true;
+    }
+
+    function prependChapterSegment(chapterIndex, rawHtml) {
+        if (!contentWrapper) {
+            console.warn('inpage_paginator: prependChapterSegment called before init');
+            return false;
+        }
+        const segment = buildSegmentFromHtml(chapterIndex, rawHtml);
+        if (contentWrapper.firstChild) {
+            contentWrapper.insertBefore(segment, contentWrapper.firstChild);
+        } else {
+            contentWrapper.appendChild(segment);
+        }
+        chapterSegments.unshift(segment);
+        trimSegmentsFromEnd();
+        reflow();
+        return true;
+    }
+
+    function getSegmentPageCount(chapterIndex) {
+        if (!contentWrapper || !columnContainer) {
+            return -1;
+        }
+        const pageWidth = viewportWidth || window.innerWidth;
+        if (pageWidth === 0) {
+            return -1;
+        }
+        const segment = chapterSegments.find(seg => {
+            const idx = parseInt(seg.getAttribute('data-chapter-index'), 10);
+            return idx === chapterIndex;
+        });
+        if (!segment) {
+            return -1;
+        }
+        const contentRect = contentWrapper.getBoundingClientRect();
+        const segmentRect = segment.getBoundingClientRect();
+        const offsetLeft = (segmentRect.left - contentRect.left);
+        const startPage = Math.floor(Math.max(0, offsetLeft) / pageWidth);
+        const endPage = Math.ceil((offsetLeft + segmentRect.width) / pageWidth);
+        return Math.max(1, endPage - startPage);
+    }
+
+    function setInitialChapterIndex(chapterIndex) {
+        initialChapterIndex = chapterIndex;
+        if (chapterSegments.length > 0) {
+            chapterSegments[0].setAttribute('data-chapter-index', chapterIndex);
+        }
     }
     
     /**
@@ -494,7 +660,11 @@
         prevPage: prevPage,
         getPageForSelector: getPageForSelector,
         createAnchorAroundViewportTop: createAnchorAroundViewportTop,
-        scrollToAnchor: scrollToAnchor
+        scrollToAnchor: scrollToAnchor,
+        appendChapter: appendChapterSegment,
+        prependChapter: prependChapterSegment,
+        setInitialChapter: setInitialChapterIndex,
+        getSegmentPageCount: getSegmentPageCount
     };
     
 })();

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
 import com.rifters.riftedreader.data.preferences.ReaderTheme
+import com.rifters.riftedreader.domain.pagination.PaginationMode
 import kotlinx.coroutines.flow.StateFlow
 
 class ReaderSettingsViewModel(
@@ -27,6 +28,10 @@ class ReaderSettingsViewModel(
     
     fun updateMode(mode: com.rifters.riftedreader.data.preferences.ReaderMode) {
         readerPreferences.updateSettings { current -> current.copy(mode = mode) }
+    }
+
+    fun updatePaginationMode(mode: PaginationMode) {
+        readerPreferences.updateSettings { current -> current.copy(paginationMode = mode) }
     }
 
     class Factory(private val readerPreferences: ReaderPreferences) : ViewModelProvider.Factory {

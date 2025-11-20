@@ -137,4 +137,43 @@
 
     </com.google.android.material.chip.ChipGroup>
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="@string/reader_pagination_label"
+        android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
+
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/paginationChipGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        app:singleSelection="true">
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/paginationChipChapter"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/reader_pagination_chapter" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/paginationChipContinuous"
+            style="@style/Widget.Material3.Chip.Filter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/reader_pagination_continuous" />
+
+    </com.google.android.material.chip.ChipGroup>
+
+    <TextView
+        android:id="@+id/paginationHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/reader_pagination_continuous_hint"
+        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:textColor="@color/reader_text_light" />
+
 </LinearLayout>
