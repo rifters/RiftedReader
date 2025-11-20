@@ -424,7 +424,7 @@
     }
 
     /**
-     * Go to next page
+     * Go to next page - with chapter-aware streaming
      */
     function nextPage() {
         if (!columnContainer || !isInitialized) {
@@ -434,22 +434,40 @@
         
         const currentPage = getCurrentPage();
         const pageCount = getPageCount();
+        const currentChapter = getCurrentChapter();
         
-        console.log('inpage_paginator: nextPage called - currentPage=' + currentPage + ', pageCount=' + pageCount);
+        console.log('inpage_paginator: nextPage called - currentPage=' + currentPage + 
+                   ', pageCount=' + pageCount + ', currentChapter=' + currentChapter + 
+                   ', loadedSegments=' + chapterSegments.length);
         
         if (currentPage < pageCount - 1) {
-            goToPage(currentPage + 1, false);  // Changed from true to false - instant navigation
+            goToPage(currentPage + 1, false);
+            
+            // CHAPTER-AWARE STREAMING: Check if we should proactively load next chapter
+            // When we have multiple segments loaded and we're in the middle segment,
+            // start loading the next chapter for seamless navigation
+            if (chapterSegments.length >= 3) {
+                const middleIndex = Math.floor(chapterSegments.length / 2);
+                const middleChapterIndex = parseInt(chapterSegments[middleIndex].getAttribute('data-chapter-index'), 10);
+                
+                if (currentChapter === middleChapterIndex) {
+                    console.log('inpage_paginator: [CHAPTER_AWARE] User in middle chapter (' + currentChapter + 
+                               '), requesting proactive streaming for next chapter');
+                    requestStreamingSegment('NEXT', currentPage, pageCount);
+                }
+            }
+            
             return true;
         }
         
-        console.log('inpage_paginator: nextPage - already at last page');
+        console.log('inpage_paginator: nextPage - at last page, requesting streaming');
         requestStreamingSegment('NEXT', currentPage, pageCount);
         notifyBoundary('NEXT', currentPage, pageCount);
         return false;
     }
     
     /**
-     * Go to previous page
+     * Go to previous page - with chapter-aware streaming
      */
     function prevPage() {
         if (!columnContainer || !isInitialized) {
@@ -459,15 +477,33 @@
         
         const currentPage = getCurrentPage();
         const pageCount = getPageCount();
+        const currentChapter = getCurrentChapter();
         
-        console.log('inpage_paginator: prevPage called - currentPage=' + currentPage + ', pageCount=' + pageCount);
+        console.log('inpage_paginator: prevPage called - currentPage=' + currentPage + 
+                   ', pageCount=' + pageCount + ', currentChapter=' + currentChapter + 
+                   ', loadedSegments=' + chapterSegments.length);
         
         if (currentPage > 0) {
-            goToPage(currentPage - 1, false);  // Changed from true to false - instant navigation
+            goToPage(currentPage - 1, false);
+            
+            // CHAPTER-AWARE STREAMING: Check if we should proactively load previous chapter
+            // When we have multiple segments loaded and we're in the middle segment,
+            // start loading the previous chapter for seamless navigation
+            if (chapterSegments.length >= 3) {
+                const middleIndex = Math.floor(chapterSegments.length / 2);
+                const middleChapterIndex = parseInt(chapterSegments[middleIndex].getAttribute('data-chapter-index'), 10);
+                
+                if (currentChapter === middleChapterIndex) {
+                    console.log('inpage_paginator: [CHAPTER_AWARE] User in middle chapter (' + currentChapter + 
+                               '), requesting proactive streaming for previous chapter');
+                    requestStreamingSegment('PREVIOUS', currentPage, pageCount);
+                }
+            }
+            
             return true;
         }
         
-        console.log('inpage_paginator: prevPage - already at first page');
+        console.log('inpage_paginator: prevPage - at first page, requesting streaming');
         requestStreamingSegment('PREVIOUS', currentPage, pageCount);
         notifyBoundary('PREVIOUS', currentPage, pageCount);
         return false;

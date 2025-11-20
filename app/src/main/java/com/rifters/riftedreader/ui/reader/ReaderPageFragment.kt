@@ -1333,10 +1333,6 @@ class ReaderPageFragment : Fragment() {
             return null
         }
         return try {
-            com.rifters.riftedreader.util.AppLogger.d(
-                "ReaderPageFragment",
-                "Streaming attempt #$attemptNumber direction=$direction target=$targetGlobalIndex"
-            )
             val payload = readerViewModel.getStreamingChapterPayload(targetGlobalIndex) ?: run {
                 lastStreamingErrorMessage = "empty_payload"
                 return null
@@ -1346,11 +1342,27 @@ class ReaderPageFragment : Fragment() {
                 lastStreamingErrorMessage = "blank_html"
                 return null
             }
+            
+            // Get loaded chapters before streaming
+            val beforeChapters = try {
+                WebViewPaginatorBridge.getLoadedChapters(binding.pageWebView)
+            } catch (e: Exception) {
+                "unknown"
+            }
+            
+            com.rifters.riftedreader.util.AppLogger.event(
+                "ReaderPageFragment",
+                "[STREAMING] Attempt #$attemptNumber: ${direction.name} chapter ${payload.chapterIndex} " +
+                "(target=$targetGlobalIndex). Chapters before: $beforeChapters",
+                "ui/webview/streaming"
+            )
+            
             when (direction) {
                 BoundaryDirection.NEXT -> WebViewPaginatorBridge.appendChapter(binding.pageWebView, payload.chapterIndex, html)
                 BoundaryDirection.PREVIOUS -> WebViewPaginatorBridge.prependChapter(binding.pageWebView, payload.chapterIndex, html)
             }
             kotlinx.coroutines.delay(150)
+            
             var measuredPages = 1
             try {
                 val segmentPages = WebViewPaginatorBridge.getSegmentPageCount(binding.pageWebView, payload.chapterIndex)
@@ -1365,6 +1377,21 @@ class ReaderPageFragment : Fragment() {
                     e
                 )
             }
+            
+            // Get loaded chapters after streaming
+            val afterChapters = try {
+                WebViewPaginatorBridge.getLoadedChapters(binding.pageWebView)
+            } catch (e: Exception) {
+                "unknown"
+            }
+            
+            com.rifters.riftedreader.util.AppLogger.event(
+                "ReaderPageFragment",
+                "[STREAMING] SUCCESS: Chapter ${payload.chapterIndex} added with $measuredPages pages. " +
+                "Chapters after: $afterChapters",
+                "ui/webview/streaming"
+            )
+            
             lastStreamingErrorMessage = null
             StreamingAttemptResult(payload.chapterIndex, measuredPages)
         } catch (e: Exception) {
@@ -1443,23 +1470,27 @@ class ReaderPageFragment : Fragment() {
         fun onPageChanged(newPage: Int) {
             // Called when user navigates to a different page within the chapter
             activity?.runOnUiThread {
-                com.rifters.riftedreader.util.AppLogger.d(
-                    "ReaderPageFragment",
-                    "PaginationBridge.onPageChanged: chapter=$pageIndex, newPage=$newPage"
-                )
-                
                 // Update tracked in-page position
                 currentInPageIndex = newPage
                 
-                // Update ViewModel with new page position
+                // Update ViewModel with new page position and get chapter info
                 viewLifecycleOwner.lifecycleScope.launch {
                     try {
                         val totalPages = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
+                        val currentChapter = WebViewPaginatorBridge.getCurrentChapter(binding.pageWebView)
+                        val loadedChapters = WebViewPaginatorBridge.getLoadedChapters(binding.pageWebView)
+                        
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "PaginationBridge.onPageChanged: fragmentPage=$pageIndex, inPage=$newPage/$totalPages, " +
+                            "currentChapter=$currentChapter, loadedChapters=$loadedChapters"
+                        )
+                        
                         readerViewModel.updateWebViewPageState(newPage, totalPages)
                     } catch (e: Exception) {
                         com.rifters.riftedreader.util.AppLogger.e(
                             "ReaderPageFragment",
-                            "Error getting page count in onPageChanged",
+                            "Error getting page/chapter info in onPageChanged",
                             e
                         )
                     }
@@ -1509,10 +1540,22 @@ class ReaderPageFragment : Fragment() {
         @JavascriptInterface
         fun onSegmentEvicted(chapterIndex: Int) {
             activity?.runOnUiThread {
-                com.rifters.riftedreader.util.AppLogger.d(
-                    "ReaderPageFragment",
-                    "onSegmentEvicted callback for chapter=$chapterIndex (page=$pageIndex)"
-                )
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        val loadedChapters = WebViewPaginatorBridge.getLoadedChapters(binding.pageWebView)
+                        com.rifters.riftedreader.util.AppLogger.event(
+                            "ReaderPageFragment",
+                            "[SEGMENT_EVICTED] chapter=$chapterIndex removed from sliding window " +
+                            "(page=$pageIndex), remaining chapters: $loadedChapters",
+                            "ui/webview/streaming"
+                        )
+                    } catch (e: Exception) {
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "onSegmentEvicted callback for chapter=$chapterIndex (page=$pageIndex)"
+                        )
+                    }
+                }
                 readerViewModel.onChapterSegmentEvicted(chapterIndex)
             }
         }
