@@ -29,6 +29,7 @@
     let contentWrapper = null;
     let viewportWidth = 0;
     let isInitialized = false;
+    let isPaginationReady = false; // CRITICAL: Only true after onPaginationReady callback fires
     let chapterSegments = [];
     let initialChapterIndex = 0;
     
@@ -41,7 +42,7 @@
             return;
         }
         
-        console.log('inpage_paginator: Initializing paginator');
+        console.log('inpage_paginator: [STATE] Starting initialization');
         
         // Get the body content
         const body = document.body;
@@ -96,15 +97,29 @@
         window.addEventListener('resize', handleResize);
         
         isInitialized = true;
+        console.log('inpage_paginator: [STATE] isInitialized set to true');
         
-        const pageCount = getPageCount();
-        console.log('inpage_paginator: Initialization complete - pageCount=' + pageCount + ', viewportWidth=' + viewportWidth);
-        
-        // Notify Android if callback exists
-        if (window.AndroidBridge && window.AndroidBridge.onPaginationReady) {
-            console.log('inpage_paginator: Calling AndroidBridge.onPaginationReady with pageCount=' + pageCount);
-            window.AndroidBridge.onPaginationReady(pageCount);
-        }
+        // CRITICAL FIX: Wait for layout to complete before calling onPaginationReady
+        // Use requestAnimationFrame to ensure DOM has been laid out and measured
+        requestAnimationFrame(function() {
+            // Force a reflow to ensure accurate measurements
+            contentWrapper.offsetHeight;
+            
+            const pageCount = getPageCount();
+            console.log('inpage_paginator: [STATE] Initialization complete after layout - pageCount=' + pageCount + ', viewportWidth=' + viewportWidth);
+            
+            // CRITICAL: Set pagination ready flag AFTER we have valid page count
+            isPaginationReady = true;
+            console.log('inpage_paginator: [STATE] isPaginationReady set to true');
+            
+            // Only notify Android if we have a valid page count
+            if (pageCount > 0 && window.AndroidBridge && window.AndroidBridge.onPaginationReady) {
+                console.log('inpage_paginator: [CALLBACK] Calling AndroidBridge.onPaginationReady with pageCount=' + pageCount);
+                window.AndroidBridge.onPaginationReady(pageCount);
+            } else {
+                console.warn('inpage_paginator: [STATE] Invalid state - pageCount=' + pageCount + ', AndroidBridge=' + (window.AndroidBridge ? 'present' : 'missing'));
+            }
+        });
     }
     
     /**
@@ -241,17 +256,28 @@
             }
             
             const currentPage = getCurrentPage();
-            console.log('inpage_paginator: Reflow complete - pageCount=' + pageCount + ', currentPage=' + currentPage);
+            console.log('inpage_paginator: [STATE] Reflow complete - pageCount=' + pageCount + ', currentPage=' + currentPage);
             
-            // Notify Android if callback exists
-            if (window.AndroidBridge && window.AndroidBridge.onPaginationReady) {
-                console.log('inpage_paginator: Calling AndroidBridge.onPaginationReady after reflow with pageCount=' + pageCount);
-                window.AndroidBridge.onPaginationReady(pageCount);
-            }
+            // CRITICAL: Reset and set isPaginationReady after reflow completes
+            // Use requestAnimationFrame to ensure layout is stable before notifying
+            isPaginationReady = false;
+            console.log('inpage_paginator: [STATE] isPaginationReady temporarily set to false during reflow');
+            
+            requestAnimationFrame(function() {
+                isPaginationReady = true;
+                console.log('inpage_paginator: [STATE] isPaginationReady set back to true after reflow layout');
+                
+                // Notify Android if callback exists
+                if (window.AndroidBridge && window.AndroidBridge.onPaginationReady) {
+                    console.log('inpage_paginator: [CALLBACK] Calling AndroidBridge.onPaginationReady after reflow with pageCount=' + pageCount);
+                    window.AndroidBridge.onPaginationReady(pageCount);
+                }
+            });
             
             return { success: true, pageCount: pageCount, currentPage: currentPage };
         } catch (e) {
             console.error('inpage_paginator: Reflow error', e);
+            isPaginationReady = false;
             return { success: false, pageCount: 0, error: e.message };
         }
     }
@@ -265,7 +291,7 @@
             return;
         }
         
-        console.log('inpage_paginator: Setting font size to ' + px + 'px');
+        console.log('inpage_paginator: [STATE] Setting font size to ' + px + 'px - will trigger reflow');
         
         currentFontSize = px;
         
@@ -398,7 +424,7 @@
     }
 
     /**
-     * Go to next page
+     * Go to next page - with chapter-aware streaming
      */
     function nextPage() {
         if (!columnContainer || !isInitialized) {
@@ -408,22 +434,40 @@
         
         const currentPage = getCurrentPage();
         const pageCount = getPageCount();
+        const currentChapter = getCurrentChapter();
         
-        console.log('inpage_paginator: nextPage called - currentPage=' + currentPage + ', pageCount=' + pageCount);
+        console.log('inpage_paginator: nextPage called - currentPage=' + currentPage + 
+                   ', pageCount=' + pageCount + ', currentChapter=' + currentChapter + 
+                   ', loadedSegments=' + chapterSegments.length);
         
         if (currentPage < pageCount - 1) {
-            goToPage(currentPage + 1, false);  // Changed from true to false - instant navigation
+            goToPage(currentPage + 1, false);
+            
+            // CHAPTER-AWARE STREAMING: Check if we should proactively load next chapter
+            // When we have multiple segments loaded and we're in the middle segment,
+            // start loading the next chapter for seamless navigation
+            if (chapterSegments.length >= 3) {
+                const middleIndex = Math.floor(chapterSegments.length / 2);
+                const middleChapterIndex = parseInt(chapterSegments[middleIndex].getAttribute('data-chapter-index'), 10);
+                
+                if (currentChapter === middleChapterIndex) {
+                    console.log('inpage_paginator: [CHAPTER_AWARE] User in middle chapter (' + currentChapter + 
+                               '), requesting proactive streaming for next chapter');
+                    requestStreamingSegment('NEXT', currentPage, pageCount);
+                }
+            }
+            
             return true;
         }
         
-        console.log('inpage_paginator: nextPage - already at last page');
+        console.log('inpage_paginator: nextPage - at last page, requesting streaming');
         requestStreamingSegment('NEXT', currentPage, pageCount);
         notifyBoundary('NEXT', currentPage, pageCount);
         return false;
     }
     
     /**
-     * Go to previous page
+     * Go to previous page - with chapter-aware streaming
      */
     function prevPage() {
         if (!columnContainer || !isInitialized) {
@@ -433,15 +477,33 @@
         
         const currentPage = getCurrentPage();
         const pageCount = getPageCount();
+        const currentChapter = getCurrentChapter();
         
-        console.log('inpage_paginator: prevPage called - currentPage=' + currentPage + ', pageCount=' + pageCount);
+        console.log('inpage_paginator: prevPage called - currentPage=' + currentPage + 
+                   ', pageCount=' + pageCount + ', currentChapter=' + currentChapter + 
+                   ', loadedSegments=' + chapterSegments.length);
         
         if (currentPage > 0) {
-            goToPage(currentPage - 1, false);  // Changed from true to false - instant navigation
+            goToPage(currentPage - 1, false);
+            
+            // CHAPTER-AWARE STREAMING: Check if we should proactively load previous chapter
+            // When we have multiple segments loaded and we're in the middle segment,
+            // start loading the previous chapter for seamless navigation
+            if (chapterSegments.length >= 3) {
+                const middleIndex = Math.floor(chapterSegments.length / 2);
+                const middleChapterIndex = parseInt(chapterSegments[middleIndex].getAttribute('data-chapter-index'), 10);
+                
+                if (currentChapter === middleChapterIndex) {
+                    console.log('inpage_paginator: [CHAPTER_AWARE] User in middle chapter (' + currentChapter + 
+                               '), requesting proactive streaming for previous chapter');
+                    requestStreamingSegment('PREVIOUS', currentPage, pageCount);
+                }
+            }
+            
             return true;
         }
         
-        console.log('inpage_paginator: prevPage - already at first page');
+        console.log('inpage_paginator: prevPage - at first page, requesting streaming');
         requestStreamingSegment('PREVIOUS', currentPage, pageCount);
         notifyBoundary('PREVIOUS', currentPage, pageCount);
         return false;
@@ -526,7 +588,7 @@
         }
         
         try {
-            console.log('inpage_paginator: Appending chapter segment', chapterIndex);
+            console.log('inpage_paginator: [STREAMING] Appending chapter segment ' + chapterIndex + ', isPaginationReady=' + isPaginationReady);
             
             // Save current scroll position before modification
             const currentPage = getCurrentPage();
@@ -542,8 +604,8 @@
             // Reflow to recalculate layout
             const reflowResult = reflow(true);
             
-            console.log('inpage_paginator: Appended chapter', chapterIndex, 
-                       '- pages before=' + pageCountBefore + 
+            console.log('inpage_paginator: [STREAMING] Appended chapter ' + chapterIndex + 
+                       ' - pages before=' + pageCountBefore + 
                        ', pages after=' + reflowResult.pageCount);
             
             return reflowResult.success;
@@ -572,7 +634,7 @@
         }
         
         try {
-            console.log('inpage_paginator: Prepending chapter segment', chapterIndex);
+            console.log('inpage_paginator: [STREAMING] Prepending chapter segment ' + chapterIndex + ', isPaginationReady=' + isPaginationReady);
             
             // Save current page and chapter info
             const currentPage = getCurrentPage();
@@ -600,13 +662,13 @@
             // Adjust scroll position to account for prepended content
             if (pagesAdded > 0 && currentPage >= 0) {
                 const newTargetPage = currentPage + pagesAdded;
-                console.log('inpage_paginator: Adjusting scroll after prepend - old page=' + currentPage + 
+                console.log('inpage_paginator: [STREAMING] Adjusting scroll after prepend - old page=' + currentPage + 
                            ', pages added=' + pagesAdded + ', new target=' + newTargetPage);
                 goToPage(newTargetPage, false);
             }
             
-            console.log('inpage_paginator: Prepended chapter', chapterIndex, 
-                       '- pages before=' + pageCountBefore + 
+            console.log('inpage_paginator: [STREAMING] Prepended chapter ' + chapterIndex + 
+                       ' - pages before=' + pageCountBefore + 
                        ', pages after=' + pageCountAfter +
                        ', pages added=' + pagesAdded);
             
@@ -981,10 +1043,18 @@
     }
     
     /**
-     * Check if paginator is initialized and ready for operations
+     * Check if paginator is initialized and ready for operations.
+     * CRITICAL: This now checks isPaginationReady flag to ensure we don't return
+     * true until AFTER the onPaginationReady callback has fired with accurate page counts.
      */
     function isReady() {
-        return isInitialized && columnContainer !== null && document.getElementById('paginator-content') !== null;
+        const ready = isPaginationReady && 
+                      columnContainer !== null && 
+                      document.getElementById('paginator-content') !== null;
+        console.log('inpage_paginator: [STATE] isReady() called - returning ' + ready + 
+                   ' (isPaginationReady=' + isPaginationReady + 
+                   ', isInitialized=' + isInitialized + ')');
+        return ready;
     }
     
     // Initialize on DOM ready
