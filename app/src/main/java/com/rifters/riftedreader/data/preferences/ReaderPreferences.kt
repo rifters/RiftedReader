@@ -17,7 +17,7 @@ data class ReaderSettings(
     val lineHeightMultiplier: Float = DEFAULT_LINE_HEIGHT_MULTIPLIER,
     val theme: ReaderTheme = ReaderTheme.LIGHT,
     val mode: ReaderMode = ReaderMode.SCROLL,
-    val paginationMode: PaginationMode = PaginationMode.CHAPTER_BASED,
+    val paginationMode: PaginationMode = PaginationMode.CONTINUOUS,
     val continuousStreamingEnabled: Boolean = true
 )
 
@@ -55,10 +55,10 @@ class ReaderPreferences(context: Context) {
         val theme = runCatching { ReaderTheme.valueOf(themeName) }.getOrDefault(ReaderTheme.LIGHT)
         val modeName = prefs.getString(KEY_MODE, ReaderMode.SCROLL.name) ?: ReaderMode.SCROLL.name
         val mode = runCatching { ReaderMode.valueOf(modeName) }.getOrDefault(ReaderMode.SCROLL)
-        val paginationModeName = prefs.getString(KEY_PAGINATION_MODE, PaginationMode.CHAPTER_BASED.name) 
-            ?: PaginationMode.CHAPTER_BASED.name
+        val paginationModeName = prefs.getString(KEY_PAGINATION_MODE, PaginationMode.CONTINUOUS.name) 
+            ?: PaginationMode.CONTINUOUS.name
         val paginationMode = runCatching { PaginationMode.valueOf(paginationModeName) }
-            .getOrDefault(PaginationMode.CHAPTER_BASED)
+            .getOrDefault(PaginationMode.CONTINUOUS)
         val streamingEnabled = prefs.getBoolean(KEY_CONTINUOUS_STREAMING, true)
         return ReaderSettings(size, lineHeight, theme, mode, paginationMode, streamingEnabled)
     }
