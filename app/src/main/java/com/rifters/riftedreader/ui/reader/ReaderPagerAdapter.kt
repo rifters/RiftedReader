@@ -6,14 +6,14 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.rifters.riftedreader.util.AppLogger
 
 class ReaderPagerAdapter(
-    activity: FragmentActivity
+    activity: FragmentActivity,
+    private val viewModel: ReaderViewModel
 ) : FragmentStateAdapter(activity) {
 
-    private var pageCount: Int = 0
-
     override fun getItemCount(): Int {
-        AppLogger.d("ReaderPagerAdapter", "getItemCount: $pageCount")
-        return pageCount
+        val count = viewModel.totalPages.value
+        AppLogger.d("ReaderPagerAdapter", "getItemCount: $count")
+        return count
     }
 
     override fun createFragment(position: Int): Fragment {
@@ -21,12 +21,10 @@ class ReaderPagerAdapter(
         return ReaderPageFragment.newInstance(position)
     }
 
-    fun submitPageCount(count: Int) {
-        if (pageCount == count) {
-            return
-        }
-        AppLogger.d("ReaderPagerAdapter", "submitPageCount: $count (was $pageCount)")
-        pageCount = count
-        notifyDataSetChanged()
+    override fun getItemId(position: Int): Long = position.toLong()
+
+    override fun containsItem(itemId: Long): Boolean {
+        val total = viewModel.totalPages.value
+        return itemId >= 0 && itemId < total
     }
 }

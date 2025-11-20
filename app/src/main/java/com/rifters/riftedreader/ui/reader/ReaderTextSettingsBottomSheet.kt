@@ -10,6 +10,7 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.slider.Slider
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.preferences.ReaderTheme
+import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.databinding.DialogReaderTextSettingsBinding
 import com.rifters.riftedreader.util.collectWhileStarted
 import kotlin.math.roundToInt
@@ -45,6 +46,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
         setupLineHeightSlider()
         setupThemeChips()
         setupModeChips()
+        setupPaginationChips()
 
         settingsViewModel.settings.collectWhileStarted(viewLifecycleOwner) { settings ->
             if (binding.textSizeSlider.value.roundToInt() != settings.textSizeSp.roundToInt()) {
@@ -57,6 +59,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
             }
             selectThemeChip(settings.theme)
             selectModeChip(settings.mode)
+            selectPaginationChip(settings.paginationMode)
             binding.textSizeValue.text = getString(R.string.reader_text_size_value, settings.textSizeSp.roundToInt())
             binding.lineHeightValue.text = getString(R.string.reader_line_height_value, settings.lineHeightMultiplier)
         }
@@ -114,6 +117,23 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
         binding.modeChipPage.tag = com.rifters.riftedreader.data.preferences.ReaderMode.PAGE
     }
 
+    private fun setupPaginationChips() {
+        binding.paginationChipGroup.setOnCheckedStateChangeListener { group, checkedIds ->
+            val id = checkedIds.firstOrNull() ?: return@setOnCheckedStateChangeListener
+            val chip = group.findViewById<Chip>(id)
+            val mode = chip?.tag as? PaginationMode ?: return@setOnCheckedStateChangeListener
+            com.rifters.riftedreader.util.AppLogger.userAction(
+                "ReaderTextSettingsBottomSheet",
+                "Pagination mode changed to $mode",
+                "ui/settings/change"
+            )
+            settingsViewModel.updatePaginationMode(mode)
+        }
+
+        binding.paginationChipChapter.tag = PaginationMode.CHAPTER_BASED
+        binding.paginationChipContinuous.tag = PaginationMode.CONTINUOUS
+    }
+
     private fun selectThemeChip(theme: ReaderTheme) {
         val targetId = when (theme) {
             ReaderTheme.LIGHT -> binding.themeChipLight.id
@@ -133,6 +153,16 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
         }
         if (binding.modeChipGroup.checkedChipId != targetId) {
             binding.modeChipGroup.check(targetId)
+        }
+    }
+
+    private fun selectPaginationChip(mode: PaginationMode) {
+        val targetId = when (mode) {
+            PaginationMode.CHAPTER_BASED -> binding.paginationChipChapter.id
+            PaginationMode.CONTINUOUS -> binding.paginationChipContinuous.id
+        }
+        if (binding.paginationChipGroup.checkedChipId != targetId) {
+            binding.paginationChipGroup.check(targetId)
         }
     }
 

@@ -138,6 +138,7 @@ class ContinuousPaginatorTest {
         assertEquals(5, location?.globalPageIndex)
         assertEquals(5, location?.chapterIndex)
         assertEquals(0, location?.inPageIndex)
+        assertEquals(0, location?.characterOffset)
     }
     
     @Test
@@ -174,6 +175,82 @@ class ContinuousPaginatorTest {
         // Chapters 0-4 should be unloaded
         assertFalse(newWindowInfo.loadedChapterIndices.contains(0))
         assertFalse(newWindowInfo.loadedChapterIndices.contains(4))
+    }
+
+    @Test
+    fun `getChapterPageCount returns fallback when not loaded`() = runBlocking {
+        paginator.initialize()
+        paginator.loadInitialWindow(chapterIndex = 0)
+
+        val count = paginator.getChapterPageCount(3)
+
+        assertEquals(1, count)
+    }
+
+    @Test
+    fun `updateChapterPageCount recalculates global map`() = runBlocking {
+        paginator.initialize()
+        paginator.loadInitialWindow(chapterIndex = 0)
+
+        val updated = paginator.updateChapterPageCount(chapterIndex = 2, pageCount = 3)
+
+        assertTrue(updated)
+        assertEquals(3, paginator.getChapterPageCount(2))
+        assertEquals(12, paginator.getTotalGlobalPages())
+
+        val chapterTwoStart = paginator.getPageLocation(2)
+        assertEquals(2, chapterTwoStart?.chapterIndex)
+        assertEquals(0, chapterTwoStart?.inPageIndex)
+
+        val locationAfterExpandedChapter = paginator.getPageLocation(5)
+        assertEquals(3, locationAfterExpandedChapter?.chapterIndex)
+        assertEquals(0, locationAfterExpandedChapter?.inPageIndex)
+    }
+
+    @Test
+    fun `updateChapterPageCount ignores identical counts`() = runBlocking {
+        paginator.initialize()
+        paginator.loadInitialWindow(chapterIndex = 0)
+
+        assertTrue(paginator.updateChapterPageCount(chapterIndex = 4, pageCount = 2))
+        assertFalse(paginator.updateChapterPageCount(chapterIndex = 4, pageCount = 2))
+    }
+
+    @Test
+    fun `getGlobalIndexForChapterPage returns null before window load`() = runBlocking {
+        paginator.initialize()
+
+        val result = paginator.getGlobalIndexForChapterPage(chapterIndex = 0, inPageIndex = 0)
+
+        assertNull(result)
+    }
+
+    @Test
+    fun `markChapterEvicted removes chapter from cache`() = runBlocking {
+        paginator.initialize()
+        paginator.loadInitialWindow(chapterIndex = 2)
+
+        val before = paginator.getWindowInfo()
+        assertTrue(before.loadedChapterIndices.contains(0))
+
+        paginator.markChapterEvicted(0)
+
+        val after = paginator.getWindowInfo()
+        assertFalse(after.loadedChapterIndices.contains(0))
+    }
+
+    @Test
+    fun `markChapterEvicted ignores current chapter`() = runBlocking {
+        paginator.initialize()
+        paginator.loadInitialWindow(chapterIndex = 2)
+
+        val before = paginator.getWindowInfo()
+        assertTrue(before.loadedChapterIndices.contains(2))
+
+        paginator.markChapterEvicted(2)
+
+        val after = paginator.getWindowInfo()
+        assertTrue(after.loadedChapterIndices.contains(2))
     }
     
     /**

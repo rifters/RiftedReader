@@ -27,6 +27,7 @@ import com.rifters.riftedreader.data.preferences.ReaderTheme
 import com.rifters.riftedreader.data.preferences.TTSPreferences
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.databinding.ActivityReaderBinding
+import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.ParserFactory
 import com.rifters.riftedreader.domain.tts.TTSConfiguration
 import com.rifters.riftedreader.domain.tts.TTSPlaybackState
@@ -57,6 +58,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var readerMode: ReaderMode = ReaderMode.SCROLL
     private var autoContinueTts: Boolean = false
     private var pendingTtsResume: Boolean = false
+    private var usingWebViewSlider: Boolean = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppLogger.event("ReaderActivity", "onCreate started", "ui/ReaderActivity/lifecycle")
@@ -220,7 +222,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             }
         }
 
-        pagerAdapter = ReaderPagerAdapter(this)
+        pagerAdapter = ReaderPagerAdapter(this, viewModel)
         binding.pageViewPager.adapter = pagerAdapter
         binding.pageViewPager.offscreenPageLimit = 1
         
@@ -332,24 +334,22 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         }
 
         binding.pageSlider.addOnChangeListener { _, value, fromUser ->
-            if (fromUser) {
-                val target = value.toInt()
-                if (readerMode == ReaderMode.PAGE) {
-                    // In PAGE mode, check if we have WebView pagination data
-                    val totalWebViewPages = viewModel.totalWebViewPages.value
-                    if (totalWebViewPages > 0) {
-                        // Navigate within current chapter's WebView pages
-                        navigateToWebViewPage(target)
-                    } else {
-                        // Fallback to chapter navigation (e.g., during initial load)
-                        binding.pageViewPager.setCurrentItem(target, true)
-                    }
-                } else {
-                    // SCROLL mode: navigate between chapters
-                    viewModel.goToPage(target)
-                }
-                controlsManager.onUserInteraction()
+            if (!fromUser) {
+                return@addOnChangeListener
             }
+
+            val target = value.toInt()
+            when {
+                shouldUseWebViewSlider() && usingWebViewSlider -> {
+                    navigateToWebViewPage(target)
+                }
+                readerMode == ReaderMode.PAGE -> {
+                    viewModel.goToPage(target)
+                    binding.pageViewPager.setCurrentItem(target, true)
+                }
+                else -> viewModel.goToPage(target)
+            }
+            controlsManager.onUserInteraction()
         }
 
         // Ensure controls are available briefly after layout to provide context to the reader.
@@ -428,23 +428,21 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 
                 launch {
                     viewModel.totalPages.collect { total ->
-                        val maxValue = (total - 1).coerceAtLeast(0)
-                        // Ensure valueTo is always greater than valueFrom (0) to avoid IllegalStateException
-                        val safeValueTo = maxValue.toFloat().coerceAtLeast(1f)
-                        
-                        // CRITICAL: Ensure atomic updates to avoid race condition
-                        // Step 1: Get current value
-                        val currentValue = binding.pageSlider.value
-                        if (safeValueTo < currentValue) {
-                            // Step 2: Ensure valueTo can accommodate current value
-                            binding.pageSlider.valueTo = currentValue.coerceAtLeast(safeValueTo)
-                            // Step 3: Reduce value to target
-                            binding.pageSlider.value = safeValueTo
-                            // Step 4: Set final valueTo
-                            binding.pageSlider.valueTo = safeValueTo
-                        } else {
-                            binding.pageSlider.valueTo = safeValueTo
+                        if (!usingWebViewSlider) {
+                            val maxValue = (total - 1).coerceAtLeast(0)
+                            val safeValueTo = maxValue.toFloat().coerceAtLeast(1f)
+
+                            val currentValue = binding.pageSlider.value
+                            if (safeValueTo < currentValue) {
+                                binding.pageSlider.valueTo = currentValue.coerceAtLeast(safeValueTo)
+                                binding.pageSlider.value = safeValueTo
+                                binding.pageSlider.valueTo = safeValueTo
+                            } else {
+                                binding.pageSlider.valueTo = safeValueTo
+                            }
                         }
+
+                        pagerAdapter.notifyDataSetChanged()
                     }
                 }
 
@@ -461,12 +459,6 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 }
 
                 launch {
-                    viewModel.pages.collect { pages ->
-                        pagerAdapter.submitPageCount(pages.size)
-                    }
-                }
-                
-                launch {
                     viewModel.currentWebViewPage.collect { webViewPage ->
                         updateSliderForWebViewPage()
                     }
@@ -477,6 +469,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         updateSliderForWebViewPage()
                     }
                 }
+
             }
         }
     }
@@ -485,8 +478,34 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         val total = viewModel.totalPages.value
         val safeTotal = total.coerceAtLeast(0)
         val displayPage = if (safeTotal == 0) 0 else (page + 1).coerceAtMost(safeTotal)
-        binding.pageIndicator.text = getString(R.string.reader_page_indicator, displayPage, safeTotal)
-        if (binding.pageSlider.value != page.toFloat()) {
+
+        if (viewModel.paginationMode == PaginationMode.CONTINUOUS && safeTotal > 0) {
+            lifecycleScope.launch {
+                val location = viewModel.getPageLocation(page)
+                val chapterNumber = (location?.chapterIndex ?: page) + 1
+                val inPageNumber = (location?.inPageIndex ?: 0) + 1
+                val chapterPageCount = if (location != null) {
+                    viewModel.getChapterPageCount(location.chapterIndex)
+                } else {
+                    1
+                }.coerceAtLeast(1)
+                val percent = if (safeTotal == 0) 0 else ((displayPage.toFloat() / safeTotal) * 100f).toInt()
+
+                binding.pageIndicator.text = getString(
+                    R.string.reader_page_indicator_with_chapter,
+                    chapterNumber,
+                    inPageNumber,
+                    chapterPageCount,
+                    displayPage,
+                    safeTotal,
+                    percent
+                )
+            }
+        } else {
+            binding.pageIndicator.text = getString(R.string.reader_page_indicator, displayPage, safeTotal)
+        }
+
+        if (!usingWebViewSlider && binding.pageSlider.value != page.toFloat()) {
             binding.pageSlider.value = page.toFloat()
         }
     }
@@ -570,11 +589,17 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         controlsManager.showControls()
         val chapters = viewModel.tableOfContents.value
         if (chapters.isEmpty()) {
-            // No chapters available
             return
         }
-        ChaptersBottomSheet.show(supportFragmentManager, chapters) { pageNumber ->
-            viewModel.goToPage(pageNumber)
+        ChaptersBottomSheet.show(supportFragmentManager, chapters) { chapterIndex ->
+            if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                lifecycleScope.launch {
+                    val target = viewModel.navigateToChapter(chapterIndex) ?: return@launch
+                    binding.pageViewPager.setCurrentItem(target, true)
+                }
+            } else {
+                viewModel.goToPage(chapterIndex)
+            }
         }
     }
 
@@ -951,45 +976,45 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
      * Called when WebView page count or current page changes.
      */
     private fun updateSliderForWebViewPage() {
-        // Only apply WebView pagination to slider in PAGE mode
-        if (readerMode != ReaderMode.PAGE) {
+        if (!shouldUseWebViewSlider()) {
+            if (usingWebViewSlider) {
+                restoreSliderToChapterNavigation()
+            }
             return
         }
-        
+
         val totalWebViewPages = viewModel.totalWebViewPages.value
         val currentWebViewPage = viewModel.currentWebViewPage.value
-        
-        // If we have WebView pagination info, use it for the slider
-        if (totalWebViewPages > 0) {
-            val maxValue = (totalWebViewPages - 1).coerceAtLeast(0)
-            val safeValueTo = maxValue.toFloat().coerceAtLeast(1f)
-            val safeCurrentPage = currentWebViewPage.coerceIn(0, maxValue)
-            
-            // CRITICAL: Ensure atomic updates to avoid race condition
-            // Step 1: Get current value
-            val currentValue = binding.pageSlider.value
-            if (safeValueTo < currentValue) {
-                // Step 2: Ensure valueTo can accommodate current value
-                binding.pageSlider.valueTo = currentValue.coerceAtLeast(safeValueTo)
-                // Step 3: Reduce value to target
-                binding.pageSlider.value = safeCurrentPage.toFloat()
-                // Step 4: Set final valueTo
-                binding.pageSlider.valueTo = safeValueTo
-            } else {
-                // Update slider range
-                if (binding.pageSlider.valueTo != safeValueTo) {
-                    binding.pageSlider.valueTo = safeValueTo
-                }
-                
-                // Update slider position
-                if (binding.pageSlider.value != safeCurrentPage.toFloat()) {
-                    binding.pageSlider.value = safeCurrentPage.toFloat()
-                }
+
+        if (totalWebViewPages <= 0) {
+            if (usingWebViewSlider) {
+                restoreSliderToChapterNavigation()
             }
-            
-            // Update page indicator to show WebView page numbers
-            updatePageIndicatorForWebView(currentWebViewPage, totalWebViewPages)
+            return
         }
+
+        usingWebViewSlider = true
+
+        val maxValue = (totalWebViewPages - 1).coerceAtLeast(0)
+        val safeValueTo = maxValue.toFloat().coerceAtLeast(1f)
+        val safeCurrentPage = currentWebViewPage.coerceIn(0, maxValue)
+
+        val currentValue = binding.pageSlider.value
+        if (safeValueTo < currentValue) {
+            binding.pageSlider.valueTo = currentValue.coerceAtLeast(safeValueTo)
+            binding.pageSlider.value = safeCurrentPage.toFloat()
+            binding.pageSlider.valueTo = safeValueTo
+        } else {
+            if (binding.pageSlider.valueTo != safeValueTo) {
+                binding.pageSlider.valueTo = safeValueTo
+            }
+
+            if (binding.pageSlider.value != safeCurrentPage.toFloat()) {
+                binding.pageSlider.value = safeCurrentPage.toFloat()
+            }
+        }
+
+        updatePageIndicatorForWebView(currentWebViewPage, totalWebViewPages)
     }
     
     /**
@@ -1040,6 +1065,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
      * Restore slider to chapter-level navigation (used when switching to SCROLL mode).
      */
     private fun restoreSliderToChapterNavigation() {
+        usingWebViewSlider = false
         val total = viewModel.totalPages.value
         val currentPage = viewModel.currentPage.value
         
@@ -1058,6 +1084,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         
         // Restore page indicator to show chapter numbers
         updatePageIndicator(currentPage)
+    }
+
+    private fun shouldUseWebViewSlider(): Boolean {
+        return readerMode == ReaderMode.PAGE && viewModel.paginationMode == PaginationMode.CHAPTER_BASED
     }
 
 }

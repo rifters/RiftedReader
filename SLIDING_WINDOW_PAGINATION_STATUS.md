@@ -1,5 +1,38 @@
 # Sliding Window Pagination - Implementation Status
 
+## 2025-11-20 Update
+
+- **Pagination engine hardening**: `ContinuousPaginator` now rebalances its start/end indices so the sliding window keeps its full configured size even when the user lands near the beginning or end of a book. This avoids unexpected fragment churn and matches the behavior expected by our older tests.
+- **Additional coverage**: New unit tests exercise `updateChapterPageCount`, the short-circuit path for identical counts, and `getGlobalIndexForChapterPage` before/after initialization. These make it easier to integrate WebView-reported pagination metrics with confidence.
+- **Tooling setup**: Android command-line tools are now bootstrapped under `/workspaces/android-sdk` with `local.properties` pointing at that path. Gradle succeeds when run with JDK 17 (`/usr/local/sdkman/candidates/java/17.0.17-ms`), so export `JAVA_HOME` (see snippet below) until we codify this in documentation or CI.
+- **DAO stubs aligned**: `TestBookMetaDao` in `LibrarySearchUseCaseTest` implements `updateReadingProgressEnhanced`, keeping search tests compiling alongside the enriched bookmark schema.
+- **Boundary-aware WebView bridge**: `inpage_paginator.js` now notifies Android when readers hit the first/last WebView page, and `ReaderPageFragment` funnels those callbacks through `handleChapterBoundary`. Continuous mode can therefore advance ViewPager2 immediately, while legacy chapter-based mode still jumps to the prior chapter’s final WebView page. This removes the timing gaps that previously existed when gesture detection missed an edge case.
+- **Streaming scaffolding (Phase 4 kick-off)**: The WebView paginator exposes `appendChapter`/`prependChapter` entry points, limits its in-memory deque to five chapter segments, and issues `onStreamingRequest`/`onSegmentEvicted` callbacks. On the Android side, `WebViewPaginatorBridge` now Base64-encodes HTML payloads, `ReaderPageFragment` intercepts boundary events in continuous mode to fetch adjacent chapter HTML via `ReaderViewModel.getStreamingChapterPayload`, and successful injections suppress the chapter-swap fallback. Eviction callbacks now flow through `ReaderPageFragment → ReaderViewModel → ContinuousPaginator.markChapterEvicted`, which drops the cached chapter content (unless it is the active chapter) so the sliding window stays memory-efficient and reloads evicted chapters on demand. After each streamed append/prepend, the WebView reports a per-chapter page count via `getSegmentPageCount`, letting the fragment push real measurements back into `updateChapterPaginationMetrics` for global index accuracy, and success/failure telemetry (with a basic retry) is logged for future observability.
+- **Reader settings toggle & fallback UX**: A `Continuous pagination streaming (beta)` switch now lives under Reader settings, so testers can disable the sliding-window transport without downgrading the general pagination mode. When retries still fail, the fragment surfaces a long toast explaining that streaming fell back and points people to the toggle so they can opt out.
+- **Streaming telemetry instrumentation**: ReaderPageFragment now logs `STREAM_START/SUCCESS/FAIL` with direction, chapter index, attempt count, and total duration. ReaderViewModel logs `STREAM_PAYLOAD_SUCCESS/FAIL` with timings for each payload request, giving us reliable latency numbers and insight into parser/cache churn.
+
+```bash
+export JAVA_HOME=/usr/local/sdkman/candidates/java/17.0.17-ms
+export PATH="$JAVA_HOME/bin:$PATH"
+./gradlew test
+```
+
+### Suggestions & Next Steps
+
+1. **Check in env guidance**: Surface the snippet above (or adopt Gradle toolchains) in `README.md` so contributors do not need to rediscover the JDK requirement.
+2. **Automate SDK provisioning**: Consider a `scripts/bootstrap-android-sdk.sh` helper that installs `platforms;android-34`, `build-tools;34.0.0`, and `platform-tools` for new devcontainers/CI agents.
+3. **WebView streaming focus**: With the engine stable, prioritize Phase 4 work—feeding measured chapter page counts (and eventually chunked chapter streaming) through `updateChapterPaginationMetrics` so global indices stay accurate during in-flight pagination events.
+
+#### Phase 4 Streaming Plan (WIP)
+
+- **Progress so far**: Streaming requests from the JavaScript paginator now stay within a single `ReaderPageFragment`. Kotlin responds by pulling the neighboring chapter’s HTML (continuous mode) and appending/prepending it via the new bridge helpers, while a `skipNextBoundaryDirection` flag guards against duplicate fallbacks. `inpage_paginator.js` enforces a max segment deque, reports per-segment page counts, and surfaces evictions back to Android; those callbacks evict the corresponding chapter from `ContinuousPaginator`’s cache so memory usage mirrors the DOM. The fragment now retries streaming once before falling back and logs structured success/failure events with duration, chapter index, and attempt counts, while measured page counts are fed into `updateChapterPaginationMetrics`. Testers can also toggle the feature off from Reader settings if they encounter persistent issues.
+- **Goal**: Let a single `ReaderPageFragment` continue rendering while the WebView requests adjacent chapter chunks, reducing ViewPager churn when readers hit boundaries in continuous mode.
+- **Entry point**: Reuse `PaginationBridge.onBoundaryReached`. Instead of instantly navigating via `ReaderActivity`, the fragment will (when in continuous mode) ask `ReaderViewModel` for the global page adjacent to the boundary and stream that chapter’s HTML into the existing WebView session.
+- **Transport**: Extend `WebViewPaginatorBridge` with `appendChapter(html, chapterId)` / `prependChapter(...)` helpers that proxy to new JS methods on `window.inpagePaginator`. Each call hands over sanitized HTML plus metadata (chapter index, originating global page, estimated in-page count).
+- **JS responsibilities**: Maintain a deque of `ChapterSegment` entries, each tagged with `data-chapter-index`. When a new segment arrives, insert it at the appropriate edge, trigger a reflow, and report revised totals back through `onPaginationReady`.
+- **Back-pressure**: When the JS deque exceeds a configured limit (e.g., 3 chapters forward/back), emit a `AndroidBridge.onSegmentEvicted(chapterIndex)` callback so Kotlin can drop cached spans and mark the chapter as unloaded in `ContinuousPaginator`.
+- **Error handling**: If streaming fails (parser throws, JS rejects), fall back to the existing `ReaderActivity` navigation so users never get stuck at boundaries.
+
 ## What Has Been Implemented
 
 This PR provides the **foundation** for sliding window pagination but does **not** include full UI integration.

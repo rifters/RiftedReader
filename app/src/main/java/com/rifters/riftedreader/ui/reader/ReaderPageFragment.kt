@@ -1,9 +1,10 @@
 package com.rifters.riftedreader.ui.reader
 
+import android.os.Bundle
+import android.os.SystemClock
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
-import android.os.Bundle
 import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -12,6 +13,7 @@ import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
 import androidx.core.view.GestureDetectorCompat
@@ -22,6 +24,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.databinding.FragmentReaderPageBinding
+import com.rifters.riftedreader.domain.pagination.PaginationMode
+import com.rifters.riftedreader.domain.parser.PageContent
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import kotlin.math.abs
@@ -41,6 +45,13 @@ class ReaderPageFragment : Fragment() {
     private var latestPageHtml: String? = null
     private var highlightedRange: IntRange? = null
     private var isWebViewReady = false
+    private var targetInPageIndex: Int = 0
+    private var pendingInitialInPageIndex: Int? = null
+    private var resolvedChapterIndex: Int? = null
+    private var skipNextBoundaryDirection: BoundaryDirection? = null
+    private var streamingInFlightDirection: BoundaryDirection? = null
+    private var lastStreamingFailureToastAt: Long = 0L
+    private var lastStreamingErrorMessage: String? = null
     
     // Track current in-page position to preserve during reloads
     private var currentInPageIndex: Int = 0
@@ -55,6 +66,17 @@ class ReaderPageFragment : Fragment() {
     // TTS chunk mapping for WebView highlighting
     private data class TtsChunk(val index: Int, val text: String, val startPosition: Int, val endPosition: Int)
     private var ttsChunks: List<TtsChunk> = emptyList()
+
+    private enum class BoundaryDirection {
+        NEXT,
+        PREVIOUS;
+
+        companion object {
+            fun fromRaw(raw: String?): BoundaryDirection? {
+                return values().firstOrNull { it.name.equals(raw ?: "", ignoreCase = true) }
+            }
+        }
+    }
     
     // Scroll distance tracking for onScroll-based interception
     private var cumulativeScrollX: Float = 0f
@@ -71,6 +93,7 @@ class ReaderPageFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        resolvePageLocation()
         com.rifters.riftedreader.util.AppLogger.event("ReaderPageFragment", "onViewCreated for page $pageIndex", "ui/webview/lifecycle")
         
         // Configure WebView for EPUB rendering
@@ -149,9 +172,11 @@ class ReaderPageFragment : Fragment() {
                             )
                         }
                     }
+                    applyPendingInitialInPage()
                     
                     // Initialize TTS chunks when page is loaded
                     prepareTtsChunks()
+                    syncInitialChapterContext()
                     
                     // Check if we should jump to the last internal page (backward navigation)
                     if (readerViewModel.shouldJumpToLastPage.value) {
@@ -222,31 +247,30 @@ class ReaderPageFragment : Fragment() {
         
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                readerViewModel.pages.collect { pages ->
-                    val page = pages.getOrNull(pageIndex)
-                    if (page != null) {
-                        latestPageText = page.text
-                        latestPageHtml = page.html
-                        // Clear chunks when content changes - they'll be rebuilt by prepareTtsChunks
-                        ttsChunks = emptyList()
-                        // Reset in-page position for new content
-                        currentInPageIndex = 0
-                        // Reset paginator initialization flag for new chapter content
-                        isPaginatorInitialized = false
-                        if (highlightedRange == null) {
-                            renderBaseContent()
-                        } else {
-                            applyHighlight(highlightedRange)
-                        }
+                readerViewModel.observePageContent(pageIndex).collect { page ->
+                    if (page == PageContent.EMPTY && readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                        return@collect
+                    }
+                    latestPageText = page.text
+                    latestPageHtml = page.html
+
+                    // Clear chunks when content changes - they'll be rebuilt by prepareTtsChunks
+                    ttsChunks = emptyList()
+                    // Reset in-page position for new content
+                    currentInPageIndex = if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                        targetInPageIndex
                     } else {
-                        latestPageText = ""
-                        latestPageHtml = null
-                        highlightedRange = null
-                        ttsChunks = emptyList()
-                        currentInPageIndex = 0
-                        isPaginatorInitialized = false
-                        binding.pageTextView.text = ""
-                        binding.pageWebView.loadUrl("about:blank")
+                        0
+                    }
+                    pendingInitialInPageIndex = targetInPageIndex.takeIf {
+                        readerViewModel.paginationMode == PaginationMode.CONTINUOUS && it > 0
+                    }
+                    // Reset paginator initialization flag for new chapter content
+                    isPaginatorInitialized = false
+                    if (highlightedRange == null) {
+                        renderBaseContent()
+                    } else {
+                        applyHighlight(highlightedRange)
                     }
                 }
             }
@@ -387,6 +411,9 @@ class ReaderPageFragment : Fragment() {
         // Fix: Reset isWebViewReady FIRST to prevent any JavaScript execution during cleanup
         isWebViewReady = false
         isPaginatorInitialized = false
+        pendingInitialInPageIndex = null
+        skipNextBoundaryDirection = null
+        streamingInFlightDirection = null
         
         try {
             binding.pageWebView.apply {
@@ -715,6 +742,64 @@ class ReaderPageFragment : Fragment() {
             // Return the handled value - consume only if gesture detector handled it
             handled
         }
+    }
+
+    private fun resolvePageLocation() {
+        if (readerViewModel.paginationMode == PaginationMode.CHAPTER_BASED) {
+            resolvedChapterIndex = pageIndex
+            targetInPageIndex = 0
+            pendingInitialInPageIndex = null
+            currentInPageIndex = 0
+            return
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val location = readerViewModel.getPageLocation(pageIndex)
+            val chapterIndex = location?.chapterIndex ?: pageIndex
+            val inPage = location?.inPageIndex ?: 0
+            resolvedChapterIndex = chapterIndex
+            targetInPageIndex = inPage
+            pendingInitialInPageIndex = inPage.takeIf { it > 0 }
+            currentInPageIndex = inPage
+            if (isWebViewReady) {
+                applyPendingInitialInPage()
+                syncInitialChapterContext()
+            }
+        }
+    }
+
+    private fun applyPendingInitialInPage() {
+        val target = pendingInitialInPageIndex ?: return
+        if (_binding == null || !isWebViewReady) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                var attempts = 0
+                while (attempts < 20) {
+                    if (WebViewPaginatorBridge.isReady(binding.pageWebView)) {
+                        break
+                    }
+                    kotlinx.coroutines.delay(25)
+                    attempts++
+                }
+                WebViewPaginatorBridge.goToPage(binding.pageWebView, target, smooth = false)
+                currentInPageIndex = target
+                pendingInitialInPageIndex = null
+            } catch (e: Exception) {
+                com.rifters.riftedreader.util.AppLogger.e(
+                    "ReaderPageFragment",
+                    "Error applying initial in-page index",
+                    e
+                )
+            }
+        }
+    }
+
+    private fun syncInitialChapterContext() {
+        if (_binding == null || !isWebViewReady || binding.pageWebView.visibility != View.VISIBLE) {
+            return
+        }
+        val chapterIndex = resolvedChapterIndex ?: pageIndex
+        WebViewPaginatorBridge.setInitialChapter(binding.pageWebView, chapterIndex)
     }
 
     private fun applyHighlight(range: IntRange?) {
@@ -1098,6 +1183,184 @@ class ReaderPageFragment : Fragment() {
             null
         )
     }
+
+    private fun handleChapterBoundary(direction: BoundaryDirection, boundaryPage: Int, totalPages: Int) {
+        val readerActivity = activity as? ReaderActivity ?: return
+        when (direction) {
+            BoundaryDirection.NEXT -> {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "Boundary NEXT reached on page=$pageIndex (webViewPage=$boundaryPage/$totalPages)"
+                )
+                readerActivity.navigateToNextPage(animated = true)
+            }
+            BoundaryDirection.PREVIOUS -> {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "Boundary PREVIOUS reached on page=$pageIndex (webViewPage=$boundaryPage/$totalPages)"
+                )
+                if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                    readerActivity.navigateToPreviousPage(animated = true)
+                } else {
+                    readerActivity.navigateToPreviousChapterToLastPage(animated = true)
+                }
+            }
+        }
+    }
+
+    private fun handleStreamingRequest(direction: BoundaryDirection, boundaryPage: Int, totalPages: Int) {
+        if (readerViewModel.paginationMode != PaginationMode.CONTINUOUS) {
+            readerViewModel.updateWebViewPageState(boundaryPage, totalPages)
+            handleChapterBoundary(direction, boundaryPage, totalPages)
+            return
+        }
+
+        if (streamingInFlightDirection != null) {
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "Streaming already in flight for direction=$streamingInFlightDirection - ignoring new request"
+            )
+            return
+        }
+
+        val totalPagesValue = readerViewModel.totalPages.value
+        if (totalPagesValue <= 0) {
+            readerViewModel.updateWebViewPageState(boundaryPage, totalPages)
+            handleChapterBoundary(direction, boundaryPage, totalPages)
+            return
+        }
+
+        val targetGlobalIndex = when (direction) {
+            BoundaryDirection.NEXT -> pageIndex + 1
+            BoundaryDirection.PREVIOUS -> pageIndex - 1
+        }
+
+        if (targetGlobalIndex !in 0 until totalPagesValue) {
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "Streaming target out of range: target=$targetGlobalIndex total=$totalPagesValue"
+            )
+            readerViewModel.updateWebViewPageState(boundaryPage, totalPages)
+            handleChapterBoundary(direction, boundaryPage, totalPages)
+            return
+        }
+
+        skipNextBoundaryDirection = direction
+        streamingInFlightDirection = direction
+        lastStreamingErrorMessage = null
+        viewLifecycleOwner.lifecycleScope.launch {
+            com.rifters.riftedreader.util.AppLogger.event(
+                "ReaderPageFragment",
+                "[STREAM_START] direction=$direction target=$targetGlobalIndex page=$pageIndex",
+                "ui/webview/streaming"
+            )
+            val sessionStartMs = SystemClock.elapsedRealtime()
+            val maxAttempts = 2
+            var attempt = 0
+            var result: StreamingAttemptResult? = null
+            while (attempt < maxAttempts && result == null) {
+                result = streamChapter(direction, targetGlobalIndex, attempt + 1)
+                if (result == null && attempt + 1 < maxAttempts) {
+                    kotlinx.coroutines.delay(120)
+                }
+                attempt++
+            }
+            streamingInFlightDirection = null
+            val durationMs = SystemClock.elapsedRealtime() - sessionStartMs
+            if (result != null) {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "Streaming success for direction=$direction target=$targetGlobalIndex attempts=$attempt pages=${result.measuredPages} duration=${durationMs}ms"
+                )
+                com.rifters.riftedreader.util.AppLogger.event(
+                    "ReaderPageFragment",
+                    "[STREAM_SUCCESS] direction=$direction target=$targetGlobalIndex attempts=$attempt durationMs=$durationMs chapter=${result.chapterIndex} pages=${result.measuredPages}",
+                    "ui/webview/streaming"
+                )
+            } else {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "Streaming failed for direction=$direction after $attempt attempts (duration=${durationMs}ms) reason=${lastStreamingErrorMessage ?: "unknown"}"
+                )
+                com.rifters.riftedreader.util.AppLogger.event(
+                    "ReaderPageFragment",
+                    "[STREAM_FAIL] direction=$direction target=$targetGlobalIndex attempts=$attempt durationMs=$durationMs reason=${lastStreamingErrorMessage ?: "unknown"}",
+                    "ui/webview/streaming"
+                )
+                showStreamingFailureToast()
+                skipNextBoundaryDirection = null
+                readerViewModel.updateWebViewPageState(boundaryPage, totalPages)
+                handleChapterBoundary(direction, boundaryPage, totalPages)
+            }
+        }
+    }
+
+    private suspend fun streamChapter(direction: BoundaryDirection, targetGlobalIndex: Int, attemptNumber: Int): StreamingAttemptResult? {
+        if (_binding == null || !isWebViewReady) {
+            lastStreamingErrorMessage = "webview_not_ready"
+            return null
+        }
+        return try {
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "Streaming attempt #$attemptNumber direction=$direction target=$targetGlobalIndex"
+            )
+            val payload = readerViewModel.getStreamingChapterPayload(targetGlobalIndex) ?: run {
+                lastStreamingErrorMessage = "empty_payload"
+                return null
+            }
+            val html = payload.html
+            if (html.isBlank()) {
+                lastStreamingErrorMessage = "blank_html"
+                return null
+            }
+            when (direction) {
+                BoundaryDirection.NEXT -> WebViewPaginatorBridge.appendChapter(binding.pageWebView, payload.chapterIndex, html)
+                BoundaryDirection.PREVIOUS -> WebViewPaginatorBridge.prependChapter(binding.pageWebView, payload.chapterIndex, html)
+            }
+            kotlinx.coroutines.delay(150)
+            var measuredPages = 1
+            try {
+                val segmentPages = WebViewPaginatorBridge.getSegmentPageCount(binding.pageWebView, payload.chapterIndex)
+                if (segmentPages > 0) {
+                    measuredPages = segmentPages
+                    readerViewModel.updateChapterPaginationMetrics(payload.chapterIndex, segmentPages)
+                }
+            } catch (e: Exception) {
+                com.rifters.riftedreader.util.AppLogger.e(
+                    "ReaderPageFragment",
+                    "Error measuring streamed chapter pages for chapter=${payload.chapterIndex}",
+                    e
+                )
+            }
+            lastStreamingErrorMessage = null
+            StreamingAttemptResult(payload.chapterIndex, measuredPages)
+        } catch (e: Exception) {
+            com.rifters.riftedreader.util.AppLogger.e(
+                "ReaderPageFragment",
+                "Error streaming chapter for direction=$direction target=$targetGlobalIndex",
+                e
+            )
+            lastStreamingErrorMessage = e.message ?: "exception"
+            null
+        }
+    }
+
+    private data class StreamingAttemptResult(
+        val chapterIndex: Int,
+        val measuredPages: Int
+    )
+
+    private fun showStreamingFailureToast() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastStreamingFailureToastAt < 3000) {
+            return
+        }
+        val appContext = context?.applicationContext ?: return
+        lastStreamingFailureToastAt = now
+        val message = getString(R.string.reader_streaming_failed_toast)
+        Toast.makeText(appContext, message, Toast.LENGTH_LONG).show()
+    }
     
     /**
      * JavaScript interface for pagination callbacks from the WebView paginator.
@@ -1116,6 +1379,13 @@ class ReaderPageFragment : Fragment() {
                 // CRITICAL: Set paginator initialized flag now that JS paginator is ready
                 // This prevents navigation logic from using stale/default values
                 isPaginatorInitialized = true
+                if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        val location = readerViewModel.getPageLocation(pageIndex)
+                        val chapterIndex = location?.chapterIndex ?: resolvedChapterIndex ?: pageIndex
+                        readerViewModel.updateChapterPaginationMetrics(chapterIndex, totalPages)
+                    }
+                }
                 
                 // Update ViewModel with initial pagination state
                 viewLifecycleOwner.lifecycleScope.launch {
@@ -1162,6 +1432,56 @@ class ReaderPageFragment : Fragment() {
                         )
                     }
                 }
+            }
+        }
+
+        @JavascriptInterface
+        fun onBoundaryReached(direction: String?, boundaryPage: Int, totalPages: Int) {
+            val resolvedDirection = BoundaryDirection.fromRaw(direction)
+            if (resolvedDirection == null) {
+                com.rifters.riftedreader.util.AppLogger.e(
+                    "ReaderPageFragment",
+                    "Unknown boundary direction from JS: $direction",
+                    null
+                )
+                return
+            }
+
+            activity?.runOnUiThread {
+                readerViewModel.updateWebViewPageState(boundaryPage, totalPages)
+                if (skipNextBoundaryDirection == resolvedDirection) {
+                    skipNextBoundaryDirection = null
+                    return@runOnUiThread
+                }
+                handleChapterBoundary(resolvedDirection, boundaryPage, totalPages)
+            }
+        }
+
+        @JavascriptInterface
+        fun onStreamingRequest(direction: String?, boundaryPage: Int, totalPages: Int) {
+            val resolvedDirection = BoundaryDirection.fromRaw(direction)
+            if (resolvedDirection == null) {
+                com.rifters.riftedreader.util.AppLogger.e(
+                    "ReaderPageFragment",
+                    "Unknown streaming direction from JS: $direction",
+                    null
+                )
+                return
+            }
+
+            activity?.runOnUiThread {
+                handleStreamingRequest(resolvedDirection, boundaryPage, totalPages)
+            }
+        }
+
+        @JavascriptInterface
+        fun onSegmentEvicted(chapterIndex: Int) {
+            activity?.runOnUiThread {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "onSegmentEvicted callback for chapter=$chapterIndex (page=$pageIndex)"
+                )
+                readerViewModel.onChapterSegmentEvicted(chapterIndex)
             }
         }
     }
