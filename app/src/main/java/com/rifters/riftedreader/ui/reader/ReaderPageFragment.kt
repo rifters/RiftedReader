@@ -1690,13 +1690,14 @@ class ReaderPageFragment : Fragment() {
                                 "ReaderPageFragment",
                                 "HARDWARE_EDGE: at last in-page ($currentPage/$pageCount), attempting chapter streaming [STREAM_ATTEMPT]"
                             )
+                            handleStreamingRequest(BoundaryDirection.NEXT, currentPage, pageCount)
                         } else {
                             com.rifters.riftedreader.util.AppLogger.d(
                                 "ReaderPageFragment",
                                 "HARDWARE_EDGE: at last in-page ($currentPage/$pageCount), falling back to ViewPager (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
                             )
+                            (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
                         }
-                        (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
                     }
                 } else {
                     if (currentPage > 0) {
@@ -1713,13 +1714,14 @@ class ReaderPageFragment : Fragment() {
                                 "ReaderPageFragment",
                                 "HARDWARE_EDGE: at first in-page ($currentPage/$pageCount), attempting chapter streaming [STREAM_ATTEMPT]"
                             )
+                            handleStreamingRequest(BoundaryDirection.PREVIOUS, currentPage, pageCount)
                         } else {
                             com.rifters.riftedreader.util.AppLogger.d(
                                 "ReaderPageFragment",
                                 "HARDWARE_EDGE: at first in-page ($currentPage/$pageCount), falling back to ViewPager (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
                             )
+                            (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
                         }
-                        (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
                     }
                 }
             } catch (e: Exception) {

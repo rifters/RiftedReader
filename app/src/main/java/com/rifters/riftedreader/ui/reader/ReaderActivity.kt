@@ -639,50 +639,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         AppLogger.d(
             "ReaderActivity",
             "navigateToNextPage called: currentPage=$currentIndex -> nextPage=$nextIndex mode=$readerMode " +
-                    "paginationMode=${viewModel.paginationMode} [PAGE_SWITCH_REASON:USER_TAP_OR_BUTTON]"
+                    "[PAGE_SWITCH_REASON:USER_TAP_OR_BUTTON]"
         )
-        
-        // In CONTINUOUS mode, delegate to the active fragment for in-page navigation
-        if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
-            val fragTag = "f$currentIndex"
-            val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
-            if (frag != null) {
-                AppLogger.d(
-                    "ReaderActivity",
-                    "Delegating next page navigation to fragment for CONTINUOUS mode"
-                )
-                lifecycleScope.launch {
-                    try {
-                        val webView = frag.view?.findViewById<android.webkit.WebView>(R.id.pageWebView)
-                        if (webView != null) {
-                            val currentPage = WebViewPaginatorBridge.getCurrentPage(webView)
-                            val pageCount = WebViewPaginatorBridge.getPageCount(webView)
-                            
-                            if (currentPage < pageCount - 1) {
-                                // Navigate within current chapter
-                                WebViewPaginatorBridge.nextPage(webView)
-                            } else {
-                                // At end of chapter, advance to next chapter
-                                val moved = viewModel.goToPage(nextIndex)
-                                if (moved && readerMode == ReaderMode.PAGE) {
-                                    binding.pageViewPager.setCurrentItem(nextIndex, animated)
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        AppLogger.e("ReaderActivity", "Error in CONTINUOUS next page navigation", e)
-                        // Fallback to regular navigation
-                        val moved = viewModel.goToPage(nextIndex)
-                        if (moved && readerMode == ReaderMode.PAGE) {
-                            binding.pageViewPager.setCurrentItem(nextIndex, animated)
-                        }
-                    }
-                }
-                return
-            }
-        }
-        
-        // Default behavior for CHAPTER_BASED mode or when fragment not available
         val moved = viewModel.goToPage(nextIndex)
         if (readerMode == ReaderMode.PAGE && moved) {
             AppLogger.d(
@@ -699,49 +657,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         AppLogger.d(
             "ReaderActivity",
             "navigateToPreviousPage called: currentPage=$currentIndex -> previousPage=$previousIndex mode=$readerMode " +
-                    "paginationMode=${viewModel.paginationMode} [PAGE_SWITCH_REASON:USER_TAP_OR_BUTTON]"
+                    "[PAGE_SWITCH_REASON:USER_TAP_OR_BUTTON]"
         )
-        
-        // In CONTINUOUS mode, delegate to the active fragment for in-page navigation
-        if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
-            val fragTag = "f$currentIndex"
-            val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
-            if (frag != null) {
-                AppLogger.d(
-                    "ReaderActivity",
-                    "Delegating previous page navigation to fragment for CONTINUOUS mode"
-                )
-                lifecycleScope.launch {
-                    try {
-                        val webView = frag.view?.findViewById<android.webkit.WebView>(R.id.pageWebView)
-                        if (webView != null) {
-                            val currentPage = WebViewPaginatorBridge.getCurrentPage(webView)
-                            
-                            if (currentPage > 0) {
-                                // Navigate within current chapter
-                                WebViewPaginatorBridge.prevPage(webView)
-                            } else {
-                                // At beginning of chapter, go to previous chapter's last page
-                                val moved = viewModel.previousChapterToLastPage()
-                                if (moved && readerMode == ReaderMode.PAGE) {
-                                    binding.pageViewPager.setCurrentItem(previousIndex, animated)
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        AppLogger.e("ReaderActivity", "Error in CONTINUOUS previous page navigation", e)
-                        // Fallback to regular navigation
-                        val moved = viewModel.goToPage(previousIndex)
-                        if (moved && readerMode == ReaderMode.PAGE) {
-                            binding.pageViewPager.setCurrentItem(previousIndex, animated)
-                        }
-                    }
-                }
-                return
-            }
-        }
-        
-        // Default behavior for CHAPTER_BASED mode or when fragment not available
         val moved = viewModel.goToPage(previousIndex)
         if (readerMode == ReaderMode.PAGE && moved) {
             AppLogger.d(
