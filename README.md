@@ -1,10 +1,31 @@
 # RiftedReader
 A modern ebook reader for Android, inspired by LibreraReader
 
-## Project Status
+## Current Project Status
 
-✅ **Stage 1-3 Complete** - Android project structure, database layer, parsers, and basic UI implemented
-🛠️ **Stage 6-8 Scaffolding** - Format catalogue, collections database, statistics utilities, and cloud/OPDS interfaces added
+The project is in an advanced stage, with a focus on finalizing a custom, high-performance reader core and refining key features before moving to cloud integration.
+
+### ⭐ **Current Focus: Reader Core**
+
+*   **Sliding Window Pagination**: We are actively implementing a custom **sliding window pagination** engine for the reader. This innovative approach replaces standard components like `ViewPager2` to provide a more responsive, memory-efficient, and bug-free reading experience, especially for large documents.
+
+### ✅ **Completed & Nearing Completion**
+
+*   **Core Architecture**: A modern MVVM architecture using Kotlin, Coroutines, Hilt, and Room is fully implemented.
+*   **Advanced Text-to-Speech (TTS)**: The complete TTS engine is implemented, including the sophisticated text/regex replacement system and background service. *(Needs final testing)*.
+*   **Advanced Library & UI**: The database and UI for managing collections, saved searches, and viewing library statistics are implemented. *(Needs final review and polish)*.
+*   **Core Parsers**: Parsers for **TXT, EPUB, PDF, and HTML** are complete and fully integrated.
+*   **User Interface**: The app uses Material Design 3 and includes a functional library screen and reader framework.
+
+### 🟡 **In Progress / Scaffolding**
+
+*   **Advanced Parsers**: The application can identify a wide range of formats (MOBI, FB2, CBZ, etc.) via a `FormatCatalog`, but full content extraction is not yet implemented. These are currently handled by a `PreviewParser`.
+
+### 🔜 **Next Major Goals**
+
+*   **Finalize Reader Core**: Complete and integrate the new sliding window paginator.
+*   **Implement Advanced Parsers**: Develop full content extraction for MOBI, FB2, and other planned formats.
+*   **Cloud Sync**: Begin development of cloud provider integrations (Google Drive, Dropbox).
 
 ## Documentation
 
@@ -60,7 +81,7 @@ This project includes detailed planning and analysis documents:
 | MOBI / AZW / AZW3 | 🟡 In Progress | Preview parser + roadmap for libmobi integration |
 | FB2 | 🟡 In Progress | XML preview parser scaffolding |
 | CBZ | 🟡 In Progress | Archive preview parser scaffolding |
-| HTML | ✅ Supported | Jsoup-based parser aligned with Librera's HtmlExtractor |
+| HTML | ✅ Supported | Jsoup-based parser aligned with Librera''s HtmlExtractor |
 | CBR, RTF, DOCX | 🔜 Planned | Format descriptors tracked via `FormatCatalog` |
 
 ### Text-to-Speech ⭐ Core Feature
@@ -116,71 +137,11 @@ This project includes detailed planning and analysis documents:
 - **Async**: Coroutines + Flow
 - **UI**: Material Design 3 Components
 
-## Development Stages
-
-### Stage 1: Foundation (Weeks 1-2) ✅ Complete
-- [x] Project analysis and planning
-- [x] Documentation creation
-- [x] Project setup
-- [x] Basic UI framework
-- [x] Android project with Kotlin and Gradle
-- [x] Material Design 3 theming
-- [x] Navigation component setup
-
-### Stage 2: File Management & Database (Weeks 3-4) ✅ Complete
-- [x] Room database setup
-- [x] BookMeta entity and DAO
-- [x] Repository pattern implementation
-- [x] File scanner for discovering books
-- [x] Storage permission handling
-- [x] Search and filter functionality
-
-### Stage 3: Basic Parsing (Weeks 5-7) ✅ Complete
-- [x] Parser interface design
-- [x] TXT parser with encoding detection
-- [x] EPUB parser with metadata extraction
-- [x] PDF parser (minimal wrapper)
-- [x] Reader UI with page navigation
-- [x] Reading progress tracking
-- [x] Gesture controls
-
-### Stage 4: TTS Implementation (Weeks 11-14) ⭐ Next Priority
-- [ ] Basic TTS engine
-- [ ] Replacement system
-- [ ] Background service
-- [ ] TTS controls UI
-
-### Stage 5: Enhanced Features (Weeks 15-20)
-- [ ] Additional TTS polish
-- [ ] Reader refinements
-
-### Stage 6: Advanced Parsing (Weeks 15-16)
-- [x] Introduced central format catalogue with status tracking
-- [x] Preview parser scaffolding for MOBI, FB2, CBZ, CBR, RTF, DOCX
-- [x] HTML parser implementation using Jsoup (parity with Librera's HtmlExtractor)
-- [ ] Full content extraction for remaining new formats
-
-### Stage 7: Library Features (Weeks 17-18)
-- [x] Room entities & DAO for collections
-- [x] Collection repository façade
-- [x] Search filter use-case & statistics calculator
-- [x] LibraryViewModel wired to filter state & collections flow
-- [x] Persisted search filters & saved searches UI
-- [x] Library statistics screen in Settings
-- [x] Collections UI and smart collections
-- [ ] Bulk metadata editing & cover management
-
-### Stage 8: Cloud & Sync (Weeks 19-20)
-- [x] Cloud storage provider abstraction & stub implementations
-- [x] OPDS client data structures
-- [ ] Google Drive / Dropbox integrations
-- [ ] Progress sync & conflict resolution
-
 See [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) for complete timeline.
 
 ## Inspiration
 
-This project is inspired by [LibreraReader](https://github.com/foobnix/LibreraReader) (GPL v3), a mature and feature-rich ebook reader. RiftedReader aims to bring similar functionality with a modern codebase and architecture, with special focus on the excellent TTS replacement system that makes LibreraReader stand out.
+This project is inspired by [LibreraReader](https://github.com/foobnix/LibreraReader) (GPL v3), a mature and feature-rich ebook reader. RiftedReader aims to bring similar functionality with a modern tech stack and architecture.
 
 **Note**: RiftedReader is being built from scratch based on feature analysis, not by copying code from LibreraReader.
 
@@ -197,112 +158,4 @@ Project is in planning phase. Contributions will be welcome once development beg
 For questions or suggestions, please open an issue.
 
 ---
-
-## What Has Been Built (Stages 1-3)
-
-### Project Structure
-The Android project follows modern architecture patterns with clear separation of concerns:
-
-```
-app/src/main/java/com/rifters/riftedreader/
-├── data/
-│   ├── database/
-│   │   ├── dao/
-│   │   │   └── BookMetaDao.kt           # Database queries
-│   │   ├── entities/
-│   │   │   └── BookMeta.kt              # Book metadata entity
-│   │   ├── BookDatabase.kt              # Room database
-│   │   └── Converters.kt                # Type converters for Room
-│   └── repository/
-│       └── BookRepository.kt            # Data access layer
-├── domain/
-│   └── parser/
-│       ├── BookParser.kt                # Parser interface
-│       ├── TxtParser.kt                 # Plain text parser
-│       ├── EpubParser.kt                # EPUB format parser
-│       ├── PdfParser.kt                 # PDF format wrapper
-│       └── ParserFactory.kt             # Parser selection
-├── ui/
-│   ├── MainActivity.kt                  # Main activity
-│   ├── library/
-│   │   ├── LibraryFragment.kt           # Library screen
-│   │   ├── LibraryViewModel.kt          # Library logic
-│   │   └── BooksAdapter.kt              # RecyclerView adapter
-│   └── reader/
-│       ├── ReaderActivity.kt            # Reading screen
-│       └── ReaderViewModel.kt           # Reading logic
-└── util/
-    └── FileScanner.kt                   # File system scanner
-```
-
-### Key Features Implemented
-
-#### 1. Database Layer (Stage 2)
-- **Room Database** with BookMeta entity
-- Comprehensive metadata storage: title, author, format, size, pages, progress
-- DAO with queries for search, filtering, favorites
-- Type converters for complex types (lists)
-- Repository pattern for clean data access
-
-#### 2. File Parsing (Stage 3)
-- **TXT Parser**: Handles plain text with encoding detection (UTF-8, ISO-8859-1)
-- **EPUB Parser**: Extracts metadata, spine, table of contents using JSoup
-- **PDF Parser**: Minimal implementation (delegates to PDF viewer library)
-- **Parser Factory**: Automatic format detection and parser selection
-
-#### 3. User Interface (Stages 1 & 2)
-- **Material Design 3** theming with light/dark mode support
-- **Library Screen**: 
-  - RecyclerView with book cards
-  - Cover images, progress indicators
-  - Search functionality
-  - FAB for scanning books
-- **Reader Screen**:
-  - Scrollable text view
-  - Page navigation (previous/next)
-  - Progress slider
-  - Tap-to-show controls overlay
-  - Gesture detection
-- **Navigation Component** setup
-
-#### 4. File Management (Stage 2)
-- **FileScanner** utility for discovering books
-- Scans default directories (Books, Downloads, Documents)
-- Automatic metadata extraction on scan
-- Progress reporting during scan
-- Incremental updates (doesn't re-scan existing books)
-
-#### 5. Permissions
-- Storage permission handling for Android 10+
-- Permission request dialogs with rationale
-- Graceful fallback for denied permissions
-
-### Building the Project
-
-This is a standard Android Gradle project. To build:
-
-```bash
-./gradlew assembleDebug
-```
-
-To run tests:
-```bash
-./gradlew test
-```
-
-### Dependencies Used
-
-- **AndroidX Core & AppCompat**: Modern Android components
-- **Material Design 3**: UI components
-- **Room**: Local database
-- **Navigation Component**: Screen navigation
-- **Kotlin Coroutines**: Asynchronous operations
-- **Coil**: Image loading
-- **JSoup**: HTML/XML parsing (for EPUB)
-- **Zip4j**: ZIP file handling
-- **Android PDF Viewer**: PDF rendering
-- **Gson**: JSON serialization for Room converters
-
----
-
-**Last Updated**: November 14, 2025
+*Last Updated: 2025-11-20*
