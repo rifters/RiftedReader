@@ -63,13 +63,15 @@ class BookRepository(private val bookMetaDao: BookMetaDao) {
         chapterIndex: Int,
         inPageIndex: Int,
         characterOffset: Int,
+        previewText: String?,
         percentComplete: Float
     ) {
         bookMetaDao.updateReadingProgressEnhanced(
             bookId, 
             chapterIndex, 
             inPageIndex, 
-            characterOffset, 
+            characterOffset,
+            previewText,
             percentComplete,
             System.currentTimeMillis()
         )
@@ -77,5 +79,27 @@ class BookRepository(private val bookMetaDao: BookMetaDao) {
     
     suspend fun setFavorite(bookId: String, isFavorite: Boolean) {
         bookMetaDao.setFavorite(bookId, isFavorite)
+    }
+    
+    /**
+     * Get all books that have bookmarks (with preview text).
+     * Sorted by most recent access.
+     */
+    fun getBooksWithBookmarks(): Flow<List<BookMeta>> {
+        return bookMetaDao.getBooksWithBookmarks()
+    }
+    
+    /**
+     * Get books with bookmarks sorted by title.
+     */
+    suspend fun getBooksWithBookmarksSortedByTitle(): List<BookMeta> {
+        return bookMetaDao.getBooksWithBookmarksSortedByTitle()
+    }
+    
+    /**
+     * Get books with bookmarks sorted by reading position.
+     */
+    suspend fun getBooksWithBookmarksSortedByPosition(): List<BookMeta> {
+        return bookMetaDao.getBooksWithBookmarksSortedByPosition()
     }
 }

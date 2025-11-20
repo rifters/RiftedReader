@@ -361,10 +361,16 @@ class TestBookMetaDao(private val books: List<BookMeta>) : BookMetaDao {
         chapterIndex: Int,
         inPageIndex: Int,
         characterOffset: Int,
+        previewText: String?,
         percentComplete: Float,
         timestamp: Long
     ) {}
     override suspend fun setFavorite(bookId: String, isFavorite: Boolean) {}
+    override fun getBooksWithBookmarks(): Flow<List<BookMeta>> = MutableStateFlow(books.filter { it.currentPreviewText != null })
+    override suspend fun getBooksWithBookmarksSortedByTitle(): List<BookMeta> = books.filter { it.currentPreviewText != null }.sortedBy { it.title }
+    override suspend fun getBooksWithBookmarksSortedByPosition(): List<BookMeta> = books.filter { it.currentPreviewText != null }.sortedWith(
+        compareBy({ it.currentChapterIndex }, { it.currentInPageIndex })
+    )
 }
 
 class TestCollectionDao(private val collectionsWithBooksData: List<CollectionWithBooks>) : CollectionDao {

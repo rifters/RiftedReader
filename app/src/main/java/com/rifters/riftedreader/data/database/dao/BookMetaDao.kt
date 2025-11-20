@@ -31,6 +31,15 @@ interface BookMetaDao {
     @Query("SELECT * FROM books WHERE title LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%'")
     fun searchBooks(query: String): Flow<List<BookMeta>>
     
+    @Query("SELECT * FROM books WHERE currentPreviewText IS NOT NULL ORDER BY lastOpened DESC")
+    fun getBooksWithBookmarks(): Flow<List<BookMeta>>
+    
+    @Query("SELECT * FROM books WHERE currentPreviewText IS NOT NULL ORDER BY title COLLATE NOCASE ASC")
+    suspend fun getBooksWithBookmarksSortedByTitle(): List<BookMeta>
+    
+    @Query("SELECT * FROM books WHERE currentPreviewText IS NOT NULL ORDER BY currentChapterIndex ASC, currentInPageIndex ASC")
+    suspend fun getBooksWithBookmarksSortedByPosition(): List<BookMeta>
+    
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBook(book: BookMeta)
     
@@ -56,6 +65,7 @@ interface BookMetaDao {
         currentChapterIndex = :chapterIndex, 
         currentInPageIndex = :inPageIndex,
         currentCharacterOffset = :characterOffset,
+        currentPreviewText = :previewText,
         percentComplete = :percentComplete,
         lastOpened = :timestamp 
         WHERE id = :bookId""")
@@ -63,7 +73,8 @@ interface BookMetaDao {
         bookId: String, 
         chapterIndex: Int, 
         inPageIndex: Int,
-        characterOffset: Int, 
+        characterOffset: Int,
+        previewText: String?,
         percentComplete: Float, 
         timestamp: Long
     )
