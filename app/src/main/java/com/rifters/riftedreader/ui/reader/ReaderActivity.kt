@@ -576,6 +576,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         binding.contentTextView.setTextColor(palette.textColor)
         binding.pageViewPager.setBackgroundColor(palette.backgroundColor)
         readerMode = settings.mode
+        AppLogger.d(
+            "ReaderActivity",
+            "Reader settings applied: mode=${settings.mode}, paginationMode=${settings.paginationMode}, " +
+                    "continuousStreaming=${settings.continuousStreamingEnabled} [SETTINGS_APPLIED]"
+        )
         updateReaderModeUi()
     }
 

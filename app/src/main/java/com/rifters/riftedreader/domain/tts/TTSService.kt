@@ -117,7 +117,7 @@ class TTSService : Service() {
                 .setUsage(AudioAttributesCompat.USAGE_MEDIA)
                 .setContentType(AudioAttributesCompat.CONTENT_TYPE_SPEECH)
                 .build()
-            audioFocusRequestCompat = AudioFocusRequestCompat.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            audioFocusRequestCompat = AudioFocusRequestCompat.Builder(AudioManagerCompat.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(attributesCompat)
                 .setOnAudioFocusChangeListener(audioFocusChangeListener)
                 .build()
