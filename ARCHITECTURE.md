@@ -26,12 +26,17 @@ This document provides visual representations of the system architecture.
 │                                                               │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
 │  │    Book      │  │    Parser    │  │     TTS      │      │
-│  │  Repository  │  │   Manager    │  │    Engine    │      │
+│  │  Repository  │  │   Factory    │  │    Engine    │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 │                                                               │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  Collection  │  │   Reading    │  │ Replacement  │      │
-│  │   Manager    │  │   Session    │  │    Engine    │      │
+│  │  Collection  │  │  Continuous  │  │ Replacement  │      │
+│  │   Manager    │  │  Paginator   │  │    Engine    │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│                                                               │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │  Bookmark    │  │   Library    │  │   WebView    │      │
+│  │   Manager    │  │   Search     │  │  Paginator   │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 └─────────┬───────────────────┬───────────────────┬───────────┘
           │                   │                   │
@@ -41,13 +46,13 @@ This document provides visual representations of the system architecture.
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
 │  │     Room     │  │    Parsers   │  │    Prefs     │      │
 │  │   Database   │  │ (TXT, EPUB,  │  │  Storage     │      │
-│  │              │  │  PDF, MOBI)  │  │              │      │
+│  │              │  │     PDF)     │  │              │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 │                                                               │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │     File     │  │    Cache     │  │    Cloud     │      │
-│  │   Scanner    │  │   Manager    │  │    Storage   │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│  ┌──────────────┐  ┌──────────────┐                         │
+│  │     File     │  │     TTS      │                         │
+│  │   Scanner    │  │ Replacement  │                         │
+│  └──────────────┘  └──────────────┘                         │
 └───────────────────────────────────────────────────────────────┘
 ```
 
@@ -97,7 +102,7 @@ User taps book
       ▼
 ┌─────────────┐
 │   Parser    │  7. Parse book content
-│  Manager    │
+│  Factory    │
 └─────┬───────┘
       │ selectParser(format)
       ▼
@@ -108,8 +113,8 @@ User taps book
       │ BookContent
       ▼
 ┌─────────────┐
-│   Reader    │  9. Display content
-│  Activity   │
+│   Reader    │  9. Display content with ViewPager2
+│  Activity   │     or Continuous Pagination
 └─────────────┘
 ```
 
@@ -203,6 +208,9 @@ Book Content
 │  lastOpened      : Long (timestamp)                     │
 │  currentPage     : Int                                  │
 │  totalPages      : Int                                  │
+│  currentChapterIndex  : Int (for continuous mode)      │
+│  currentInPageIndex   : Int (for continuous mode)      │
+│  currentCharacterOffset : Int (for continuous mode)    │
 │  coverPath       : String? (Thumbnail path)            │
 │  isFavorite      : Boolean                              │
 │  tags            : List<String> (JSON)                  │
@@ -273,7 +281,7 @@ Book Content
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│                    Parser Interface                     │
+│                    BookParser Interface                 │
 └────────────────────────────────────────────────────────┘
                            │
                            │ implements
@@ -287,22 +295,28 @@ Book Content
           │                │                │
           ▼                ▼                ▼
     ┌──────────┐     ┌──────────┐    ┌──────────┐
-    │ Encoding │     │   ZIP    │    │  MuPDF   │
-    │ Detector │     │ Extractor│    │  Library │
-    └──────────┘     └──────────┘    └──────────┘
-                           │
+    │ Encoding │     │   ZIP    │    │ Android  │
+    │ Detector │     │(Zip4j)   │    │   PDF    │
+    └──────────┘     └──────────┘    │  Viewer  │
+                           │          └──────────┘
                            ▼
                      ┌──────────┐
                      │   HTML   │
-                     │  Parser  │
+                     │ (JSoup)  │
                      └──────────┘
 
+          ┌────────────────┐
+          │  ParserFactory │  Format detection
+          └────────────────┘  and parser selection
+
+          ┌────────────────┐
+          │ FormatCatalog  │  Supported formats
+          └────────────────┘  registry
+
 Interface methods:
-- canParse(path: String): Boolean
-- extractMetadata(path: String): BookMeta
-- extractContent(path: String): BookContent
-- extractChapter(path: String, index: Int): String
-- getTableOfContents(path: String): List<Chapter>
+- parseMetadata(file: File): BookMeta
+- parseChapters(file: File): List<Chapter>
+- parseChapterContent(file: File, index: Int): String
 ```
 
 ---
@@ -316,89 +330,120 @@ RiftedReader/
 │   ├── src/
 │   │   ├── main/
 │   │   │   ├── java/com/rifters/riftedreader/
+│   │   │   │   ├── RiftedReaderApplication.kt
 │   │   │   │   ├── data/
 │   │   │   │   │   ├── database/
 │   │   │   │   │   │   ├── BookDatabase.kt
+│   │   │   │   │   │   ├── Converters.kt
 │   │   │   │   │   │   ├── dao/
 │   │   │   │   │   │   │   ├── BookMetaDao.kt
 │   │   │   │   │   │   │   ├── BookmarkDao.kt
 │   │   │   │   │   │   │   └── CollectionDao.kt
-│   │   │   │   │   │   └── entity/
+│   │   │   │   │   │   └── entities/
 │   │   │   │   │   │       ├── BookMeta.kt
 │   │   │   │   │   │       ├── Bookmark.kt
-│   │   │   │   │   │       └── Collection.kt
-│   │   │   │   │   ├── repository/
-│   │   │   │   │   │   ├── BookRepository.kt
-│   │   │   │   │   │   └── CollectionRepository.kt
-│   │   │   │   │   └── preferences/
-│   │   │   │   │       ├── AppPreferences.kt
-│   │   │   │   │       └── TTSPreferences.kt
+│   │   │   │   │   │       └── CollectionEntity.kt
+│   │   │   │   │   ├── preferences/
+│   │   │   │   │   │   ├── LibraryPreferences.kt
+│   │   │   │   │   │   ├── ReaderPreferences.kt
+│   │   │   │   │   │   └── TTSPreferences.kt
+│   │   │   │   │   └── repository/
+│   │   │   │   │       ├── BookRepository.kt
+│   │   │   │   │       ├── BookmarkRepository.kt
+│   │   │   │   │       ├── CollectionRepository.kt
+│   │   │   │   │       └── TTSReplacementRepository.kt
 │   │   │   │   ├── domain/
-│   │   │   │   │   ├── model/
-│   │   │   │   │   │   ├── BookContent.kt
-│   │   │   │   │   │   └── Chapter.kt
-│   │   │   │   │   ├── parser/
-│   │   │   │   │   │   ├── Parser.kt (interface)
-│   │   │   │   │   │   ├── ParserManager.kt
-│   │   │   │   │   │   ├── TxtParser.kt
-│   │   │   │   │   │   ├── EpubParser.kt
-│   │   │   │   │   │   ├── PdfParser.kt
-│   │   │   │   │   │   └── MobiParser.kt
-│   │   │   │   │   ├── tts/
-│   │   │   │   │   │   ├── TTSEngine.kt
-│   │   │   │   │   │   ├── TTSReplacementEngine.kt
-│   │   │   │   │   │   ├── TTSReplacementRule.kt
-│   │   │   │   │   │   ├── TTSService.kt
-│   │   │   │   │   │   ├── TTSStateManager.kt
-│   │   │   │   │   │   └── TTSNotification.kt
-│   │   │   │   │   └── usecase/
-│   │   │   │   │       ├── ScanLibraryUseCase.kt
-│   │   │   │   │       └── ExtractMetadataUseCase.kt
-│   │   │   │   ├── ui/
+│   │   │   │   │   ├── bookmark/
+│   │   │   │   │   │   └── BookmarkManager.kt
 │   │   │   │   │   ├── library/
+│   │   │   │   │   │   ├── BookMetadataUpdate.kt
+│   │   │   │   │   │   ├── LibrarySearch.kt
+│   │   │   │   │   │   ├── LibraryStatistics.kt
+│   │   │   │   │   │   ├── SavedLibrarySearch.kt
+│   │   │   │   │   │   └── SmartCollections.kt
+│   │   │   │   │   ├── pagination/
+│   │   │   │   │   │   ├── ContinuousPaginator.kt
+│   │   │   │   │   │   └── PaginationMode.kt
+│   │   │   │   │   ├── parser/
+│   │   │   │   │   │   ├── BookParser.kt
+│   │   │   │   │   │   ├── EpubParser.kt
+│   │   │   │   │   │   ├── FormatCatalog.kt
+│   │   │   │   │   │   ├── HtmlParser.kt
+│   │   │   │   │   │   ├── ParserFactory.kt
+│   │   │   │   │   │   ├── PdfParser.kt
+│   │   │   │   │   │   ├── PreviewParser.kt
+│   │   │   │   │   │   └── TxtParser.kt
+│   │   │   │   │   └── tts/
+│   │   │   │   │       ├── TTSEngine.kt
+│   │   │   │   │       ├── TTSReplacementEngine.kt
+│   │   │   │   │       ├── TTSReplacementParser.kt
+│   │   │   │   │       ├── TTSReplacementRule.kt
+│   │   │   │   │       ├── TTSService.kt
+│   │   │   │   │       ├── TTSState.kt
+│   │   │   │   │       └── TTSStatusNotifier.kt
+│   │   │   │   ├── ui/
+│   │   │   │   │   ├── MainActivity.kt
+│   │   │   │   │   ├── library/
+│   │   │   │   │   │   ├── BooksAdapter.kt
 │   │   │   │   │   │   ├── LibraryFragment.kt
-│   │   │   │   │   │   ├── LibraryViewModel.kt
-│   │   │   │   │   │   ├── BookAdapter.kt
-│   │   │   │   │   │   └── BookItemView.kt
+│   │   │   │   │   │   ├── LibrarySelection.kt
+│   │   │   │   │   │   └── LibraryViewModel.kt
 │   │   │   │   │   ├── reader/
+│   │   │   │   │   │   ├── ChaptersBottomSheet.kt
+│   │   │   │   │   │   ├── DebugWebView.kt
 │   │   │   │   │   │   ├── ReaderActivity.kt
+│   │   │   │   │   │   ├── ReaderControlsManager.kt
+│   │   │   │   │   │   ├── ReaderPageFragment.kt
+│   │   │   │   │   │   ├── ReaderPagerAdapter.kt
+│   │   │   │   │   │   ├── ReaderPreferencesOwner.kt
+│   │   │   │   │   │   ├── ReaderSettingsViewModel.kt
+│   │   │   │   │   │   ├── ReaderTapAction.kt
+│   │   │   │   │   │   ├── ReaderTapZone.kt
+│   │   │   │   │   │   ├── ReaderTapZonesBottomSheet.kt
+│   │   │   │   │   │   ├── ReaderTextSettingsBottomSheet.kt
+│   │   │   │   │   │   ├── ReaderThemePalette.kt
 │   │   │   │   │   │   ├── ReaderViewModel.kt
-│   │   │   │   │   │   ├── PageView.kt
-│   │   │   │   │   │   └── ControlsOverlay.kt
-│   │   │   │   │   ├── tts/
-│   │   │   │   │   │   ├── TTSControlsFragment.kt
-│   │   │   │   │   │   ├── TTSSettingsFragment.kt
-│   │   │   │   │   │   └── ReplacementRulesEditor.kt
+│   │   │   │   │   │   └── WebViewPaginatorBridge.kt
 │   │   │   │   │   ├── settings/
-│   │   │   │   │   │   └── SettingsFragment.kt
-│   │   │   │   │   └── common/
-│   │   │   │   │       ├── BaseActivity.kt
-│   │   │   │   │       ├── BaseFragment.kt
-│   │   │   │   │       └── BaseViewModel.kt
+│   │   │   │   │   │   ├── LibraryStatisticsFragment.kt
+│   │   │   │   │   │   ├── ReaderSettingsFragment.kt
+│   │   │   │   │   │   ├── SettingsFragment.kt
+│   │   │   │   │   │   ├── TTSReplacementsAdapter.kt
+│   │   │   │   │   │   ├── TTSReplacementsFragment.kt
+│   │   │   │   │   │   ├── TTSReplacementsViewModel.kt
+│   │   │   │   │   │   └── TTSSettingsFragment.kt
+│   │   │   │   │   └── tts/
+│   │   │   │   │       └── TTSControlsBottomSheet.kt
 │   │   │   │   └── util/
-│   │   │   │       ├── Extensions.kt
-│   │   │   │       ├── Constants.kt
-│   │   │   │       └── FileUtils.kt
+│   │   │   │       ├── AppLogger.kt
+│   │   │   │       ├── BookmarkPreviewExtractor.kt
+│   │   │   │       ├── FileScanner.kt
+│   │   │   │       ├── FlowExtensions.kt
+│   │   │   │       └── LoggerConfig.kt
 │   │   │   ├── res/
 │   │   │   │   ├── layout/
 │   │   │   │   ├── values/
 │   │   │   │   ├── drawable/
-│   │   │   │   └── navigation/
+│   │   │   │   ├── navigation/
+│   │   │   │   └── xml/
 │   │   │   └── AndroidManifest.xml
 │   │   └── test/
 │   │       └── java/com/rifters/riftedreader/
-│   │           ├── parser/
-│   │           ├── tts/
-│   │           └── repository/
+│   │           ├── ContinuousPaginatorTest.kt
+│   │           ├── BookmarkRestorationTest.kt
+│   │           ├── TTSReplacementRepositoryTest.kt
+│   │           └── ... (other tests)
 │   └── build.gradle.kts
 │
 ├── docs/
+│   ├── ARCHITECTURE.md (this file)
 │   ├── LIBRERA_ANALYSIS.md
 │   ├── TTS_IMPLEMENTATION_GUIDE.md
 │   ├── UI_UX_DESIGN_GUIDE.md
 │   ├── IMPLEMENTATION_ROADMAP.md
 │   ├── QUICK_START.md
-│   └── ARCHITECTURE.md (this file)
+│   ├── SLIDING_WINDOW_PAGINATION.md
+│   └── STAGE_6_8_TODO.md
 │
 ├── .gitignore
 ├── build.gradle.kts
@@ -436,14 +481,16 @@ MainActivity
     │   │
     │   ├─► Bookmarks (Bottom Sheet)
     │   │
-    │   └─► Text Settings (Bottom Sheet)
+    │   ├─► Text Settings (Bottom Sheet)
+    │   │
+    │   └─► Tap Zones Configuration (Bottom Sheet)
     │
     └─► SettingsFragment
         │
-        ├─► Reading Settings
+        ├─► Reader Settings
         ├─► TTS Settings
         ├─► Library Settings
-        ├─► Appearance Settings
+        ├─► Library Statistics
         └─► About
 ```
 
@@ -457,40 +504,46 @@ MainActivity
 └────────────────────────────────────────────────────────┘
 
 Android Jetpack
-├─► Core KTX
-├─► AppCompat
-├─► Fragment KTX
-├─► Lifecycle (ViewModel, LiveData)
-├─► Navigation
-├─► Room (Runtime, KTX, Compiler)
-└─► WorkManager
-
-Dependency Injection
-└─► Hilt (Android, Compiler)
+├─► Core KTX (1.12.0)
+├─► AppCompat (1.6.1)
+├─► Fragment KTX (implicit)
+├─► Lifecycle (ViewModel, LiveData, Runtime) (2.7.0)
+├─► Navigation (Fragment, UI) (2.7.6)
+├─► Room (Runtime, KTX, Compiler) (2.6.1)
+├─► Media (1.6.0)
+├─► Preference KTX (1.2.1)
+└─► ViewPager2 (1.0.0)
 
 Reactive
-└─► Coroutines (Core, Android)
+└─► Coroutines (Core, Android) (1.7.3)
 
-UI
-├─► Material Components
-├─► ConstraintLayout
-├─► RecyclerView
-└─► ViewPager2
+UI Components
+├─► Material Components (1.11.0)
+├─► ConstraintLayout (2.1.4)
+└─► RecyclerView Selection (1.1.0)
 
 Image Loading
-└─► Coil
+└─► Coil (2.5.0)
 
 Parsing Libraries
-├─► PdfBox / MuPDF (PDF)
-├─► Epublib (EPUB)
-├─► Jsoup (HTML)
-└─► Apache POI (DOCX) [optional]
+├─► Android PDF Viewer (3.2.0-beta.1)
+├─► JSoup (1.17.2) - HTML/XML parsing for EPUB
+└─► Zip4j (2.11.5) - ZIP handling for EPUB and CBZ
+
+Utilities
+└─► Gson (2.10.1) - JSON parsing for Room converters
 
 Testing
-├─► JUnit
-├─► MockK
-├─► Espresso
-└─► Robolectric [optional]
+├─► JUnit (4.13.2)
+├─► Coroutines Test (1.7.3)
+├─► AndroidX Test Extensions (1.1.5)
+├─► Espresso Core (3.5.1)
+└─► Room Testing (2.6.1)
+
+Build Tools
+├─► Android Gradle Plugin (8.2.0)
+├─► Kotlin Plugin (1.9.20)
+└─► KSP (1.9.20-1.0.14)
 ```
 
 ---
@@ -534,6 +587,63 @@ ViewModel
     └─► StateFlow<TTSState>
         └─► Observed by TTS Controls
 ```
+
+---
+
+## Pagination System
+
+The reader supports two pagination modes:
+
+### 1. Chapter-Based Pagination (Default)
+- Each chapter is displayed as a ViewPager2 page
+- Simple navigation between chapters
+- Chapter boundaries are explicit
+- Original implementation
+
+### 2. Continuous Pagination (Experimental)
+Powered by the **Sliding Window Pagination Engine** (`ContinuousPaginator`):
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              Continuous Pagination Flow                  │
+└─────────────────────────────────────────────────────────┘
+
+Book with N chapters
+      │
+      ▼
+┌──────────────────┐
+│ ContinuousPaginator│  Manages sliding window of chapters
+└────────┬─────────┘
+         │ Maintains: Window of 5 chapters (configurable)
+         │ Tracks: Global page indices across all chapters
+         │
+         ▼
+┌──────────────────┐
+│  ViewPager2 +    │  Presents global pages as seamless flow
+│ ReaderPagerAdapter│  Chapter boundaries transparent to user
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│WebViewPaginator  │  In-page navigation within each chapter
+│     Bridge       │  Coordinate with ContinuousPaginator
+└──────────────────┘
+
+Key Features:
+- Entire book appears as continuous page array
+- Only ~5 chapters loaded in memory at once
+- Chapters dynamically loaded/unloaded as user navigates
+- Precise bookmark restoration with character offsets
+- Supports font size changes with position preservation
+```
+
+**Database Support:**
+The BookMeta entity includes fields for continuous pagination:
+- `currentChapterIndex` - Current chapter in the book
+- `currentInPageIndex` - Page within current chapter
+- `currentCharacterOffset` - Character position for precise restoration
+
+See `SLIDING_WINDOW_PAGINATION.md` for detailed implementation guide.
 
 ---
 
