@@ -29,41 +29,58 @@ The project is in an advanced stage, with a focus on finalizing a custom, high-p
 
 ## Documentation
 
-This project includes detailed planning and analysis documents:
+Documentation is organized in the `docs/` directory by category:
 
-### 📚 Core Documentation
+### 📚 Complete Documentation ([docs/complete/](docs/complete/))
 
-1. **[LIBRERA_ANALYSIS.md](docs/LIBRERA_ANALYSIS.md)** - Complete analysis of LibreraReader
-   - Supported formats and parsing architecture
+Current, finalized documentation for the project:
+
+1. **[ARCHITECTURE.md](docs/complete/ARCHITECTURE.md)** - System Architecture (Canonical)
+   - Layer diagrams and component relationships
+   - Package structure and dependencies
+   - Data flow and state management
+   - Design patterns and best practices
+
+2. **[DEVELOPMENT_SETUP.md](docs/complete/DEVELOPMENT_SETUP.md)** - Getting Started Guide
+   - Environment setup and prerequisites
+   - Building and running the project
+   - Key concepts overview
+   - Development workflow
+
+3. **[LIBRERA_ANALYSIS.md](docs/complete/LIBRERA_ANALYSIS.md)** - LibreraReader Analysis
+   - Format support and parsing architecture
    - Database and library management
-   - UI/UX patterns and design
-   - File storage handling
-   - Detailed TTS feature analysis
-   - Dependencies and libraries
+   - UI/UX patterns and TTS features
    - Implementation recommendations
 
-2. **[TTS_IMPLEMENTATION_GUIDE.md](docs/TTS_IMPLEMENTATION_GUIDE.md)** - TTS Implementation Guide
-   - Complete TTS system architecture
+4. **[TTS_IMPLEMENTATION_GUIDE.md](docs/complete/TTS_IMPLEMENTATION_GUIDE.md)** - TTS System Guide
+   - Complete TTS architecture
    - Advanced replacement/substitution system
-   - Code examples and implementation details
    - Background service setup
-   - Testing strategies
-   - Integration checklist
+   - Code examples and integration
 
-3. **[UI_UX_DESIGN_GUIDE.md](UI_UX_DESIGN_GUIDE.md)** - UI/UX Design Specifications
+5. **[UI_UX_DESIGN_GUIDE.md](docs/complete/UI_UX_DESIGN_GUIDE.md)** - UI/UX Specifications
    - Color schemes and theming
    - Screen layouts and components
-   - Gesture controls
-   - Responsive design patterns
-   - Accessibility features
-   - Animation specifications
+   - Gesture controls and accessibility
 
-4. **[IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md)** - Development Roadmap
-   - 20-week staged implementation plan
-   - Week-by-week breakdown
-   - Deliverables and success criteria
-   - Risk management
-   - Best practices
+### 📋 Planning & Roadmap ([docs/planning/](docs/planning/))
+
+- **[IMPLEMENTATION_ROADMAP.md](docs/planning/IMPLEMENTATION_ROADMAP.md)** - 20-week development plan
+- **[STAGE_6_8_TODO.md](docs/planning/STAGE_6_8_TODO.md)** - Current implementation tasks
+- **[EPUB_IMPROVEMENTS.md](docs/planning/EPUB_IMPROVEMENTS.md)** - EPUB parser enhancements
+- **[WEBVIEW_PAGINATOR_ENHANCEMENTS.md](docs/planning/WEBVIEW_PAGINATOR_ENHANCEMENTS.md)** - Paginator improvements
+
+### 📊 Implementation Status ([docs/implemented/](docs/implemented/))
+
+- **[STAGE_1-3_SUMMARY.md](docs/implemented/STAGE_1-3_SUMMARY.md)** - Initial stages completion
+- **[SLIDING_WINDOW_PAGINATION_STATUS.md](docs/implemented/SLIDING_WINDOW_PAGINATION_STATUS.md)** - Pagination progress
+
+### 🧪 Testing Guides ([docs/testing/](docs/testing/))
+
+- **[CONTINUOUS_PAGINATOR_VERIFICATION.md](docs/testing/CONTINUOUS_PAGINATOR_VERIFICATION.md)** - Pagination testing
+- **[SCROLL_GESTURE_TESTING_GUIDE.md](docs/testing/SCROLL_GESTURE_TESTING_GUIDE.md)** - Gesture testing
+- **[EPUB_COVER_DEBUG_GUIDE.md](docs/testing/EPUB_COVER_DEBUG_GUIDE.md)** - Cover image debugging
 
 ## Key Features (Planned)
 
@@ -137,7 +154,7 @@ This project includes detailed planning and analysis documents:
 - **Async**: Coroutines + Flow
 - **UI**: Material Design 3 Components
 
-See [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) for complete timeline.
+See [IMPLEMENTATION_ROADMAP.md](docs/planning/IMPLEMENTATION_ROADMAP.md) for complete timeline.
 
 ## Inspiration
 

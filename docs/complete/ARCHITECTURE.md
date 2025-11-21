@@ -439,14 +439,29 @@ RiftedReader/
 │   └── build.gradle.kts
 │
 ├── docs/
-│   ├── ARCHITECTURE.md (this file)
-│   ├── LIBRERA_ANALYSIS.md
-│   ├── TTS_IMPLEMENTATION_GUIDE.md
-│   ├── UI_UX_DESIGN_GUIDE.md
-│   ├── IMPLEMENTATION_ROADMAP.md
-│   ├── QUICK_START.md
-│   ├── SLIDING_WINDOW_PAGINATION.md
-│   └── STAGE_6_8_TODO.md
+│   ├── complete/
+│   │   ├── ARCHITECTURE.md (this file)
+│   │   ├── DEVELOPMENT_SETUP.md
+│   │   ├── LIBRERA_ANALYSIS.md
+│   │   ├── TTS_IMPLEMENTATION_GUIDE.md
+│   │   └── UI_UX_DESIGN_GUIDE.md
+│   ├── planning/
+│   │   ├── EPUB_IMPROVEMENTS.md
+│   │   ├── IMPLEMENTATION_ROADMAP.md
+│   │   ├── STAGE_6_8_TODO.md
+│   │   └── WEBVIEW_PAGINATOR_ENHANCEMENTS.md
+│   ├── implemented/
+│   │   ├── SLIDING_WINDOW_PAGINATION_STATUS.md
+│   │   └── STAGE_1-3_SUMMARY.md
+│   ├── testing/
+│   │   ├── CONTINUOUS_PAGINATOR_VERIFICATION.md
+│   │   ├── EPUB_COVER_DEBUG_GUIDE.md
+│   │   └── SCROLL_GESTURE_TESTING_GUIDE.md
+│   ├── historical/
+│   │   └── SLIDING_WINDOW_PAGINATION.md
+│   └── meta/
+│       ├── DOCUMENTATION_RETRIEVED.md
+│       └── PR_SUMMARY.md
 │
 ├── .gitignore
 ├── build.gradle.kts

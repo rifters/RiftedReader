@@ -24,33 +24,33 @@ RiftedReader is a modern ebook reader for Android, inspired by LibreraReader. Th
 
 Before making any changes, **always consult these documentation files**:
 
-1. **[LIBRERA_ANALYSIS.md](../docs/LIBRERA_ANALYSIS.md)** - Complete technical analysis of LibreraReader
+1. **[LIBRERA_ANALYSIS.md](../docs/complete/LIBRERA_ANALYSIS.md)** - Complete technical analysis of LibreraReader
    - Format support and parsing architecture
    - Database and library management
    - TTS feature analysis (most important)
    - Implementation recommendations
 
-2. **[TTS_IMPLEMENTATION_GUIDE.md](../docs/TTS_IMPLEMENTATION_GUIDE.md)** - Detailed TTS implementation guide
+2. **[TTS_IMPLEMENTATION_GUIDE.md](../docs/complete/TTS_IMPLEMENTATION_GUIDE.md)** - Detailed TTS implementation guide
    - Complete TTS system architecture
    - Advanced replacement/substitution system
    - Code examples and patterns
    - Background service setup
 
-3. **[UI_UX_DESIGN_GUIDE.md](../UI_UX_DESIGN_GUIDE.md)** - UI/UX specifications
+3. **[UI_UX_DESIGN_GUIDE.md](../docs/complete/UI_UX_DESIGN_GUIDE.md)** - UI/UX specifications
    - Color schemes and theming
    - Screen layouts and components
    - Gesture controls and navigation patterns
    - Accessibility requirements
 
-4. **[IMPLEMENTATION_ROADMAP.md](../IMPLEMENTATION_ROADMAP.md)** - 20-week development plan
+4. **[IMPLEMENTATION_ROADMAP.md](../docs/planning/IMPLEMENTATION_ROADMAP.md)** - 20-week development plan
    - Staged implementation approach
    - Week-by-week breakdown
    - Milestones and deliverables
 
-5. **[ARCHITECTURE.md](../ARCHITECTURE.md)** - Visual system architecture
+5. **[ARCHITECTURE.md](../docs/complete/ARCHITECTURE.md)** - Visual system architecture (Canonical)
    - Layer diagrams and component relationships
 
-6. **[QUICK_START.md](../QUICK_START.md)** - Developer quick reference
+6. **[DEVELOPMENT_SETUP.md](../docs/complete/DEVELOPMENT_SETUP.md)** - Developer quick reference
    - Getting started guide
    - Key concepts overview
 
