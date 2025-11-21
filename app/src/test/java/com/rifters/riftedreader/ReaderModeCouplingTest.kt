@@ -33,15 +33,17 @@ class ReaderModeCouplingTest {
             paginationMode = PaginationMode.CONTINUOUS
         )
         
+        val newMode = ReaderMode.SCROLL
+        
         // User switches to SCROLL mode
-        val updated = if (ReaderMode.SCROLL == ReaderMode.SCROLL && 
+        val updated = if (newMode == ReaderMode.SCROLL && 
                           initial.paginationMode == PaginationMode.CONTINUOUS) {
             initial.copy(
-                mode = ReaderMode.SCROLL,
+                mode = newMode,
                 paginationMode = PaginationMode.CHAPTER_BASED
             )
         } else {
-            initial.copy(mode = ReaderMode.SCROLL)
+            initial.copy(mode = newMode)
         }
         
         assertEquals("Mode should be SCROLL", ReaderMode.SCROLL, updated.mode)
@@ -57,15 +59,17 @@ class ReaderModeCouplingTest {
             paginationMode = PaginationMode.CHAPTER_BASED
         )
         
+        val newPaginationMode = PaginationMode.CONTINUOUS
+        
         // User enables continuous pagination
-        val updated = if (PaginationMode.CONTINUOUS == PaginationMode.CONTINUOUS && 
+        val updated = if (newPaginationMode == PaginationMode.CONTINUOUS && 
                           initial.mode == ReaderMode.SCROLL) {
             initial.copy(
-                paginationMode = PaginationMode.CONTINUOUS,
+                paginationMode = newPaginationMode,
                 mode = ReaderMode.PAGE
             )
         } else {
-            initial.copy(paginationMode = PaginationMode.CONTINUOUS)
+            initial.copy(paginationMode = newPaginationMode)
         }
         
         assertEquals("Enabling CONTINUOUS should force PAGE mode", 
@@ -82,15 +86,17 @@ class ReaderModeCouplingTest {
             paginationMode = PaginationMode.CHAPTER_BASED
         )
         
+        val newMode = ReaderMode.SCROLL
+        
         // User switches to SCROLL mode
-        val updated = if (ReaderMode.SCROLL == ReaderMode.SCROLL && 
+        val updated = if (newMode == ReaderMode.SCROLL && 
                           initial.paginationMode == PaginationMode.CONTINUOUS) {
             initial.copy(
-                mode = ReaderMode.SCROLL,
+                mode = newMode,
                 paginationMode = PaginationMode.CHAPTER_BASED
             )
         } else {
-            initial.copy(mode = ReaderMode.SCROLL)
+            initial.copy(mode = newMode)
         }
         
         assertEquals("Mode should be SCROLL", ReaderMode.SCROLL, updated.mode)
@@ -106,15 +112,17 @@ class ReaderModeCouplingTest {
             paginationMode = PaginationMode.CHAPTER_BASED
         )
         
+        val newPaginationMode = PaginationMode.CONTINUOUS
+        
         // User enables continuous pagination
-        val updated = if (PaginationMode.CONTINUOUS == PaginationMode.CONTINUOUS && 
+        val updated = if (newPaginationMode == PaginationMode.CONTINUOUS && 
                           initial.mode == ReaderMode.SCROLL) {
             initial.copy(
-                paginationMode = PaginationMode.CONTINUOUS,
+                paginationMode = newPaginationMode,
                 mode = ReaderMode.PAGE
             )
         } else {
-            initial.copy(paginationMode = PaginationMode.CONTINUOUS)
+            initial.copy(paginationMode = newPaginationMode)
         }
         
         assertEquals("Mode should remain PAGE", ReaderMode.PAGE, updated.mode)
