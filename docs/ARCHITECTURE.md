@@ -1,3 +1,6 @@
+> **Note:** This is the canonical architecture document for RiftedReader.  
+> Last updated: 2025‑11‑21
+> 
 # RiftedReader Architecture Diagram
 
 This document provides visual representations of the system architecture.
