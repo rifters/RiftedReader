@@ -24,7 +24,7 @@ RiftedReader is a modern ebook reader for Android, inspired by LibreraReader. Th
 
 Before making any changes, **always consult these documentation files**:
 
-1. **[LIBRERA_ANALYSIS.md](../LIBRERA_ANALYSIS.md)** - Complete technical analysis of LibreraReader
+1. **[LIBRERA_ANALYSIS.md](../docs/LIBRERA_ANALYSIS.md)** - Complete technical analysis of LibreraReader
    - Format support and parsing architecture
    - Database and library management
    - TTS feature analysis (most important)

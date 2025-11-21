@@ -33,7 +33,7 @@ This project includes detailed planning and analysis documents:
 
 ### 📚 Core Documentation
 
-1. **[LIBRERA_ANALYSIS.md](LIBRERA_ANALYSIS.md)** - Complete analysis of LibreraReader
+1. **[LIBRERA_ANALYSIS.md](docs/LIBRERA_ANALYSIS.md)** - Complete analysis of LibreraReader
    - Supported formats and parsing architecture
    - Database and library management
    - UI/UX patterns and design
