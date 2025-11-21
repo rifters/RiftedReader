@@ -42,7 +42,7 @@ This project includes detailed planning and analysis documents:
    - Dependencies and libraries
    - Implementation recommendations
 
-2. **[TTS_IMPLEMENTATION_GUIDE.md](TTS_IMPLEMENTATION_GUIDE.md)** - TTS Implementation Guide
+2. **[TTS_IMPLEMENTATION_GUIDE.md](docs/TTS_IMPLEMENTATION_GUIDE.md)** - TTS Implementation Guide
    - Complete TTS system architecture
    - Advanced replacement/substitution system
    - Code examples and implementation details
