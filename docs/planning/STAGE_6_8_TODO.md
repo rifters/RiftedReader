@@ -12,7 +12,7 @@ After QA is underway we can promote focus to Stage 6 backlog items or start on
 Stage 8 prep, depending on priorities.
 
 This document follows the structure of
-[IMPLEMENTATION_ROADMAP.md](../IMPLEMENTATION_ROADMAP.md) and annotates items
+[IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) and annotates items
 that still need implementation.
 
 ## Stage 6 – Advanced Parsing

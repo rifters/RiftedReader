@@ -254,12 +254,12 @@ After familiarizing yourself with the current implementation:
 1. **Review the code**: Start with `MainActivity.kt` and follow the flow
 2. **Read documentation**: Check `LIBRERA_ANALYSIS.md` for feature inspiration
 3. **Explore TODO items**: Search for `TODO` comments in the code
-4. **Check the roadmap**: `IMPLEMENTATION_ROADMAP.md` for next stages
+4. **Check the roadmap**: `../planning/IMPLEMENTATION_ROADMAP.md` for next stages
 
 ### Stage 4: TTS Implementation (Next Priority)
 
 The next major feature to implement is Text-to-Speech:
-- See `docs/TTS_IMPLEMENTATION_GUIDE.md` for detailed guide
+- See `TTS_IMPLEMENTATION_GUIDE.md` for detailed guide
 - Key components: TTSEngine, TTSService, replacement system
 - Expected timeline: 4 weeks (Weeks 11-14 of roadmap)
 
