@@ -259,7 +259,7 @@ After familiarizing yourself with the current implementation:
 ### Stage 4: TTS Implementation (Next Priority)
 
 The next major feature to implement is Text-to-Speech:
-- See `TTS_IMPLEMENTATION_GUIDE.md` for detailed guide
+- See `docs/TTS_IMPLEMENTATION_GUIDE.md` for detailed guide
 - Key components: TTSEngine, TTSService, replacement system
 - Expected timeline: 4 weeks (Weeks 11-14 of roadmap)
 

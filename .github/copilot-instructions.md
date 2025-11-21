@@ -30,7 +30,7 @@ Before making any changes, **always consult these documentation files**:
    - TTS feature analysis (most important)
    - Implementation recommendations
 
-2. **[TTS_IMPLEMENTATION_GUIDE.md](../TTS_IMPLEMENTATION_GUIDE.md)** - Detailed TTS implementation guide
+2. **[TTS_IMPLEMENTATION_GUIDE.md](../docs/TTS_IMPLEMENTATION_GUIDE.md)** - Detailed TTS implementation guide
    - Complete TTS system architecture
    - Advanced replacement/substitution system
    - Code examples and patterns
@@ -163,7 +163,7 @@ app/src/main/java/com/rifters/riftedreader/
 
 The TTS replacement system is the **most important and complex feature**. When working on TTS:
 
-1. **Reference**: Always consult `TTS_IMPLEMENTATION_GUIDE.md` first
+1. **Reference**: Always consult `docs/TTS_IMPLEMENTATION_GUIDE.md` first
 2. **Replacement Types**: Support simple text, regex, and special commands
 3. **Background Service**: Must work reliably in background with notification controls
 4. **Performance**: Text processing must be efficient (large books)
