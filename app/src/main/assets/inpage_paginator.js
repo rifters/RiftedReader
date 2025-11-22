@@ -32,6 +32,7 @@
     let isPaginationReady = false; // CRITICAL: Only true after onPaginationReady callback fires
     let chapterSegments = [];
     let initialChapterIndex = 0;
+    let currentPage = 0; // CRITICAL: Track current page explicitly to avoid async scrollTo issues
     
     /**
      * Initialize the paginator by wrapping content in a column container
@@ -98,6 +99,11 @@
         
         isInitialized = true;
         console.log('inpage_paginator: [STATE] isInitialized set to true');
+        
+        // Add scroll listener to sync currentPage when user manually scrolls
+        columnContainer.addEventListener('scroll', function() {
+            syncCurrentPageFromScroll();
+        });
         
         // CRITICAL FIX: Wait for layout to complete before calling onPaginationReady
         // Use requestAnimationFrame to ensure DOM has been laid out and measured
@@ -284,9 +290,11 @@
                 const targetPage = Math.max(0, Math.min(currentPageBeforeReflow, pageCount - 1));
                 console.log('inpage_paginator: Restoring to page=' + targetPage);
                 goToPage(targetPage, false);
+            } else {
+                // If not preserving position, sync from actual scroll
+                syncCurrentPageFromScroll();
             }
             
-            const currentPage = getCurrentPage();
             console.log('inpage_paginator: [STATE] Reflow complete - pageCount=' + pageCount + ', currentPage=' + currentPage);
             
             // CRITICAL: Reset and set isPaginationReady after reflow completes
@@ -368,6 +376,8 @@
     
     /**
      * Get the current page index (0-based)
+     * CRITICAL: Returns the explicitly tracked currentPage state, not calculated from scrollLeft.
+     * This avoids race conditions where scrollTo() hasn't completed yet.
      */
     function getCurrentPage() {
         if (!columnContainer) {
@@ -381,18 +391,34 @@
             return 0;
         }
         
+        // Return the explicitly tracked page
+        // This ensures getCurrentPage() returns the intended page immediately after goToPage(),
+        // even if the scrollTo() animation hasn't completed yet
+        return currentPage;
+    }
+    
+    /**
+     * Sync the currentPage state with the actual scroll position.
+     * Called when user manually scrolls or when we need to read the real position.
+     */
+    function syncCurrentPageFromScroll() {
+        if (!columnContainer || !isInitialized) {
+            return;
+        }
+        
         const scrollLeft = columnContainer.scrollLeft;
         const pageWidth = viewportWidth || window.innerWidth;
         
         if (pageWidth === 0) {
-            return 0;
+            return;
         }
         
-        return Math.floor(scrollLeft / pageWidth);
+        currentPage = Math.floor(scrollLeft / pageWidth);
     }
     
     /**
      * Go to a specific page (0-based index)
+     * CRITICAL: Updates currentPage state immediately to avoid async race conditions
      */
     function goToPage(index, smooth) {
         if (!columnContainer) {
@@ -414,11 +440,17 @@
         console.log('inpage_paginator: goToPage - index=' + index + ', safeIndex=' + safeIndex + ', pageCount=' + pageCount + ', smooth=' + smooth);
         
         // Debug unexpected page resets
-        const currentPage = getCurrentPage();
         if (index === 0 && currentPage > 0) {
             console.log('inpage_paginator: WARNING - Resetting to page 0 from page ' + currentPage);
             console.log('inpage_paginator: Call stack:', new Error().stack);
         }
+        
+        // CRITICAL FIX: Update currentPage state IMMEDIATELY before scrolling
+        // This ensures that subsequent calls to getCurrentPage() return the correct value
+        // even before the scrollTo() animation completes
+        const prevPage = currentPage;
+        currentPage = safeIndex;
+        console.log('inpage_paginator: goToPage internal state - prevPage=' + prevPage + ', newPage=' + currentPage);
         
         const behavior = smooth ? SCROLL_BEHAVIOR_SMOOTH : SCROLL_BEHAVIOR_AUTO;
         
