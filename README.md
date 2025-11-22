@@ -64,6 +64,12 @@ Current, finalized documentation for the project:
    - Screen layouts and components
    - Gesture controls and accessibility
 
+6. **[HTML_DEBUG_LOGGING.md](docs/complete/HTML_DEBUG_LOGGING.md)** - HTML Debug Logging Guide  **⭐ NEW**
+   - Automatic HTML logging for pagination debugging
+   - Log file formats and locations
+   - Usage guide for developers
+   - Troubleshooting tips
+
 ### 📋 Planning & Roadmap ([docs/planning/](docs/planning/))
 
 - **[IMPLEMENTATION_ROADMAP.md](docs/planning/IMPLEMENTATION_ROADMAP.md)** - 20-week development plan
