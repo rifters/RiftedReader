@@ -550,6 +550,71 @@ class ReaderViewModel(
             "ui/webview/streaming"
         )
     }
+
+    /**
+     * Get the window HTML for a specific page/chapter index.
+     * In continuous mode, this returns a sliding window combining multiple chapters.
+     * In chapter-based mode, this returns just the single chapter HTML.
+     * 
+     * @param pageIndex The global page index (continuous) or chapter index (chapter-based)
+     * @return WindowHtmlPayload containing the window HTML and metadata, or null if unavailable
+     */
+    suspend fun getWindowHtml(pageIndex: Int): WindowHtmlPayload? {
+        return if (isContinuousMode) {
+            val paginator = continuousPaginator ?: return null
+            // Use same window size as ContinuousPaginator (default: 5)
+            val windowSize = com.rifters.riftedreader.domain.pagination.SlidingWindowManager.DEFAULT_WINDOW_SIZE
+            val windowManager = com.rifters.riftedreader.domain.pagination.SlidingWindowManager(windowSize = windowSize)
+            val provider = com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider(
+                paginator,
+                windowManager
+            )
+            
+            // Get the page location to determine chapter and window
+            val location = paginator.getPageLocation(pageIndex)
+            if (location == null) {
+                AppLogger.w("ReaderViewModel", "Could not get page location for index $pageIndex")
+                return null
+            }
+            
+            val windowIndex = windowManager.windowForChapter(location.chapterIndex)
+            val windowInfo = paginator.getWindowInfo()
+            
+            AppLogger.d("ReaderViewModel", "Getting window HTML: pageIndex=$pageIndex, chapterIndex=${location.chapterIndex}, windowIndex=$windowIndex")
+            
+            val html = provider.getWindowHtml(bookId, windowIndex)
+            if (html == null) {
+                AppLogger.w("ReaderViewModel", "Window HTML provider returned null for window $windowIndex")
+                return null
+            }
+            
+            WindowHtmlPayload(
+                html = html,
+                windowIndex = windowIndex,
+                chapterIndex = location.chapterIndex,
+                inPageIndex = location.inPageIndex,
+                windowSize = windowSize,
+                totalChapters = windowInfo.totalChapters
+            )
+        } else {
+            // Chapter-based mode: return single chapter HTML
+            val content = _pages.value.getOrNull(pageIndex)
+            if (content == null) {
+                AppLogger.w("ReaderViewModel", "No content for page index $pageIndex")
+                return null
+            }
+            
+            val html = content.html ?: wrapPlainTextAsHtml(content.text)
+            WindowHtmlPayload(
+                html = html,
+                windowIndex = 0,
+                chapterIndex = pageIndex,
+                inPageIndex = 0,
+                windowSize = 1,
+                totalChapters = _pages.value.size
+            )
+        }
+    }
 }
 
 private fun StringBuilder.isNotBlank(): Boolean = this.any { !it.isWhitespace() }
@@ -562,4 +627,16 @@ data class TtsHighlight(
 data class StreamingChapterPayload(
     val chapterIndex: Int,
     val html: String
+)
+
+/**
+ * Payload containing window HTML and associated metadata.
+ */
+data class WindowHtmlPayload(
+    val html: String,
+    val windowIndex: Int,
+    val chapterIndex: Int,
+    val inPageIndex: Int,
+    val windowSize: Int,
+    val totalChapters: Int
 )
