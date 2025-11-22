@@ -37,7 +37,9 @@ class ReaderPageFragment : Fragment() {
 
     private val readerViewModel: ReaderViewModel by activityViewModels()
 
-    private val pageIndex: Int by lazy {
+    // Window/page index from ViewPager2 (in CONTINUOUS mode, this is a window containing multiple chapters)
+    // In CHAPTER_BASED mode, windowIndex == chapterIndex
+    private val pageIndex: com.rifters.riftedreader.domain.pagination.WindowIndex by lazy {
         requireArguments().getInt(ARG_PAGE_INDEX)
     }
 
@@ -45,16 +47,20 @@ class ReaderPageFragment : Fragment() {
     private var latestPageHtml: String? = null
     private var highlightedRange: IntRange? = null
     private var isWebViewReady = false
-    private var targetInPageIndex: Int = 0
-    private var pendingInitialInPageIndex: Int? = null
-    private var resolvedChapterIndex: Int? = null
+    
+    // Target in-page index to navigate to after pagination ready
+    private var targetInPageIndex: com.rifters.riftedreader.domain.pagination.InPageIndex = 0
+    private var pendingInitialInPageIndex: com.rifters.riftedreader.domain.pagination.InPageIndex? = null
+    
+    // Resolved logical chapter index (may differ from pageIndex in CONTINUOUS mode)
+    private var resolvedChapterIndex: com.rifters.riftedreader.domain.pagination.ChapterIndex? = null
     private var skipNextBoundaryDirection: BoundaryDirection? = null
     private var streamingInFlightDirection: BoundaryDirection? = null
     private var lastStreamingFailureToastAt: Long = 0L
     private var lastStreamingErrorMessage: String? = null
     
     // Track current in-page position to preserve during reloads
-    private var currentInPageIndex: Int = 0
+    private var currentInPageIndex: com.rifters.riftedreader.domain.pagination.InPageIndex = 0
     
     // Track if paginator has completed initialization (onPaginationReady callback received)
     // This prevents navigation logic from using stale/default values before paginator is ready
@@ -119,6 +125,9 @@ class ReaderPageFragment : Fragment() {
                     super.onPageFinished(view, url)
                     com.rifters.riftedreader.util.AppLogger.event("ReaderPageFragment", "WebView onPageFinished for page $pageIndex", "ui/webview/lifecycle")
                     isWebViewReady = true
+                    
+                    // CRITICAL: Configure the paginator mode BEFORE initialization
+                    configurePaginator()
                     
                     // Initialize the in-page paginator
                     val settings = readerViewModel.readerSettings.value
@@ -824,6 +833,39 @@ class ReaderPageFragment : Fragment() {
                 )
             }
         }
+    }
+
+    /**
+     * Configure the paginator with explicit window/chapter mode.
+     * Called immediately after WebView page finishes loading.
+     */
+    private fun configurePaginator() {
+        if (_binding == null) return
+        
+        // Determine the mode based on pagination settings
+        val mode = if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            com.rifters.riftedreader.domain.pagination.PaginatorConfig.PaginatorMode.WINDOW
+        } else {
+            com.rifters.riftedreader.domain.pagination.PaginatorConfig.PaginatorMode.CHAPTER
+        }
+        
+        // Create the configuration
+        val config = com.rifters.riftedreader.domain.pagination.PaginatorConfig(
+            mode = mode,
+            windowIndex = pageIndex,
+            chapterIndex = resolvedChapterIndex ?: pageIndex,
+            rootSelector = null, // Use default based on mode
+            initialInPageIndex = targetInPageIndex
+        )
+        
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "Configuring paginator: mode=${mode.name}, windowIndex=$pageIndex, " +
+            "chapterIndex=${config.chapterIndex}, initialInPage=$targetInPageIndex"
+        )
+        
+        // Configure the JavaScript paginator
+        WebViewPaginatorBridge.configure(binding.pageWebView, config)
     }
 
     private fun syncInitialChapterContext() {
@@ -1830,6 +1872,9 @@ class ReaderPageFragment : Fragment() {
     }
 
     companion object {
+        // PageIndex represents a ViewPager2 page index, which maps to:
+        // - In CHAPTER_BASED mode: Same as ChapterIndex (one chapter per page)
+        // - In CONTINUOUS mode: A WindowIndex (one window containing multiple chapters per page)
         private const val ARG_PAGE_INDEX = "arg_page_index"
         private const val FLING_THRESHOLD = 1000f // Minimum velocity for horizontal fling detection
         private const val SCROLL_DISTANCE_THRESHOLD_RATIO = 0.25f // 25% of viewport width triggers in-page navigation
