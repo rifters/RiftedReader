@@ -306,6 +306,9 @@ class ContinuousPaginator(
         toLoad.forEach { chapterIndex ->
             loadChapter(chapterIndex)
         }
+        
+        // Log the complete window HTML for debugging
+        logWindowHtml(centerChapterIndex, windowIndices)
     }
     
     /**
@@ -388,6 +391,43 @@ class ContinuousPaginator(
         }
         
         AppLogger.d(TAG, "Global page mapping complete: ${globalPageMap.size} total pages")
+    }
+    
+    /**
+     * Log the current window HTML for debugging purposes.
+     */
+    private fun logWindowHtml(centerChapterIndex: Int, windowIndices: List<Int>) {
+        try {
+            // Build a map of chapter HTML from loaded chapters
+            val chaptersHtml = mutableMapOf<Int, String>()
+            windowIndices.forEach { chapterIndex ->
+                val chapterData = loadedChapters[chapterIndex]
+                if (chapterData != null) {
+                    val html = chapterData.content.html ?: chapterData.content.text
+                    if (html.isNotBlank()) {
+                        chaptersHtml[chapterIndex] = html
+                    }
+                }
+            }
+            
+            if (chaptersHtml.isNotEmpty()) {
+                val metadata = mutableMapOf<String, String>()
+                metadata["totalChapters"] = totalChapters.toString()
+                metadata["windowSize"] = windowSize.toString()
+                metadata["totalGlobalPages"] = globalPageMap.size.toString()
+                metadata["loadedChapterCount"] = loadedChapters.size.toString()
+                
+                com.rifters.riftedreader.util.HtmlDebugLogger.logWindowHtml(
+                    bookId = bookFile.absolutePath,
+                    windowIndex = centerChapterIndex,
+                    chapterIndices = windowIndices,
+                    chapters = chaptersHtml,
+                    metadata = metadata
+                )
+            }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Failed to log window HTML", e)
+        }
     }
     
     /**

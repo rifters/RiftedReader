@@ -240,6 +240,19 @@ class EpubParser : BookParser {
                 
                 val html = body.html()
                 
+                // Log the generated HTML for debugging pagination
+                com.rifters.riftedreader.util.HtmlDebugLogger.logChapterHtml(
+                    bookId = file.absolutePath,
+                    chapterIndex = page,
+                    html = html,
+                    metadata = mapOf(
+                        "format" to "EPUB",
+                        "contentPath" to contentPath,
+                        "textLength" to text.length.toString(),
+                        "htmlLength" to html.length.toString()
+                    )
+                )
+                
                 return PageContent(text = text, html = html.takeIf { it.isNotBlank() } ?: "")
             }
         }

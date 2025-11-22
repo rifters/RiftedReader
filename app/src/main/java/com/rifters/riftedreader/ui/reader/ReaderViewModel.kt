@@ -24,7 +24,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 class ReaderViewModel(
-    private val bookId: String,
+    // Expose bookId for debug logging
+    val bookId: String,
     private val bookFile: File,
     private val parser: BookParser,
     private val repository: BookRepository,
