@@ -311,31 +311,72 @@ The `getCurrentChapter()` method determines which chapter is currently visible b
 
 This ensures reliable chapter detection even when multiple chapters are visible simultaneously.
 
-## Pagination Root Selection
+## Pagination Root and HTML Structure
 
-The pagination root determines which DOM element's scroll height defines the total paginated content. The system selects the root as follows:
+The pagination root determines which DOM element's scroll height defines the total paginated content.
 
-### Window Mode Root Selection
-1. If `rootSelector` is provided (e.g., `"#window-root"`), use that element
-2. Otherwise, use `document.body`
-3. The root encompasses all chapter sections
+### How It Works
 
-### Chapter Mode Root Selection
-1. If `rootSelector` is provided, use that element
-2. Otherwise, select `section[data-chapter-index="${chapterIndex}"]`
-3. The root is limited to a single chapter section
+The paginator works by:
+1. **Wrapping existing content**: All content from `document.body` is moved into a column-based container
+2. **Detecting structure**: The system automatically detects if content has pre-wrapped `section[data-chapter-index]` elements
+3. **Calculating bounds**: Page counts are based on the full content wrapper, which includes all sections
 
-### Why This Matters
+### Window Mode HTML Structure
 
-Incorrect root selection was the source of the original "TOC pagination bug":
-- The paginator was treating the first `section` (TOC) as the root
-- This limited pagination to only the TOC content
-- Even though additional chapters existed in the DOM, they were ignored
+In window mode, the HTML provider generates:
+```html
+<div id="window-root" data-window-index="0">
+  <section id="chapter-0" data-chapter-index="0">...</section>
+  <section id="chapter-1" data-chapter-index="1">...</section>
+  ...
+</div>
+```
 
-With explicit configuration, the system now:
-- Uses `#window-root` as root in window mode → includes all chapters
-- Uses the specific chapter section in chapter mode → limits to one chapter
-- Makes the distinction explicit and debuggable
+When the paginator initializes:
+1. It moves the entire `#window-root` div into the column container
+2. It detects the pre-wrapped sections automatically
+3. Pagination spans all sections within the window-root
+4. Chapter boundaries are preserved for navigation
+
+### Chapter Mode HTML Structure
+
+In chapter mode, only a single section is provided:
+```html
+<section id="chapter-5" data-chapter-index="5">
+  <!-- Single chapter content -->
+</section>
+```
+
+The paginator:
+1. Wraps this single section in the column container
+2. Pagination is limited to this section's content
+3. No chapter boundary tracking needed
+
+### The rootSelector Parameter
+
+The `rootSelector` configuration parameter is **optional** and primarily serves as:
+- **Documentation**: Makes explicit what element contains the content
+- **Future extensibility**: Allows different container structures
+- **Debugging aid**: Helps identify the expected structure in logs
+
+The actual pagination behavior is determined by:
+- The HTML structure provided (pre-wrapped sections vs single content)
+- The configured mode (window vs chapter)
+- Automatic detection of existing section elements
+
+### Why This Solves the TOC Bug
+
+The original "TOC pagination bug" occurred because:
+- The paginator would implicitly select the first `section` element
+- This limited pagination to only the TOC (chapter-0)
+- Other chapters existed but were ignored
+
+With the refactored system:
+- **Explicit mode configuration**: WINDOW vs CHAPTER is set upfront
+- **Pre-wrapped sections detected**: The system finds all existing sections
+- **Full container used**: The window-root wrapper ensures all sections are included
+- **Clear logging**: Configuration and detected structure are logged for debugging
 
 ## Error Handling and Edge Cases
 

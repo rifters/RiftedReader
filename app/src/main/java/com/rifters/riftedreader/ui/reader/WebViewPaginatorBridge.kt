@@ -53,7 +53,11 @@ object WebViewPaginatorBridge {
         }
         
         val chapterIndexParam = config.chapterIndex?.let { ", chapterIndex: $it" } ?: ""
-        val rootSelectorParam = config.rootSelector?.let { ", rootSelector: '$it'" } ?: ""
+        // Escape single quotes in rootSelector to prevent script injection
+        val rootSelectorParam = config.rootSelector?.let { 
+            val escaped = it.replace("'", "\\'")
+            ", rootSelector: '$escaped'" 
+        } ?: ""
         
         val jsConfig = "{ mode: '$mode', windowIndex: ${config.windowIndex}$chapterIndexParam$rootSelectorParam }"
         

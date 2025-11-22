@@ -846,7 +846,7 @@ class ReaderPageFragment : Fragment() {
             return
         }
         
-        // Import the necessary classes
+        // Create paginator configuration based on pagination mode
         val paginatorConfig = when (readerViewModel.paginationMode) {
             PaginationMode.CONTINUOUS -> {
                 // Window mode: paginate across multiple chapters in the window
