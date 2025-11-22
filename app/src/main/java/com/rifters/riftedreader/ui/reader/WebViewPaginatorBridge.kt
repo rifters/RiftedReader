@@ -64,7 +64,12 @@ object WebViewPaginatorBridge {
         mainHandler.post {
             webView.evaluateJavascript(
                 "if (window.inpagePaginator && window.inpagePaginator.configure) { window.inpagePaginator.configure($jsConfig); }",
-                null
+                { result ->
+                    // Log result for debugging
+                    if (result != null && result != "null") {
+                        AppLogger.d("WebViewPaginatorBridge", "Configure result: $result")
+                    }
+                }
             )
         }
     }
@@ -462,8 +467,9 @@ object WebViewPaginatorBridge {
                 val chapterIndex = chapter.getInt("chapterIndex")
                 val startPage = chapter.getInt("startPage")
                 
-                // Calculate scroll offset (approximate based on page width)
-                // For more precise offsets, the JS would need to return actual pixel positions
+                // TODO: Calculate more precise scroll offset from JavaScript
+                // Current implementation uses approximate calculation based on page width
+                // For more accurate positioning, the JS should return actual pixel positions
                 val scrollOffset = startPage * webView.width
                 
                 offsets.add(

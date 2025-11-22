@@ -43,6 +43,9 @@
         initialInPageIndex: 0
     };
     
+    // Valid paginator modes
+    const VALID_MODES = ['window', 'chapter'];
+    
     /**
      * Configure the paginator before initialization.
      * This should be called before init() or immediately after page load.
@@ -61,8 +64,8 @@
         }
         
         // Validate mode
-        if (config.mode && (config.mode !== 'window' && config.mode !== 'chapter')) {
-            console.error('inpage_paginator: Invalid mode "' + config.mode + '", must be "window" or "chapter"');
+        if (config.mode && VALID_MODES.indexOf(config.mode) === -1) {
+            console.error('inpage_paginator: Invalid mode "' + config.mode + '", must be one of: ' + VALID_MODES.join(', '));
             return;
         }
         

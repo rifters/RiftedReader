@@ -41,6 +41,7 @@ class ContinuousPaginatorWindowHtmlProvider(
             // Build combined HTML with section tags for each chapter
             // Wrap all sections in a window-root container for clearer structure
             val htmlBuilder = StringBuilder()
+            val indent = "  " // Consistent indentation
             
             // Start window-root wrapper
             htmlBuilder.append("<div id=\"window-root\" data-window-index=\"$windowIndex\">\n")
@@ -71,10 +72,14 @@ class ContinuousPaginatorWindowHtmlProvider(
                 }
                 
                 // Wrap in section with chapter ID for navigation
-                htmlBuilder.append("  <section id=\"chapter-$chapterIndex\" data-chapter-index=\"$chapterIndex\">\n")
-                htmlBuilder.append("    ")
-                htmlBuilder.append(chapterHtml)
-                htmlBuilder.append("\n  </section>\n")
+                htmlBuilder.append(indent)
+                    .append("<section id=\"chapter-$chapterIndex\" data-chapter-index=\"$chapterIndex\">\n")
+                htmlBuilder.append(indent)
+                    .append(indent)
+                    .append(chapterHtml)
+                    .append("\n")
+                htmlBuilder.append(indent)
+                    .append("</section>\n")
             }
             
             // Close window-root wrapper
