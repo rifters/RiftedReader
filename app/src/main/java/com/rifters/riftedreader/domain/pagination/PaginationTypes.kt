@@ -186,3 +186,13 @@ data class ChapterOffset(
      */
     val elementId: String? = null
 )
+
+/**
+ * Get chapter offsets within a window.
+ * This function can be called from JavaScript via WebViewPaginatorBridge
+ * to build a mapping of chapter positions for TTS and bookmark support.
+ */
+data class ChapterOffsetMapping(
+    val windowIndex: WindowIndex,
+    val offsets: List<ChapterOffset>
+)

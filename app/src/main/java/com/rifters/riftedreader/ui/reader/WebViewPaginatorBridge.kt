@@ -425,6 +425,65 @@ object WebViewPaginatorBridge {
             "window.inpagePaginator.scrollToAnchor('$anchorId')"
         )
     }
+    
+    /**
+     * Get chapter offsets within the current window.
+     * Returns a list of chapter positions for TTS and bookmark support.
+     * 
+     * @param webView The WebView containing the paginated content
+     * @param windowIndex The current window index
+     * @return ChapterOffsetMapping with chapter positions, or null if not available
+     */
+    suspend fun getChapterOffsets(
+        webView: WebView, 
+        windowIndex: com.rifters.riftedreader.domain.pagination.WindowIndex
+    ): com.rifters.riftedreader.domain.pagination.ChapterOffsetMapping? {
+        return try {
+            if (!isReady(webView)) {
+                AppLogger.d("WebViewPaginatorBridge", "getChapterOffsets: paginator not ready")
+                return null
+            }
+            
+            // Get loaded chapters info from JavaScript
+            val jsonStr = evaluateString(webView, 
+                "JSON.stringify(window.inpagePaginator.getLoadedChapters())")
+            
+            if (jsonStr == "null" || jsonStr.isBlank()) {
+                AppLogger.d("WebViewPaginatorBridge", "getChapterOffsets: no chapters loaded")
+                return null
+            }
+            
+            // Parse the JSON response
+            val chapters = org.json.JSONArray(jsonStr)
+            val offsets = mutableListOf<com.rifters.riftedreader.domain.pagination.ChapterOffset>()
+            
+            for (i in 0 until chapters.length()) {
+                val chapter = chapters.getJSONObject(i)
+                val chapterIndex = chapter.getInt("chapterIndex")
+                val startPage = chapter.getInt("startPage")
+                
+                // Calculate scroll offset (approximate based on page width)
+                // For more precise offsets, the JS would need to return actual pixel positions
+                val scrollOffset = startPage * webView.width
+                
+                offsets.add(
+                    com.rifters.riftedreader.domain.pagination.ChapterOffset(
+                        chapterIndex = chapterIndex,
+                        scrollOffset = scrollOffset,
+                        elementId = "chapter-$chapterIndex"
+                    )
+                )
+            }
+            
+            com.rifters.riftedreader.domain.pagination.ChapterOffsetMapping(
+                windowIndex = windowIndex,
+                offsets = offsets
+            )
+        } catch (e: Exception) {
+            AppLogger.e("WebViewPaginatorBridge", "Error getting chapter offsets", e)
+            null
+        }
+    }
 }
 
 private fun String.toBase64(): String {
