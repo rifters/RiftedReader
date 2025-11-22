@@ -53,9 +53,15 @@ object WebViewPaginatorBridge {
         }
         
         val chapterIndexParam = config.chapterIndex?.let { ", chapterIndex: $it" } ?: ""
-        // Escape single quotes in rootSelector to prevent script injection
+        // Escape rootSelector for safe JavaScript string interpolation
+        // Handle single quotes, backslashes, newlines, and control characters
         val rootSelectorParam = config.rootSelector?.let { 
-            val escaped = it.replace("'", "\\'")
+            val escaped = it
+                .replace("\\", "\\\\")  // Escape backslashes first
+                .replace("'", "\\'")     // Escape single quotes
+                .replace("\n", "\\n")    // Escape newlines
+                .replace("\r", "\\r")    // Escape carriage returns
+                .replace("\t", "\\t")    // Escape tabs
             ", rootSelector: '$escaped'" 
         } ?: ""
         

@@ -236,22 +236,39 @@
         const existingSections = contentWrapper.querySelectorAll('section[data-chapter-index]');
         
         if (existingSections.length > 0) {
-            // Content is already wrapped in chapter sections (window mode with pre-wrapped HTML)
-            console.log('inpage_paginator: [CONFIG] Found ' + existingSections.length + ' pre-wrapped chapter sections');
-            chapterSegments = Array.from(existingSections);
+            // Validate that sections have valid chapter indices
+            const validSections = [];
+            for (let i = 0; i < existingSections.length; i++) {
+                const section = existingSections[i];
+                const chapterIndexAttr = section.getAttribute('data-chapter-index');
+                const chapterIndex = parseInt(chapterIndexAttr, 10);
+                
+                // Validate that chapter index is a valid non-negative integer
+                if (!isNaN(chapterIndex) && chapterIndex >= 0) {
+                    validSections.push(section);
+                } else {
+                    console.warn('inpage_paginator: [CONFIG] Ignoring section with invalid data-chapter-index: ' + chapterIndexAttr);
+                }
+            }
             
-            // Log the chapter indices for debugging
-            const chapterIndices = chapterSegments.map(function(seg) {
-                return seg.getAttribute('data-chapter-index');
-            }).join(', ');
-            console.log('inpage_paginator: [CONFIG] Pre-wrapped chapters: ' + chapterIndices);
-            
-            return;
+            if (validSections.length > 0) {
+                // Content is already wrapped in valid chapter sections (window mode with pre-wrapped HTML)
+                console.log('inpage_paginator: [CONFIG] Found ' + validSections.length + ' pre-wrapped chapter sections');
+                chapterSegments = validSections;
+                
+                // Log the chapter indices for debugging
+                const chapterIndices = chapterSegments.map(function(seg) {
+                    return seg.getAttribute('data-chapter-index');
+                }).join(', ');
+                console.log('inpage_paginator: [CONFIG] Pre-wrapped chapters: ' + chapterIndices);
+                
+                return;
+            }
         }
         
-        // No pre-wrapped sections found - wrap all content in a single segment
+        // No valid pre-wrapped sections found - wrap all content in a single segment
         // This is the legacy behavior for chapter mode or non-wrapped window mode
-        console.log('inpage_paginator: [CONFIG] No pre-wrapped sections found, wrapping content as single segment');
+        console.log('inpage_paginator: [CONFIG] No valid pre-wrapped sections found, wrapping content as single segment');
         const segment = document.createElement('section');
         segment.className = 'chapter-segment';
         
