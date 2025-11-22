@@ -896,10 +896,9 @@
             
             // Calculate absolute position of segment within scroll container
             const absoluteLeft = segmentRect.left + currentScrollLeft;
-            const pageIndex = Math.floor(Math.max(0, absoluteLeft) / pageWidth);
+            const pageIndex = Math.max(0, Math.floor(absoluteLeft / pageWidth));
             
-            console.log('inpage_paginator: Jumping to chapter', chapterIndex, 'at page', pageIndex, 
-                       '(absoluteLeft=' + absoluteLeft + ', pageWidth=' + pageWidth + ')');
+            console.log('inpage_paginator: Jumping to chapter', chapterIndex, 'at page', pageIndex);
             goToPage(pageIndex, smooth || false);
             
             // Notify Android of successful chapter jump
@@ -1026,13 +1025,10 @@
                 const absoluteLeft = segmentRect.left + currentScrollLeft;
                 
                 // Calculate which pages this segment spans
-                const startPage = Math.floor(absoluteLeft / pageWidth);
+                // Use Math.max to prevent negative page indices
+                const startPage = Math.max(0, Math.floor(absoluteLeft / pageWidth));
                 const endPage = Math.ceil((absoluteLeft + segmentRect.width) / pageWidth);
                 const pageCount = Math.max(1, endPage - startPage);
-                
-                console.log('inpage_paginator: getLoadedChapters - chapter ' + chapterIndex + 
-                           ' spans pages ' + startPage + '-' + endPage + 
-                           ' (absoluteLeft=' + absoluteLeft + ', width=' + segmentRect.width + ')');
                 
                 return {
                     chapterIndex: chapterIndex,
@@ -1082,10 +1078,6 @@
                 // Check if viewport center falls within this segment
                 if (viewportCenter >= segmentLeft && viewportCenter < segmentRight) {
                     const chapterIndex = parseInt(seg.getAttribute('data-chapter-index'), 10);
-                    console.log('inpage_paginator: getCurrentChapter - found chapter ' + chapterIndex + 
-                               ' at viewport center (scrollLeft=' + currentScrollLeft + 
-                               ', viewportCenter=' + viewportCenter + 
-                               ', segmentLeft=' + segmentLeft + ', segmentRight=' + segmentRight + ')');
                     return chapterIndex;
                 }
             }
@@ -1093,7 +1085,6 @@
             // Fallback: return the first segment's chapter
             if (chapterSegments.length > 0) {
                 const fallbackChapter = parseInt(chapterSegments[0].getAttribute('data-chapter-index'), 10);
-                console.log('inpage_paginator: getCurrentChapter - using fallback to first chapter: ' + fallbackChapter);
                 return fallbackChapter;
             }
             
