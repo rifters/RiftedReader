@@ -41,8 +41,12 @@ class SlidingWindowHtmlIntegrationTest {
         // Verify HTML is not null
         assertNotNull("Window HTML should not be null", html)
         
+        // Verify it contains window-root container
+        assertTrue("Should contain window-root container", html!!.contains("<div id=\"window-root\""))
+        assertTrue("Should have data-window-index=\"0\"", html.contains("data-window-index=\"0\""))
+        
         // Verify it contains section tags for chapters 0-4
-        assertTrue("Should contain chapter 0 section", html!!.contains("<section id=\"chapter-0\""))
+        assertTrue("Should contain chapter 0 section", html.contains("<section id=\"chapter-0\""))
         assertTrue("Should contain chapter 1 section", html.contains("<section id=\"chapter-1\""))
         assertTrue("Should contain chapter 2 section", html.contains("<section id=\"chapter-2\""))
         assertTrue("Should contain chapter 3 section", html.contains("<section id=\"chapter-3\""))
@@ -79,8 +83,12 @@ class SlidingWindowHtmlIntegrationTest {
         
         assertNotNull("Window HTML should not be null", html)
         
+        // Verify it contains window-root container with correct index
+        assertTrue("Should contain window-root container", html!!.contains("<div id=\"window-root\""))
+        assertTrue("Should have data-window-index=\"12\"", html.contains("data-window-index=\"12\""))
+        
         // Verify it contains only chapters 60-61
-        assertTrue("Should contain chapter 60", html!!.contains("<section id=\"chapter-60\""))
+        assertTrue("Should contain chapter 60", html.contains("<section id=\"chapter-60\""))
         assertTrue("Should contain chapter 61", html.contains("<section id=\"chapter-61\""))
         
         // Should not contain chapter 62 (out of bounds)
