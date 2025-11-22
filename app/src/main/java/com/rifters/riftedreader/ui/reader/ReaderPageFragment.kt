@@ -120,6 +120,9 @@ class ReaderPageFragment : Fragment() {
                     com.rifters.riftedreader.util.AppLogger.event("ReaderPageFragment", "WebView onPageFinished for page $pageIndex", "ui/webview/lifecycle")
                     isWebViewReady = true
                     
+                    // Configure the paginator before it initializes
+                    configurePaginator()
+                    
                     // Initialize the in-page paginator
                     val settings = readerViewModel.readerSettings.value
                     com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Initializing paginator with fontSize=${settings.textSizeSp}px")
@@ -832,6 +835,46 @@ class ReaderPageFragment : Fragment() {
         }
         val chapterIndex = resolvedChapterIndex ?: pageIndex
         WebViewPaginatorBridge.setInitialChapter(binding.pageWebView, chapterIndex)
+    }
+    
+    /**
+     * Configure the JavaScript paginator with the appropriate mode and context.
+     * This must be called before the paginator initializes to ensure proper behavior.
+     */
+    private fun configurePaginator() {
+        if (_binding == null || !isWebViewReady) {
+            return
+        }
+        
+        // Import the necessary classes
+        val paginatorConfig = when (readerViewModel.paginationMode) {
+            PaginationMode.CONTINUOUS -> {
+                // Window mode: paginate across multiple chapters in the window
+                com.rifters.riftedreader.domain.pagination.PaginatorConfig(
+                    mode = com.rifters.riftedreader.domain.pagination.PaginatorMode.WINDOW,
+                    windowIndex = pageIndex,
+                    chapterIndex = null,
+                    rootSelector = "#window-root"
+                )
+            }
+            PaginationMode.CHAPTER_BASED -> {
+                // Chapter mode: paginate within a single chapter
+                val chapterIndex = resolvedChapterIndex ?: pageIndex
+                com.rifters.riftedreader.domain.pagination.PaginatorConfig(
+                    mode = com.rifters.riftedreader.domain.pagination.PaginatorMode.CHAPTER,
+                    windowIndex = pageIndex,
+                    chapterIndex = chapterIndex,
+                    rootSelector = null
+                )
+            }
+        }
+        
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "Configuring paginator: mode=${paginatorConfig.mode}, windowIndex=${paginatorConfig.windowIndex}, chapterIndex=${paginatorConfig.chapterIndex}"
+        )
+        
+        WebViewPaginatorBridge.configure(binding.pageWebView, paginatorConfig)
     }
 
     private fun applyHighlight(range: IntRange?) {

@@ -4,6 +4,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Base64
 import android.webkit.WebView
+import com.rifters.riftedreader.domain.pagination.PaginatorConfig
+import com.rifters.riftedreader.domain.pagination.PaginatorMode
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -33,6 +35,34 @@ object WebViewPaginatorBridge {
         } catch (e: Exception) {
             AppLogger.e("WebViewPaginatorBridge", "Error checking if paginator is ready", e)
             false
+        }
+    }
+    
+    /**
+     * Configure the paginator before initialization.
+     * This method should be called before the paginator is initialized to set
+     * the pagination mode and context.
+     * 
+     * @param webView The WebView to configure
+     * @param config The paginator configuration
+     */
+    fun configure(webView: WebView, config: PaginatorConfig) {
+        val mode = when (config.mode) {
+            PaginatorMode.WINDOW -> "window"
+            PaginatorMode.CHAPTER -> "chapter"
+        }
+        
+        val chapterIndexParam = config.chapterIndex?.let { ", chapterIndex: $it" } ?: ""
+        val rootSelectorParam = config.rootSelector?.let { ", rootSelector: '$it'" } ?: ""
+        
+        val jsConfig = "{ mode: '$mode', windowIndex: ${config.windowIndex}$chapterIndexParam$rootSelectorParam }"
+        
+        AppLogger.d("WebViewPaginatorBridge", "configure: $jsConfig")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.inpagePaginator) { window.inpagePaginator.configure($jsConfig); }",
+                null
+            )
         }
     }
     

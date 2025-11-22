@@ -23,6 +23,14 @@
     const SCROLL_BEHAVIOR_AUTO = 'auto';
     const MAX_CHAPTER_SEGMENTS = 5; // Limit DOM growth when streaming chapters
     
+    // Paginator configuration - set via configure() before init()
+    let paginatorConfig = {
+        mode: 'window',        // 'window' or 'chapter'
+        windowIndex: 0,        // ViewPager2 page index
+        chapterIndex: null,    // Logical chapter index (optional for window mode, required for chapter mode)
+        rootSelector: null     // Optional CSS selector for pagination root
+    };
+    
     // State
     let currentFontSize = 16; // Default font size in pixels
     let columnContainer = null;
@@ -33,6 +41,61 @@
     let chapterSegments = [];
     let initialChapterIndex = 0;
     let currentPage = 0; // CRITICAL: Track current page explicitly to avoid async scrollTo issues
+    
+    /**
+     * Configure the paginator before initialization.
+     * This method must be called before init() to set the pagination mode and context.
+     * 
+     * @param {Object} config - Configuration object
+     * @param {string} config.mode - Pagination mode: 'window' or 'chapter'
+     * @param {number} config.windowIndex - ViewPager2 window/page index
+     * @param {number} [config.chapterIndex] - Logical chapter index (required for chapter mode)
+     * @param {string} [config.rootSelector] - CSS selector for pagination root (optional)
+     * 
+     * Mode behavior:
+     * - 'window': Paginate across the entire window (multiple chapters).
+     *   Use full document or #window-root as pagination root.
+     *   Ignore chapterIndex for scroll calculations.
+     * 
+     * - 'chapter': Paginate within a single chapter section.
+     *   Use section[data-chapter-index] as pagination root.
+     *   Require chapterIndex to locate the chapter.
+     */
+    function configure(config) {
+        if (isInitialized) {
+            console.warn('inpage_paginator: configure() called after initialization - this may have no effect');
+        }
+        
+        if (!config) {
+            console.error('inpage_paginator: configure() called with no config');
+            return;
+        }
+        
+        // Validate mode
+        if (config.mode !== 'window' && config.mode !== 'chapter') {
+            console.error('inpage_paginator: Invalid mode: ' + config.mode + ', must be "window" or "chapter"');
+            return;
+        }
+        
+        // Validate chapter mode requirements
+        if (config.mode === 'chapter' && (config.chapterIndex === null || config.chapterIndex === undefined)) {
+            console.error('inpage_paginator: chapter mode requires chapterIndex');
+            return;
+        }
+        
+        // Update configuration
+        paginatorConfig = {
+            mode: config.mode,
+            windowIndex: config.windowIndex !== undefined ? config.windowIndex : 0,
+            chapterIndex: config.chapterIndex !== undefined ? config.chapterIndex : null,
+            rootSelector: config.rootSelector || null
+        };
+        
+        console.log('inpage_paginator: [CONFIG] Configured with mode=' + paginatorConfig.mode + 
+                    ', windowIndex=' + paginatorConfig.windowIndex + 
+                    ', chapterIndex=' + paginatorConfig.chapterIndex +
+                    ', rootSelector=' + paginatorConfig.rootSelector);
+    }
     
     /**
      * Initialize the paginator by wrapping content in a column container
@@ -167,9 +230,37 @@
         if (!contentWrapper) {
             return;
         }
+        
+        // Check if content already has section elements with data-chapter-index
+        // This happens in window mode when HTML is pre-wrapped with multiple chapters
+        const existingSections = contentWrapper.querySelectorAll('section[data-chapter-index]');
+        
+        if (existingSections.length > 0) {
+            // Content is already wrapped in chapter sections (window mode with pre-wrapped HTML)
+            console.log('inpage_paginator: [CONFIG] Found ' + existingSections.length + ' pre-wrapped chapter sections');
+            chapterSegments = Array.from(existingSections);
+            
+            // Log the chapter indices for debugging
+            const chapterIndices = chapterSegments.map(function(seg) {
+                return seg.getAttribute('data-chapter-index');
+            }).join(', ');
+            console.log('inpage_paginator: [CONFIG] Pre-wrapped chapters: ' + chapterIndices);
+            
+            return;
+        }
+        
+        // No pre-wrapped sections found - wrap all content in a single segment
+        // This is the legacy behavior for chapter mode or non-wrapped window mode
+        console.log('inpage_paginator: [CONFIG] No pre-wrapped sections found, wrapping content as single segment');
         const segment = document.createElement('section');
         segment.className = 'chapter-segment';
-        segment.setAttribute('data-chapter-index', initialChapterIndex);
+        
+        // Use chapterIndex from config if in chapter mode, otherwise use initialChapterIndex
+        const chapterIndex = paginatorConfig.mode === 'chapter' && paginatorConfig.chapterIndex !== null
+            ? paginatorConfig.chapterIndex
+            : initialChapterIndex;
+        
+        segment.setAttribute('data-chapter-index', chapterIndex);
         const fragment = document.createDocumentFragment();
         while (contentWrapper.firstChild) {
             fragment.appendChild(contentWrapper.firstChild);
@@ -177,6 +268,8 @@
         segment.appendChild(fragment);
         contentWrapper.appendChild(segment);
         chapterSegments = [segment];
+        
+        console.log('inpage_paginator: [CONFIG] Wrapped content as chapter ' + chapterIndex);
     }
     
     /**
@@ -1098,6 +1191,7 @@
     
     // Expose global API
     window.inpagePaginator = {
+        configure: configure,
         isReady: isReady,
         reflow: reflow,
         setFontSize: setFontSize,
