@@ -562,7 +562,9 @@ class ReaderViewModel(
     suspend fun getWindowHtml(pageIndex: Int): WindowHtmlPayload? {
         return if (isContinuousMode) {
             val paginator = continuousPaginator ?: return null
-            val windowManager = com.rifters.riftedreader.domain.pagination.SlidingWindowManager(windowSize = 5)
+            // Use same window size as ContinuousPaginator (default: 5)
+            val windowSize = com.rifters.riftedreader.domain.pagination.SlidingWindowManager.DEFAULT_WINDOW_SIZE
+            val windowManager = com.rifters.riftedreader.domain.pagination.SlidingWindowManager(windowSize = windowSize)
             val provider = com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider(
                 paginator,
                 windowManager
@@ -591,7 +593,7 @@ class ReaderViewModel(
                 windowIndex = windowIndex,
                 chapterIndex = location.chapterIndex,
                 inPageIndex = location.inPageIndex,
-                windowSize = 5,
+                windowSize = windowSize,
                 totalChapters = windowInfo.totalChapters
             )
         } else {

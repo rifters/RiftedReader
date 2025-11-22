@@ -1,5 +1,6 @@
 package com.rifters.riftedreader.domain.pagination
 
+import android.text.TextUtils
 import com.rifters.riftedreader.util.AppLogger
 
 /**
@@ -97,7 +98,7 @@ class ContinuousPaginatorWindowHtmlProvider(
         return text.split("\n\n")
             .filter { it.isNotBlank() }
             .joinToString("\n") { paragraph ->
-                val escaped = android.text.TextUtils.htmlEncode(paragraph.trim())
+                val escaped = TextUtils.htmlEncode(paragraph.trim())
                 "<p>$escaped</p>"
             }
     }

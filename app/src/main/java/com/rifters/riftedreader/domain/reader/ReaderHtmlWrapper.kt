@@ -1,5 +1,6 @@
 package com.rifters.riftedreader.domain.reader
 
+import android.text.TextUtils
 import com.rifters.riftedreader.ui.reader.ReaderThemePalette
 
 /**
@@ -20,6 +21,13 @@ data class ReaderHtmlConfig(
 object ReaderHtmlWrapper {
     
     /**
+     * Convert a color integer to a hex color string.
+     */
+    private fun colorToHex(color: Int): String {
+        return String.format("#%06X", 0xFFFFFF and color)
+    }
+    
+    /**
      * Wrap arbitrary HTML content for display in a WebView.
      * 
      * @param contentHtml The HTML content to wrap (can be single chapter or multi-chapter window)
@@ -27,8 +35,8 @@ object ReaderHtmlWrapper {
      * @return Complete HTML document ready for WebView.loadDataWithBaseURL()
      */
     fun wrap(contentHtml: String, config: ReaderHtmlConfig): String {
-        val backgroundColor = String.format("#%06X", 0xFFFFFF and config.palette.backgroundColor)
-        val textColor = String.format("#%06X", 0xFFFFFF and config.palette.textColor)
+        val backgroundColor = colorToHex(config.palette.backgroundColor)
+        val textColor = colorToHex(config.palette.textColor)
         
         return """
             <!DOCTYPE html>

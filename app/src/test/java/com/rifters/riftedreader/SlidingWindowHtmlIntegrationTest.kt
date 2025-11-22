@@ -15,11 +15,16 @@ import java.io.File
  */
 class SlidingWindowHtmlIntegrationTest {
 
+    companion object {
+        // Test constant representing a book with 62 chapters (12 full windows + 1 partial window of 2 chapters)
+        private const val TOTAL_TEST_CHAPTERS = 62
+    }
+
     @Test
     fun `window HTML contains multiple chapters with section tags`() = runTest {
         // Setup with mock book parser
         val mockFile = File("test.epub")
-        val mockParser = MockBookParser(totalPages = 62)
+        val mockParser = MockBookParser(totalPages = TOTAL_TEST_CHAPTERS)
         
         // Initialize paginator
         val paginator = ContinuousPaginator(mockFile, mockParser, windowSize = 5)
@@ -54,7 +59,7 @@ class SlidingWindowHtmlIntegrationTest {
     @Test
     fun `window HTML for last window handles partial window correctly`() = runTest {
         val mockFile = File("test.epub")
-        val mockParser = MockBookParser(totalPages = 62) // 62 chapters = 12 full windows + 1 partial
+        val mockParser = MockBookParser(totalPages = TOTAL_TEST_CHAPTERS) // 62 chapters = 12 full windows + 1 partial
         
         val paginator = ContinuousPaginator(mockFile, mockParser, windowSize = 5)
         paginator.initialize()
@@ -85,7 +90,7 @@ class SlidingWindowHtmlIntegrationTest {
     @Test
     fun `window HTML contains correct chapters for given window index`() = runTest {
         val mockFile = File("test.epub")
-        val mockParser = MockBookParser(totalPages = 62)
+        val mockParser = MockBookParser(totalPages = TOTAL_TEST_CHAPTERS)
         
         val paginator = ContinuousPaginator(mockFile, mockParser, windowSize = 5)
         paginator.initialize()
@@ -94,7 +99,7 @@ class SlidingWindowHtmlIntegrationTest {
         
         // Test window 1 (chapters 5-9)
         val windowIndex = 1
-        val expectedChapters = windowManager.chaptersInWindow(windowIndex, 62)
+        val expectedChapters = windowManager.chaptersInWindow(windowIndex, TOTAL_TEST_CHAPTERS)
         assertEquals(listOf(5, 6, 7, 8, 9), expectedChapters)
         
         // Navigate to middle of window to ensure all chapters are loaded
@@ -118,7 +123,7 @@ class SlidingWindowHtmlIntegrationTest {
     fun `chapter to window mapping matches expected window indices`() = runTest {
         val windowManager = SlidingWindowManager(windowSize = 5)
         val mockFile = File("test.epub")
-        val mockParser = MockBookParser(totalPages = 62)
+        val mockParser = MockBookParser(totalPages = TOTAL_TEST_CHAPTERS)
         
         val paginator = ContinuousPaginator(mockFile, mockParser, windowSize = 5)
         paginator.initialize()
