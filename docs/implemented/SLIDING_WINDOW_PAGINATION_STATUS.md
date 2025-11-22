@@ -1,17 +1,5 @@
 # Sliding Window Pagination - Implementation Status
 
-## 2025-11-22 Update - In-Page Pagination Bug Fix
-
-- **TOC pagination bug resolved**: Fixed a critical issue where in-page pagination would get stuck on the Table of Contents when using sliding-window wrapped HTML in continuous mode.
-- **Root cause**: The JavaScript paginator's `wrapExistingContentAsSegment()` function was wrapping all pre-loaded HTML content (which already contained multiple `<section>` elements with `data-chapter-index` attributes from `ContinuousPaginatorWindowHtmlProvider`) into a single segment with chapter index 0. This caused navigation and chapter detection to fail.
-- **Solution implemented**:
-  - Modified `wrapExistingContentAsSegment()` to detect and preserve existing chapter sections from sliding-window HTML
-  - Updated `getCurrentChapter()` to use viewport center position for accurate chapter detection across multiple sections
-  - Fixed `getLoadedChapters()`, `jumpToChapter()`, and `getSegmentPageCount()` to use absolute positioning calculations
-  - All position calculations now properly handle multi-chapter content in a single WebView
-- **Backward compatibility**: The fix maintains full compatibility with chapter-based pagination mode, which still wraps single-chapter content as before
-- **Testing**: All existing unit tests pass, manual validation confirms the fix works for both modes
-
 ## 2025-11-20 Update
 
 - **Pagination engine hardening**: `ContinuousPaginator` now rebalances its start/end indices so the sliding window keeps its full configured size even when the user lands near the beginning or end of a book. This avoids unexpected fragment churn and matches the behavior expected by our older tests.
