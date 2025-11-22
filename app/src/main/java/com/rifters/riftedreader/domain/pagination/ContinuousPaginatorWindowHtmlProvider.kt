@@ -39,7 +39,11 @@ class ContinuousPaginatorWindowHtmlProvider(
             AppLogger.d(TAG, "Generating window HTML for window $windowIndex, chapters: ${chapterIndices.first()}-${chapterIndices.last()}")
             
             // Build combined HTML with section tags for each chapter
+            // Wrap all sections in a window-root container for clear pagination root
             val htmlBuilder = StringBuilder()
+            
+            // Start window-root container
+            htmlBuilder.append("<div id=\"window-root\" data-window-index=\"$windowIndex\">\n")
             
             for (chapterIndex in chapterIndices) {
                 // Get the global page index for this chapter
@@ -67,10 +71,14 @@ class ContinuousPaginatorWindowHtmlProvider(
                 }
                 
                 // Wrap in section with chapter ID for navigation
-                htmlBuilder.append("<section id=\"chapter-$chapterIndex\" data-chapter-index=\"$chapterIndex\">\n")
+                htmlBuilder.append("  <section id=\"chapter-$chapterIndex\" data-chapter-index=\"$chapterIndex\">\n")
+                htmlBuilder.append("    ")
                 htmlBuilder.append(chapterHtml)
-                htmlBuilder.append("\n</section>\n")
+                htmlBuilder.append("\n  </section>\n")
             }
+            
+            // Close window-root container
+            htmlBuilder.append("</div>\n")
             
             val combinedHtml = htmlBuilder.toString()
             
