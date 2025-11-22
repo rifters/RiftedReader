@@ -37,6 +37,39 @@ object WebViewPaginatorBridge {
     }
     
     /**
+     * Configure the paginator with explicit mode and indices.
+     * This should be called before the paginator initializes (before page content loads)
+     * or immediately after page load but before any pagination operations.
+     * 
+     * @param webView The WebView to configure
+     * @param config The paginator configuration
+     */
+    fun configure(webView: WebView, config: com.rifters.riftedreader.domain.pagination.PaginatorConfig) {
+        val mode = config.mode.toJsString()
+        val windowIndex = config.windowIndex
+        val chapterIndex = config.chapterIndex
+        val rootSelector = config.rootSelector?.let { "\"$it\"" } ?: "null"
+        val initialInPageIndex = config.initialInPageIndex
+        
+        val jsConfig = """{
+            mode: "$mode",
+            windowIndex: $windowIndex,
+            chapterIndex: ${chapterIndex ?: "null"},
+            rootSelector: $rootSelector,
+            initialInPageIndex: $initialInPageIndex
+        }"""
+        
+        AppLogger.d("WebViewPaginatorBridge", "Configuring paginator: mode=$mode, windowIndex=$windowIndex, chapterIndex=$chapterIndex")
+        
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.inpagePaginator && window.inpagePaginator.configure) { window.inpagePaginator.configure($jsConfig); }",
+                null
+            )
+        }
+    }
+    
+    /**
      * Evaluate a JavaScript expression and return the result as an Int.
      * Must be called from a coroutine as it suspends until the result is available.
      * 

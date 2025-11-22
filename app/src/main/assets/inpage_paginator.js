@@ -34,6 +34,54 @@
     let initialChapterIndex = 0;
     let currentPage = 0; // CRITICAL: Track current page explicitly to avoid async scrollTo issues
     
+    // Pagination configuration
+    let paginatorConfig = {
+        mode: 'window', // 'window' or 'chapter' - default to window mode for sliding-window compatibility
+        windowIndex: 0,
+        chapterIndex: null,
+        rootSelector: null,
+        initialInPageIndex: 0
+    };
+    
+    /**
+     * Configure the paginator before initialization.
+     * This should be called before init() or immediately after page load.
+     * 
+     * @param {Object} config - Configuration object
+     * @param {string} config.mode - "window" or "chapter" mode
+     * @param {number} config.windowIndex - Window/ViewPager page index
+     * @param {number} [config.chapterIndex] - Chapter index (required for chapter mode)
+     * @param {string} [config.rootSelector] - CSS selector for pagination root
+     * @param {number} [config.initialInPageIndex] - Initial page to navigate to
+     */
+    function configure(config) {
+        if (!config) {
+            console.warn('inpage_paginator: configure() called without config, using defaults');
+            return;
+        }
+        
+        // Validate mode
+        if (config.mode && (config.mode !== 'window' && config.mode !== 'chapter')) {
+            console.error('inpage_paginator: Invalid mode "' + config.mode + '", must be "window" or "chapter"');
+            return;
+        }
+        
+        // Update configuration
+        paginatorConfig = {
+            mode: config.mode || paginatorConfig.mode,
+            windowIndex: config.windowIndex !== undefined ? config.windowIndex : paginatorConfig.windowIndex,
+            chapterIndex: config.chapterIndex !== undefined ? config.chapterIndex : paginatorConfig.chapterIndex,
+            rootSelector: config.rootSelector || paginatorConfig.rootSelector,
+            initialInPageIndex: config.initialInPageIndex !== undefined ? config.initialInPageIndex : paginatorConfig.initialInPageIndex
+        };
+        
+        console.log('inpage_paginator: Configured with mode=' + paginatorConfig.mode + 
+                    ', windowIndex=' + paginatorConfig.windowIndex + 
+                    ', chapterIndex=' + paginatorConfig.chapterIndex +
+                    ', rootSelector=' + (paginatorConfig.rootSelector || 'default') +
+                    ', initialInPageIndex=' + paginatorConfig.initialInPageIndex);
+    }
+    
     /**
      * Initialize the paginator by wrapping content in a column container
      */
@@ -174,33 +222,72 @@
         
         if (existingSections.length > 0) {
             // Content is already structured with chapter sections (from sliding-window HTML)
-            // Just mark them as chapter-segment and collect them
-            console.log('inpage_paginator: Found ' + existingSections.length + ' existing chapter sections - preserving structure');
-            chapterSegments = Array.from(existingSections);
-            chapterSegments.forEach(function(seg) {
-                // Add the chapter-segment class if not already present
-                if (!seg.classList.contains('chapter-segment')) {
-                    seg.classList.add('chapter-segment');
-                }
-            });
+            // This corresponds to WINDOW mode - preserve all sections
+            console.log('inpage_paginator: Found ' + existingSections.length + ' existing chapter sections');
             
-            // Set initialChapterIndex based on the first section if not already set
-            if (chapterSegments.length > 0 && initialChapterIndex === 0) {
-                const firstChapterIndex = parseInt(chapterSegments[0].getAttribute('data-chapter-index'), 10);
-                if (!isNaN(firstChapterIndex)) {
-                    initialChapterIndex = firstChapterIndex;
-                    console.log('inpage_paginator: Set initialChapterIndex to ' + initialChapterIndex + ' from first section');
+            if (paginatorConfig.mode === 'chapter' && paginatorConfig.chapterIndex !== null) {
+                // CHAPTER mode: Extract only the specific chapter section
+                console.log('inpage_paginator: CHAPTER mode - isolating chapter ' + paginatorConfig.chapterIndex);
+                const targetSection = Array.from(existingSections).find(function(section) {
+                    const idx = parseInt(section.getAttribute('data-chapter-index'), 10);
+                    return idx === paginatorConfig.chapterIndex;
+                });
+                
+                if (targetSection) {
+                    // Keep only the target chapter section
+                    chapterSegments = [targetSection];
+                    targetSection.classList.add('chapter-segment');
+                    
+                    // Remove other sections from DOM
+                    existingSections.forEach(function(section) {
+                        if (section !== targetSection && section.parentNode) {
+                            section.parentNode.removeChild(section);
+                        }
+                    });
+                    
+                    initialChapterIndex = paginatorConfig.chapterIndex;
+                    console.log('inpage_paginator: Isolated chapter ' + paginatorConfig.chapterIndex + ' for pagination');
+                } else {
+                    console.warn('inpage_paginator: Chapter ' + paginatorConfig.chapterIndex + ' not found in sections');
+                    // Fall back to preserving all sections
+                    chapterSegments = Array.from(existingSections);
+                    chapterSegments.forEach(function(seg) {
+                        if (!seg.classList.contains('chapter-segment')) {
+                            seg.classList.add('chapter-segment');
+                        }
+                    });
+                }
+            } else {
+                // WINDOW mode: Preserve all sections for multi-chapter pagination
+                console.log('inpage_paginator: WINDOW mode - preserving all ' + existingSections.length + ' chapter sections');
+                chapterSegments = Array.from(existingSections);
+                chapterSegments.forEach(function(seg) {
+                    // Add the chapter-segment class if not already present
+                    if (!seg.classList.contains('chapter-segment')) {
+                        seg.classList.add('chapter-segment');
+                    }
+                });
+                
+                // Set initialChapterIndex based on the first section if not already set
+                if (chapterSegments.length > 0 && initialChapterIndex === 0) {
+                    const firstChapterIndex = parseInt(chapterSegments[0].getAttribute('data-chapter-index'), 10);
+                    if (!isNaN(firstChapterIndex)) {
+                        initialChapterIndex = firstChapterIndex;
+                        console.log('inpage_paginator: Set initialChapterIndex to ' + initialChapterIndex + ' from first section');
+                    }
                 }
             }
             
             return;
         }
         
-        // No existing chapter sections - wrap all content as a single segment (chapter-based mode)
-        console.log('inpage_paginator: No existing chapter sections found - wrapping all content as single segment');
+        // No existing chapter sections - wrap all content as a single segment
+        // This is the legacy behavior for chapter-based mode with no pre-structured HTML
+        console.log('inpage_paginator: No existing chapter sections found - wrapping all content as single segment (legacy chapter mode)');
         const segment = document.createElement('section');
         segment.className = 'chapter-segment';
-        segment.setAttribute('data-chapter-index', initialChapterIndex);
+        const chapterIdx = paginatorConfig.chapterIndex !== null ? paginatorConfig.chapterIndex : initialChapterIndex;
+        segment.setAttribute('data-chapter-index', chapterIdx);
         const fragment = document.createDocumentFragment();
         while (contentWrapper.firstChild) {
             fragment.appendChild(contentWrapper.firstChild);
@@ -208,6 +295,7 @@
         segment.appendChild(fragment);
         contentWrapper.appendChild(segment);
         chapterSegments = [segment];
+        initialChapterIndex = chapterIdx;
     }
     
     /**
@@ -1151,6 +1239,7 @@
     
     // Expose global API
     window.inpagePaginator = {
+        configure: configure,
         isReady: isReady,
         reflow: reflow,
         setFontSize: setFontSize,
@@ -1170,7 +1259,8 @@
         getSegmentPageCount: getSegmentPageCount,
         jumpToChapter: jumpToChapter,
         getLoadedChapters: getLoadedChapters,
-        getCurrentChapter: getCurrentChapter
+        getCurrentChapter: getCurrentChapter,
+        getConfig: function() { return paginatorConfig; }
     };
     
 })();
