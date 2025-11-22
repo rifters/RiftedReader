@@ -161,6 +161,37 @@
         if (!contentWrapper) {
             return;
         }
+        
+        // CRITICAL FIX: Check if content already has chapter sections (sliding-window mode)
+        // Look for existing <section> elements with data-chapter-index attributes
+        const existingSections = contentWrapper.querySelectorAll('section[data-chapter-index]');
+        
+        if (existingSections.length > 0) {
+            // Content is already structured with chapter sections (from sliding-window HTML)
+            // Just mark them as chapter-segment and collect them
+            console.log('inpage_paginator: Found ' + existingSections.length + ' existing chapter sections - preserving structure');
+            chapterSegments = Array.from(existingSections);
+            chapterSegments.forEach(function(seg) {
+                // Add the chapter-segment class if not already present
+                if (!seg.classList.contains('chapter-segment')) {
+                    seg.classList.add('chapter-segment');
+                }
+            });
+            
+            // Set initialChapterIndex based on the first section if not already set
+            if (chapterSegments.length > 0 && initialChapterIndex === 0) {
+                const firstChapterIndex = parseInt(chapterSegments[0].getAttribute('data-chapter-index'), 10);
+                if (!isNaN(firstChapterIndex)) {
+                    initialChapterIndex = firstChapterIndex;
+                    console.log('inpage_paginator: Set initialChapterIndex to ' + initialChapterIndex + ' from first section');
+                }
+            }
+            
+            return;
+        }
+        
+        // No existing chapter sections - wrap all content as a single segment (chapter-based mode)
+        console.log('inpage_paginator: No existing chapter sections found - wrapping all content as single segment');
         const segment = document.createElement('section');
         segment.className = 'chapter-segment';
         segment.setAttribute('data-chapter-index', initialChapterIndex);
@@ -694,11 +725,14 @@
         if (!segment) {
             return -1;
         }
-        const contentRect = contentWrapper.getBoundingClientRect();
+        
+        // CRITICAL FIX: Use absolute positioning for accurate page calculations
+        const currentScrollLeft = columnContainer.scrollLeft;
         const segmentRect = segment.getBoundingClientRect();
-        const offsetLeft = (segmentRect.left - contentRect.left);
-        const startPage = Math.floor(Math.max(0, offsetLeft) / pageWidth);
-        const endPage = Math.ceil((offsetLeft + segmentRect.width) / pageWidth);
+        const absoluteLeft = segmentRect.left + currentScrollLeft;
+        
+        const startPage = Math.floor(Math.max(0, absoluteLeft) / pageWidth);
+        const endPage = Math.ceil((absoluteLeft + segmentRect.width) / pageWidth);
         return Math.max(1, endPage - startPage);
     }
 
@@ -851,16 +885,18 @@
                 return false;
             }
             
-            // Calculate the page index for this segment
+            // Calculate the page index for this segment using absolute positioning
             const pageWidth = viewportWidth || window.innerWidth;
             if (pageWidth === 0) {
                 return false;
             }
             
-            const contentRect = contentWrapper.getBoundingClientRect();
+            const currentScrollLeft = columnContainer.scrollLeft;
             const segmentRect = segment.getBoundingClientRect();
-            const offsetLeft = segmentRect.left - contentRect.left + columnContainer.scrollLeft;
-            const pageIndex = Math.floor(Math.max(0, offsetLeft) / pageWidth);
+            
+            // Calculate absolute position of segment within scroll container
+            const absoluteLeft = segmentRect.left + currentScrollLeft;
+            const pageIndex = Math.max(0, Math.floor(absoluteLeft / pageWidth));
             
             console.log('inpage_paginator: Jumping to chapter', chapterIndex, 'at page', pageIndex);
             goToPage(pageIndex, smooth || false);
@@ -976,14 +1012,22 @@
                 return [];
             }
             
-            const contentRect = contentWrapper.getBoundingClientRect();
+            // CRITICAL FIX: Calculate positions relative to the scroll container, not contentWrapper
+            // In column layout, segments are positioned horizontally within the contentWrapper
+            const currentScrollLeft = columnContainer.scrollLeft;
             
             return chapterSegments.map(seg => {
                 const chapterIndex = parseInt(seg.getAttribute('data-chapter-index'), 10);
                 const segmentRect = seg.getBoundingClientRect();
-                const offsetLeft = segmentRect.left - contentRect.left + columnContainer.scrollLeft;
-                const startPage = Math.floor(Math.max(0, offsetLeft) / pageWidth);
-                const endPage = Math.ceil((offsetLeft + segmentRect.width) / pageWidth);
+                
+                // Calculate absolute position within the scroll container
+                // segmentRect.left is relative to viewport, so add currentScrollLeft to get absolute position
+                const absoluteLeft = segmentRect.left + currentScrollLeft;
+                
+                // Calculate which pages this segment spans
+                // Use Math.max to prevent negative page indices
+                const startPage = Math.max(0, Math.floor(absoluteLeft / pageWidth));
+                const endPage = Math.ceil((absoluteLeft + segmentRect.width) / pageWidth);
                 const pageCount = Math.max(1, endPage - startPage);
                 
                 return {
@@ -1016,23 +1060,32 @@
             }
             
             const currentScrollLeft = columnContainer.scrollLeft;
-            const contentRect = contentWrapper.getBoundingClientRect();
             
-            // Find which segment contains the current scroll position
+            // CRITICAL FIX: Calculate the center of the viewport to determine which chapter is "current"
+            // This handles multi-chapter windows where sections are laid out horizontally
+            const viewportCenter = currentScrollLeft + (pageWidth / 2);
+            
+            // Find which segment contains the viewport center
             for (let i = 0; i < chapterSegments.length; i++) {
                 const seg = chapterSegments[i];
                 const segmentRect = seg.getBoundingClientRect();
-                const offsetLeft = segmentRect.left - contentRect.left + currentScrollLeft;
-                const segmentRight = offsetLeft + segmentRect.width;
                 
-                if (currentScrollLeft >= offsetLeft && currentScrollLeft < segmentRight) {
-                    return parseInt(seg.getAttribute('data-chapter-index'), 10);
+                // Calculate absolute position of segment in the scroll container
+                // segmentRect.left is relative to viewport, so add currentScrollLeft to get absolute position
+                const segmentLeft = segmentRect.left + currentScrollLeft;
+                const segmentRight = segmentLeft + segmentRect.width;
+                
+                // Check if viewport center falls within this segment
+                if (viewportCenter >= segmentLeft && viewportCenter < segmentRight) {
+                    const chapterIndex = parseInt(seg.getAttribute('data-chapter-index'), 10);
+                    return chapterIndex;
                 }
             }
             
             // Fallback: return the first segment's chapter
             if (chapterSegments.length > 0) {
-                return parseInt(chapterSegments[0].getAttribute('data-chapter-index'), 10);
+                const fallbackChapter = parseInt(chapterSegments[0].getAttribute('data-chapter-index'), 10);
+                return fallbackChapter;
             }
             
             return -1;
