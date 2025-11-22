@@ -954,6 +954,24 @@ class ReaderPageFragment : Fragment() {
             
             // Wrap HTML with proper styling
             val wrappedHtml = wrapHtmlForWebView(html, settings.textSizeSp, settings.lineHeightMultiplier, palette)
+            
+            // Log the wrapped HTML for debugging
+            val chapterIndex = resolvedChapterIndex ?: pageIndex
+            readerViewModel.bookId?.let { bookId ->
+                com.rifters.riftedreader.util.HtmlDebugLogger.logWrappedHtml(
+                    bookId = bookId,
+                    chapterIndex = chapterIndex,
+                    wrappedHtml = wrappedHtml,
+                    metadata = mapOf(
+                        "pageIndex" to pageIndex.toString(),
+                        "textSize" to settings.textSizeSp.toString(),
+                        "lineHeight" to settings.lineHeightMultiplier.toString(),
+                        "theme" to settings.theme.name,
+                        "paginationMode" to readerViewModel.paginationMode.name
+                    )
+                )
+            }
+            
             // Bug Fix 2: Reset isWebViewReady flag when loading new content to prevent race conditions
             isWebViewReady = false
             // Reset paginator initialization flag - will be set to true in onPaginationReady callback
