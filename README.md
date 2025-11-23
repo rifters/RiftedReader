@@ -64,11 +64,28 @@ Current, finalized documentation for the project:
    - Screen layouts and components
    - Gesture controls and accessibility
 
-6. **[HTML_DEBUG_LOGGING.md](docs/complete/HTML_DEBUG_LOGGING.md)** - HTML Debug Logging Guide  **⭐ NEW**
+6. **[HTML_DEBUG_LOGGING.md](docs/complete/HTML_DEBUG_LOGGING.md)** - HTML Debug Logging Guide
    - Automatic HTML logging for pagination debugging
    - Log file formats and locations
    - Usage guide for developers
    - Troubleshooting tips
+
+7. **[PAGINATOR_API.md](docs/complete/PAGINATOR_API.md)** - JavaScript Paginator API
+   - In-page pagination JavaScript API documentation
+   - Window vs. Chapter mode explanation
+   - Configuration and integration guide
+
+8. **[STABLE_WINDOW_MODEL.md](docs/complete/STABLE_WINDOW_MODEL.md)** - Stable Window Reading Model  **⭐ NEW**
+   - Immutable window architecture for predictable reading
+   - 3-window memory management strategy
+   - Background preloading and atomic transitions
+   - Position mapping and boundary handling
+
+9. **[JS_STREAMING_DISCIPLINE.md](docs/complete/JS_STREAMING_DISCIPLINE.md)** - JavaScript Streaming Discipline  **⭐ NEW**
+   - Construction vs. Active mode enforcement
+   - Streaming operation restrictions
+   - Android ↔ JavaScript integration discipline
+   - Testing and error prevention
 
 ### 📋 Planning & Roadmap ([docs/planning/](docs/planning/))
 

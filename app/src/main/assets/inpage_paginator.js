@@ -42,6 +42,9 @@
     let initialChapterIndex = 0;
     let currentPage = 0; // CRITICAL: Track current page explicitly to avoid async scrollTo issues
     
+    // Window mode discipline - CONSTRUCTION vs ACTIVE
+    let windowMode = 'CONSTRUCTION'; // 'CONSTRUCTION' or 'ACTIVE'
+    
     /**
      * Configure the paginator before initialization.
      * This method must be called before init() to set the pagination mode and context.
@@ -712,13 +715,43 @@
     }
 
     /**
+     * Finalize window construction and enter active (immutable) mode.
+     * After this, no mutations (append/prepend) are allowed.
+     */
+    function finalizeWindow() {
+        if (windowMode === 'ACTIVE') {
+            console.warn('inpage_paginator: [MODE] finalizeWindow called but already in ACTIVE mode');
+            return;
+        }
+        
+        windowMode = 'ACTIVE';
+        console.log('inpage_paginator: [MODE] Window finalized - entering ACTIVE mode (mutations forbidden)');
+        
+        // Notify Android
+        if (window.AndroidBridge && window.AndroidBridge.onWindowFinalized) {
+            const pageCount = getPageCount();
+            console.log('inpage_paginator: [CALLBACK] Calling AndroidBridge.onWindowFinalized with pageCount=' + pageCount);
+            window.AndroidBridge.onWindowFinalized(pageCount);
+        }
+    }
+    
+    /**
      * Append a chapter segment to the end of the content
      * Enhanced with better error handling and scroll position preservation
+     * 
+     * IMPORTANT: Only allowed during CONSTRUCTION mode, not during active reading.
+     * 
      * @param {number} chapterIndex - The chapter index to append
      * @param {string} rawHtml - The HTML content to append
      * @returns {boolean} - True if successful, false otherwise
      */
     function appendChapterSegment(chapterIndex, rawHtml) {
+        // MODE ENFORCEMENT: Only allow in CONSTRUCTION mode
+        if (windowMode !== 'CONSTRUCTION') {
+            console.error('inpage_paginator: [MODE] appendChapterSegment forbidden in ACTIVE mode - use window transition instead');
+            throw new Error('Cannot append chapter: window is in ACTIVE mode');
+        }
+        
         if (!contentWrapper) {
             console.warn('inpage_paginator: appendChapterSegment called before init');
             return false;
@@ -730,7 +763,7 @@
         }
         
         try {
-            console.log('inpage_paginator: [STREAMING] Appending chapter segment ' + chapterIndex + ', isPaginationReady=' + isPaginationReady);
+            console.log('inpage_paginator: [STREAMING] Appending chapter segment ' + chapterIndex + ' (CONSTRUCTION mode), isPaginationReady=' + isPaginationReady);
             
             // Save current scroll position before modification
             const currentPage = getCurrentPage();
@@ -760,11 +793,20 @@
     /**
      * Prepend a chapter segment to the beginning of the content
      * Enhanced with better error handling and scroll adjustment
+     * 
+     * IMPORTANT: Only allowed during CONSTRUCTION mode, not during active reading.
+     * 
      * @param {number} chapterIndex - The chapter index to prepend
      * @param {string} rawHtml - The HTML content to prepend
      * @returns {boolean} - True if successful, false otherwise
      */
     function prependChapterSegment(chapterIndex, rawHtml) {
+        // MODE ENFORCEMENT: Only allow in CONSTRUCTION mode
+        if (windowMode !== 'CONSTRUCTION') {
+            console.error('inpage_paginator: [MODE] prependChapterSegment forbidden in ACTIVE mode - use window transition instead');
+            throw new Error('Cannot prepend chapter: window is in ACTIVE mode');
+        }
+        
         if (!contentWrapper) {
             console.warn('inpage_paginator: prependChapterSegment called before init');
             return false;
@@ -776,7 +818,7 @@
         }
         
         try {
-            console.log('inpage_paginator: [STREAMING] Prepending chapter segment ' + chapterIndex + ', isPaginationReady=' + isPaginationReady);
+            console.log('inpage_paginator: [STREAMING] Prepending chapter segment ' + chapterIndex + ' (CONSTRUCTION mode), isPaginationReady=' + isPaginationReady);
             
             // Save current page and chapter info
             const currentPage = getCurrentPage();
@@ -1209,6 +1251,7 @@
     // Expose global API
     window.inpagePaginator = {
         configure: configure,
+        finalizeWindow: finalizeWindow,
         isReady: isReady,
         reflow: reflow,
         setFontSize: setFontSize,
