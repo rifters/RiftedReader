@@ -95,8 +95,8 @@ class StableWindowManager(
         val activeSnapshot = loadWindow(windowIndex)
         _activeWindow.value = activeSnapshot
         
-        // Update position
-        updatePosition(windowIndex, safeChapterIndex, inPageIndex)
+        // Update position (use internal version to avoid deadlock - we already hold the mutex)
+        updatePositionInternal(windowIndex, safeChapterIndex, inPageIndex)
         
         // Trigger preloading of adjacent windows in the background
         preloadAdjacentWindows(windowIndex)
@@ -117,17 +117,33 @@ class StableWindowManager(
         chapterIndex: ChapterIndex,
         inPageIndex: InPageIndex
     ) = mutex.withLock {
+        updatePositionInternal(windowIndex, chapterIndex, inPageIndex)
+    }
+    
+    /**
+     * Internal version of updatePosition that does NOT acquire the mutex.
+     * Must only be called from within a mutex.withLock block.
+     * 
+     * This exists to prevent deadlock when updatePosition needs to be called
+     * from other methods that already hold the mutex (e.g., loadInitialWindow,
+     * navigateToNextWindow, navigateToPrevWindow).
+     */
+    private suspend fun updatePositionInternal(
+        windowIndex: WindowIndex,
+        chapterIndex: ChapterIndex,
+        inPageIndex: InPageIndex
+    ) {
         val active = _activeWindow.value
         if (active == null || !active.containsChapter(chapterIndex)) {
             AppLogger.w(TAG, "Position update for chapter $chapterIndex not in active window")
-            return@withLock
+            return
         }
         
         // Calculate progress through the window
         val chapter = active.getChapter(chapterIndex)
         if (chapter == null) {
             AppLogger.w(TAG, "Chapter $chapterIndex not found in active window")
-            return@withLock
+            return
         }
         
         val currentPageInWindow = chapter.startPage + inPageIndex
@@ -173,8 +189,8 @@ class StableWindowManager(
         _activeWindow.value = next
         _nextWindow.value = null
         
-        // Update position to start of new active window
-        updatePosition(
+        // Update position to start of new active window (use internal version to avoid deadlock)
+        updatePositionInternal(
             next.windowIndex,
             next.firstChapterIndex,
             0
@@ -213,9 +229,10 @@ class StableWindowManager(
         _prevWindow.value = null
         
         // Update position to end of new active window (last page of last chapter)
+        // Use internal version to avoid deadlock - we already hold the mutex
         val lastChapter = prev.chapters.lastOrNull()
         if (lastChapter != null) {
-            updatePosition(
+            updatePositionInternal(
                 prev.windowIndex,
                 lastChapter.chapterIndex,
                 lastChapter.pageCount - 1
