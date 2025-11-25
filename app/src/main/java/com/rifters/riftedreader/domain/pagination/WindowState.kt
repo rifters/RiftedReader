@@ -145,16 +145,28 @@ data class WindowState(
     /**
      * Convert this mutable state to an immutable snapshot.
      * 
+     * This method recalculates the startPage for each chapter based on cumulative
+     * page counts. This is critical for accurate progress calculations in
+     * StableWindowManager.updatePosition().
+     * 
      * @param htmlContent The complete HTML for this window
      * @return Immutable WindowSnapshot
      */
     fun toSnapshot(htmlContent: String? = null): WindowSnapshot {
+        // Recalculate startPage for each chapter based on cumulative page counts
+        var cumulativeStartPage = 0
+        val chaptersWithStartPages = chapters.map { chapter ->
+            val updatedChapter = chapter.copy(startPage = cumulativeStartPage)
+            cumulativeStartPage += chapter.pageCount
+            updatedChapter
+        }
+        
         return WindowSnapshot(
             windowIndex = windowIndex,
             firstChapterIndex = firstChapterIndex,
             lastChapterIndex = lastChapterIndex,
-            chapters = chapters.toList(), // Create immutable copy
-            totalPages = chapters.sumOf { it.pageCount },
+            chapters = chaptersWithStartPages, // Use chapters with recalculated startPage values
+            totalPages = chaptersWithStartPages.sumOf { it.pageCount },
             htmlContent = htmlContent,
             loadState = loadState,
             errorMessage = errorMessage
