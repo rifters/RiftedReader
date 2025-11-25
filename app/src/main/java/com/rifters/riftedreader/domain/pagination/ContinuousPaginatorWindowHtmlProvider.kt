@@ -1,7 +1,11 @@
 package com.rifters.riftedreader.domain.pagination
 
 import android.text.TextUtils
+import com.rifters.riftedreader.domain.parser.BookParser
 import com.rifters.riftedreader.util.AppLogger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * Implementation of WindowHtmlProvider that generates window HTML from ContinuousPaginator.
@@ -60,6 +64,63 @@ class ContinuousPaginatorWindowHtmlProvider(
                 if (pageContent == null) {
                     AppLogger.w(TAG, "No content available for chapter $chapterIndex")
                     continue
+                }
+                
+                // Extract HTML or convert text to HTML
+                val chapterHtml = pageContent.html ?: wrapTextAsHtml(pageContent.text)
+                
+                if (chapterHtml.isBlank()) {
+                    AppLogger.w(TAG, "Empty content for chapter $chapterIndex")
+                    continue
+                }
+                
+                // Wrap in section with chapter ID for navigation
+                htmlBuilder.append("  <section id=\"chapter-$chapterIndex\" data-chapter-index=\"$chapterIndex\">\n")
+                htmlBuilder.append("    ")
+                htmlBuilder.append(chapterHtml)
+                htmlBuilder.append("\n  </section>\n")
+            }
+            
+            // Close window-root container
+            htmlBuilder.append("</div>\n")
+            
+            val combinedHtml = htmlBuilder.toString()
+            
+            if (combinedHtml.isBlank()) {
+                AppLogger.w(TAG, "Generated empty HTML for window $windowIndex")
+                return null
+            }
+            
+            AppLogger.d(TAG, "Successfully generated window HTML for window $windowIndex: ${combinedHtml.length} characters")
+            
+            combinedHtml
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error generating window HTML for window $windowIndex", e)
+            null
+        }
+    }
+    
+    override suspend fun generateWindowHtml(
+        windowIndex: WindowIndex,
+        firstChapterIndex: ChapterIndex,
+        lastChapterIndex: ChapterIndex,
+        bookFile: File,
+        parser: BookParser
+    ): String? {
+        return try {
+            AppLogger.d(TAG, "Generating window HTML directly from parser for window $windowIndex, chapters: $firstChapterIndex-$lastChapterIndex")
+            
+            // Build combined HTML with section tags for each chapter
+            // Wrap all sections in a window-root container for clear pagination root
+            val htmlBuilder = StringBuilder()
+            
+            // Start window-root container
+            htmlBuilder.append("<div id=\"window-root\" data-window-index=\"$windowIndex\">\n")
+            
+            for (chapterIndex in firstChapterIndex..lastChapterIndex) {
+                // Get the page content directly from parser
+                val pageContent = withContext(Dispatchers.IO) {
+                    parser.getPageContent(bookFile, chapterIndex)
                 }
                 
                 // Extract HTML or convert text to HTML
