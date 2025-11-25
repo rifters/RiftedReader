@@ -17,6 +17,26 @@ This directory contains all project documentation, organized by category for eas
   - Building and running the project
   - Development workflow
 
+- **[WINDOW_COMMUNICATION_API.md](complete/WINDOW_COMMUNICATION_API.md)** - Android ↔ JavaScript communication API
+  - Window descriptor and position mapping structures
+  - loadWindow, getPageCount, goToPage API contracts
+  - Preloading and atomic window switch protocols
+  - Boundary event notifications
+
+- **[PAGINATOR_API.md](complete/PAGINATOR_API.md)** - JavaScript paginator API
+  - Configuration and initialization
+  - Page navigation and chapter jumping
+  - Chapter streaming operations
+
+- **[STABLE_WINDOW_MODEL.md](complete/STABLE_WINDOW_MODEL.md)** - Stable window reading model
+  - Immutable active windows
+  - Background window construction
+  - 3-window memory policy
+
+- **[JS_STREAMING_DISCIPLINE.md](complete/JS_STREAMING_DISCIPLINE.md)** - JavaScript mode discipline
+  - Construction vs Active mode
+  - Mutation guards and error handling
+
 - **[LIBRERA_ANALYSIS.md](complete/LIBRERA_ANALYSIS.md)** - LibreraReader analysis
   - Feature analysis and parsing architecture
   - Database and library management
@@ -45,6 +65,7 @@ This directory contains all project documentation, organized by category for eas
 
 - **[STAGE_1-3_SUMMARY.md](implemented/STAGE_1-3_SUMMARY.md)** - Initial stages completion summary
 - **[SLIDING_WINDOW_PAGINATION_STATUS.md](implemented/SLIDING_WINDOW_PAGINATION_STATUS.md)** - Pagination implementation progress
+- **[STABLE_WINDOW_IMPLEMENTATION.md](implemented/STABLE_WINDOW_IMPLEMENTATION.md)** - Stable window model implementation
 
 ### [testing/](testing/)
 **Testing guides and verification** - How to test and verify features.
@@ -86,4 +107,4 @@ When adding or updating documentation:
 Always update this README when adding significant new documentation.
 
 ---
-*Last Updated: 2025-11-21*
+*Last Updated: 2025-11-25*

@@ -4,8 +4,13 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Base64
 import android.webkit.WebView
+import com.google.gson.Gson
+import com.rifters.riftedreader.domain.pagination.ChapterBoundaryInfo
+import com.rifters.riftedreader.domain.pagination.EntryPosition
+import com.rifters.riftedreader.domain.pagination.PageMappingInfo
 import com.rifters.riftedreader.domain.pagination.PaginatorConfig
 import com.rifters.riftedreader.domain.pagination.PaginatorMode
+import com.rifters.riftedreader.domain.pagination.WindowDescriptor
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -17,10 +22,34 @@ import kotlin.text.Charsets
  * 
  * Provides convenient Kotlin functions to interact with the inpagePaginator
  * JavaScript object injected into WebView content.
+ * 
+ * ## Window Communication API
+ * 
+ * This bridge implements the pseudo-API for Android ↔ JavaScript communication:
+ * 
+ * ### Commands (Android → JavaScript)
+ * - loadWindow(descriptor) - Load a complete window for reading
+ * - goToPage(index, animate) - Navigate to specific page
+ * - getPageCount() - Query total pages
+ * - getCurrentPage() - Query current page
+ * - getCurrentChapter() - Query current chapter
+ * - getChapterBoundaries() - Get chapter page mappings
+ * - getPageMappingInfo() - Get detailed position info
+ * 
+ * ### Events (JavaScript → Android)
+ * Events are handled via AndroidBridge JavascriptInterface in ReaderPageFragment:
+ * - onWindowLoaded - Window ready for reading
+ * - onPageChanged - User navigated to new page
+ * - onBoundaryReached - User at window boundary
+ * - onWindowFinalized - Window locked for reading
+ * - onWindowLoadError - Error during window load
+ * 
+ * See docs/complete/WINDOW_COMMUNICATION_API.md for full documentation.
  */
 object WebViewPaginatorBridge {
     
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val gson = Gson()
     
     /**
      * Check if the paginator is initialized and ready for operations.
@@ -431,6 +460,155 @@ object WebViewPaginatorBridge {
             webView,
             "window.inpagePaginator.scrollToAnchor('$anchorId')"
         )
+    }
+    
+    // ========================================================================
+    // Window Communication API
+    // ========================================================================
+    // These methods implement the pseudo-API for Android ↔ JavaScript 
+    // communication for managing reading windows.
+    // See docs/complete/WINDOW_COMMUNICATION_API.md for full documentation.
+    
+    /**
+     * Load a complete window for reading.
+     * 
+     * This is the primary entry point for initializing a window after loading
+     * HTML content into the WebView. It:
+     * 1. Configures the paginator for window mode
+     * 2. Finalizes the window (locks it for reading)
+     * 3. Navigates to the entry position if specified
+     * 
+     * The HTML content should already be loaded via loadDataWithBaseURL().
+     * 
+     * @param webView The WebView containing the window content
+     * @param descriptor The window descriptor with chapters and entry position
+     */
+    fun loadWindow(webView: WebView, descriptor: WindowDescriptor) {
+        val descriptorJson = gson.toJson(descriptor)
+        AppLogger.userAction(
+            "WebViewPaginatorBridge",
+            "loadWindow: windowIndex=${descriptor.windowIndex}, chapters=${descriptor.firstChapterIndex}-${descriptor.lastChapterIndex}",
+            "ui/webview/window"
+        )
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.inpagePaginator && window.inpagePaginator.loadWindow) { window.inpagePaginator.loadWindow($descriptorJson); }",
+                null
+            )
+        }
+    }
+    
+    /**
+     * Finalize the window (lock it for reading).
+     * 
+     * After calling this, no mutations (append/prepend) are allowed.
+     * Should be called after window HTML is fully loaded and before reading begins.
+     * 
+     * @param webView The WebView containing the window content
+     */
+    fun finalizeWindow(webView: WebView) {
+        AppLogger.d("WebViewPaginatorBridge", "finalizeWindow: locking window for reading")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.inpagePaginator && window.inpagePaginator.finalizeWindow) { window.inpagePaginator.finalizeWindow(); }",
+                null
+            )
+        }
+    }
+    
+    /**
+     * Get chapter boundaries for all chapters in the current window.
+     * 
+     * Returns page ranges for each chapter, enabling:
+     * - Chapter navigation
+     * - Position tracking
+     * - Progress calculation
+     * 
+     * @param webView The WebView containing the window content
+     * @return List of chapter boundary info, or empty list on error
+     */
+    suspend fun getChapterBoundaries(webView: WebView): List<ChapterBoundaryInfo> {
+        return try {
+            // Use getChapterBoundaries if available, fallback to getLoadedChapters for compatibility
+            val jsExpression = """
+                (function() {
+                    var p = window.inpagePaginator;
+                    if (!p) return null;
+                    if (p.getChapterBoundaries) return p.getChapterBoundaries();
+                    if (p.getLoadedChapters) return p.getLoadedChapters();
+                    return [];
+                })()
+            """.trimIndent()
+            val json = evaluateString(webView, "JSON.stringify($jsExpression)")
+            if (json == "null" || json == "[]") {
+                emptyList()
+            } else {
+                gson.fromJson(json, Array<ChapterBoundaryInfo>::class.java).toList()
+            }
+        } catch (e: Exception) {
+            AppLogger.e("WebViewPaginatorBridge", "Error getting chapter boundaries", e)
+            emptyList()
+        }
+    }
+    
+    /**
+     * Get detailed page mapping info for the current position.
+     * 
+     * Returns information about:
+     * - Current window and chapter indices
+     * - Page position within window and chapter
+     * - Total page counts
+     * 
+     * Useful for accurate position restoration during window transitions.
+     * 
+     * @param webView The WebView containing the window content
+     * @return PageMappingInfo or null on error
+     */
+    suspend fun getPageMappingInfo(webView: WebView): PageMappingInfo? {
+        return try {
+            val json = evaluateString(
+                webView,
+                "JSON.stringify(window.inpagePaginator.getPageMappingInfo ? window.inpagePaginator.getPageMappingInfo() : null)"
+            )
+            if (json == "null") {
+                null
+            } else {
+                gson.fromJson(json, PageMappingInfo::class.java)
+            }
+        } catch (e: Exception) {
+            AppLogger.e("WebViewPaginatorBridge", "Error getting page mapping info", e)
+            null
+        }
+    }
+    
+    /**
+     * Navigate to entry position after window load.
+     * 
+     * Helper method to jump to a specific position, typically used during
+     * window transitions to restore reading position.
+     * 
+     * Note: Uses non-smooth scrolling (false) to ensure immediate positioning.
+     * The jumpToChapter and goToPage calls update the internal currentPage state
+     * synchronously, even though the scrolling may have a small delay.
+     * 
+     * @param webView The WebView containing the window content
+     * @param entryPosition The position to navigate to
+     */
+    fun navigateToEntryPosition(webView: WebView, entryPosition: EntryPosition) {
+        AppLogger.d(
+            "WebViewPaginatorBridge",
+            "navigateToEntryPosition: chapter=${entryPosition.chapterIndex}, page=${entryPosition.inPageIndex}"
+        )
+        mainHandler.post {
+            // First jump to the chapter, then to the specific page
+            // Using non-smooth scrolling (false) for immediate positioning
+            webView.evaluateJavascript("""
+                if (window.inpagePaginator) {
+                    window.inpagePaginator.jumpToChapter(${entryPosition.chapterIndex}, false);
+                    window.inpagePaginator.goToPage(${entryPosition.inPageIndex}, false);
+                }
+            """.trimIndent(), null)
+        }
     }
 }
 

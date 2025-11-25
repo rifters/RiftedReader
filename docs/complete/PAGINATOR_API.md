@@ -459,13 +459,33 @@ Potential improvements to the paginator API:
 4. **Scroll percentage API**: Get/set position as percentage of window
 5. **Page transition callbacks**: Notify when crossing chapter boundaries
 
+## Window Communication API
+
+For advanced window management with sliding window pagination, see the dedicated Window Communication API documentation:
+
+- **[WINDOW_COMMUNICATION_API.md](./WINDOW_COMMUNICATION_API.md)** - Complete API for Android ↔ JavaScript communication
+
+Key additions in the Window Communication API:
+- `loadWindow(descriptor)` - Initialize a complete window for reading
+- `getChapterBoundaries()` - Get page ranges for each chapter
+- `getPageMappingInfo()` - Get detailed position mapping info
+- Event callbacks: `onWindowLoaded`, `onBoundaryReached`, `onWindowLoadError`
+- Preloading protocol for smooth window transitions
+
 ## See Also
 
+- `docs/complete/WINDOW_COMMUNICATION_API.md` - Window communication pseudo-API
 - `docs/complete/SLIDING_WINDOW_PAGINATION.md` - Overall sliding window architecture
+- `docs/complete/STABLE_WINDOW_MODEL.md` - Stable window reading model
 - `docs/complete/ARCHITECTURE.md` - Full system architecture
 - `docs/implemented/SLIDING_WINDOW_PAGINATION_STATUS.md` - Implementation status
 
 ## Changelog
+
+### 2025-11-25
+- Added Window Communication API section
+- Referenced new WINDOW_COMMUNICATION_API.md documentation
+- Added new API methods: loadWindow, getChapterBoundaries, getPageMappingInfo
 
 ### 2025-11-22
 - Initial version documenting explicit window vs. chapter mode separation
