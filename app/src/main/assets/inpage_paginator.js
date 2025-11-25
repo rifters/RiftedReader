@@ -1241,6 +1241,178 @@
         return ready;
     }
     
+    // ========================================================================
+    // Window Communication API
+    // ========================================================================
+    // These functions implement the pseudo-API for Android ↔ JavaScript
+    // communication for managing reading windows.
+    // See docs/complete/WINDOW_COMMUNICATION_API.md for full documentation.
+    
+    /**
+     * Load a complete window for reading.
+     * This is the primary entry point for initializing a window after loading
+     * HTML content into the WebView.
+     * 
+     * @param {Object} descriptor - WindowDescriptor from Android
+     * @param {number} descriptor.windowIndex - Window index
+     * @param {number} descriptor.firstChapterIndex - First chapter index
+     * @param {number} descriptor.lastChapterIndex - Last chapter index
+     * @param {Array} descriptor.chapters - Array of ChapterDescriptor objects
+     * @param {Object} [descriptor.entryPosition] - Optional entry position
+     * @param {number} [descriptor.estimatedPageCount] - Optional estimated page count
+     */
+    function loadWindow(descriptor) {
+        if (!descriptor) {
+            console.error('inpage_paginator: [WINDOW_API] loadWindow called with null descriptor');
+            notifyWindowLoadError(0, 'Null descriptor', 'INVALID_DESCRIPTOR');
+            return;
+        }
+        
+        console.log('inpage_paginator: [WINDOW_API] loadWindow called for window ' + descriptor.windowIndex +
+                   ' with chapters ' + descriptor.firstChapterIndex + '-' + descriptor.lastChapterIndex);
+        
+        try {
+            // 1. Configure paginator for window mode
+            configure({
+                mode: 'window',
+                windowIndex: descriptor.windowIndex,
+                rootSelector: '#window-root'
+            });
+            
+            // 2. Finalize window (lock down for reading)
+            finalizeWindow();
+            
+            // 3. Navigate to entry position if specified
+            if (descriptor.entryPosition) {
+                const entry = descriptor.entryPosition;
+                console.log('inpage_paginator: [WINDOW_API] Navigating to entry position: chapter=' + 
+                           entry.chapterIndex + ', page=' + entry.inPageIndex);
+                
+                // Jump to chapter first, then to specific page
+                jumpToChapter(entry.chapterIndex, false);
+                if (entry.inPageIndex > 0) {
+                    goToPage(entry.inPageIndex, false);
+                }
+            }
+            
+            // 4. Report ready to Android with chapter boundaries
+            const pageCount = getPageCount();
+            const chapterBoundaries = getChapterBoundaries();
+            
+            console.log('inpage_paginator: [WINDOW_API] Window loaded successfully - pageCount=' + pageCount);
+            
+            if (window.AndroidBridge && window.AndroidBridge.onWindowLoaded) {
+                window.AndroidBridge.onWindowLoaded(JSON.stringify({
+                    windowIndex: descriptor.windowIndex,
+                    pageCount: pageCount,
+                    chapterBoundaries: chapterBoundaries
+                }));
+            }
+        } catch (error) {
+            console.error('inpage_paginator: [WINDOW_API] loadWindow error:', error);
+            notifyWindowLoadError(descriptor.windowIndex, error.message, 'LOAD_FAILED');
+        }
+    }
+    
+    /**
+     * Get chapter boundaries with page ranges.
+     * Returns structured data for position mapping.
+     * 
+     * @returns {Array} Array of {chapterIndex, startPage, endPage, pageCount}
+     */
+    function getChapterBoundaries() {
+        if (!contentWrapper || !columnContainer) {
+            return [];
+        }
+        
+        try {
+            const pageWidth = viewportWidth || window.innerWidth;
+            if (pageWidth === 0) {
+                return [];
+            }
+            
+            const contentRect = contentWrapper.getBoundingClientRect();
+            
+            return chapterSegments.map(function(seg) {
+                const chapterIndex = parseInt(seg.getAttribute('data-chapter-index'), 10);
+                const segmentRect = seg.getBoundingClientRect();
+                const offsetLeft = segmentRect.left - contentRect.left + columnContainer.scrollLeft;
+                const startPage = Math.floor(Math.max(0, offsetLeft) / pageWidth);
+                const endPage = Math.ceil((offsetLeft + segmentRect.width) / pageWidth);
+                const pageCount = Math.max(1, endPage - startPage);
+                
+                return {
+                    chapterIndex: chapterIndex,
+                    startPage: startPage,
+                    endPage: endPage,
+                    pageCount: pageCount
+                };
+            });
+        } catch (e) {
+            console.error('inpage_paginator: getChapterBoundaries error', e);
+            return [];
+        }
+    }
+    
+    /**
+     * Get detailed page mapping info for current position.
+     * Enables accurate position restoration during window transitions.
+     * 
+     * @returns {Object} PageMappingInfo structure
+     */
+    function getPageMappingInfo() {
+        if (!contentWrapper || !columnContainer || !isInitialized) {
+            return null;
+        }
+        
+        try {
+            const currentChapter = getCurrentChapter();
+            const boundaries = getChapterBoundaries();
+            const chapterBoundary = boundaries.find(function(b) {
+                return b.chapterIndex === currentChapter;
+            });
+            
+            if (!chapterBoundary) {
+                return null;
+            }
+            
+            const currentPageIdx = getCurrentPage();
+            const chapterPageIdx = Math.max(0, currentPageIdx - chapterBoundary.startPage);
+            
+            return {
+                windowIndex: paginatorConfig.windowIndex,
+                chapterIndex: currentChapter,
+                windowPageIndex: currentPageIdx,
+                chapterPageIndex: chapterPageIdx,
+                totalWindowPages: getPageCount(),
+                totalChapterPages: chapterBoundary.pageCount
+            };
+        } catch (e) {
+            console.error('inpage_paginator: getPageMappingInfo error', e);
+            return null;
+        }
+    }
+    
+    /**
+     * Notify Android of window load error.
+     * @param {number} windowIndex - The window that failed
+     * @param {string} errorMessage - Error description
+     * @param {string} errorType - Error type code
+     */
+    function notifyWindowLoadError(windowIndex, errorMessage, errorType) {
+        if (window.AndroidBridge && window.AndroidBridge.onWindowLoadError) {
+            try {
+                window.AndroidBridge.onWindowLoadError(JSON.stringify({
+                    windowIndex: windowIndex,
+                    errorMessage: errorMessage,
+                    errorType: errorType
+                }));
+            } catch (err) {
+                console.error('inpage_paginator: onWindowLoadError callback failed', err);
+            }
+        }
+    }
+    
     // Initialize on DOM ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
@@ -1250,28 +1422,44 @@
     
     // Expose global API
     window.inpagePaginator = {
+        // Configuration
         configure: configure,
+        
+        // Window Communication API
+        loadWindow: loadWindow,
         finalizeWindow: finalizeWindow,
+        getChapterBoundaries: getChapterBoundaries,
+        getPageMappingInfo: getPageMappingInfo,
+        
+        // State queries
         isReady: isReady,
-        reflow: reflow,
-        setFontSize: setFontSize,
         getPageCount: getPageCount,
         getCurrentPage: getCurrentPage,
+        getCurrentChapter: getCurrentChapter,
+        getLoadedChapters: getLoadedChapters,
+        
+        // Navigation
         goToPage: goToPage,
         nextPage: nextPage,
         prevPage: prevPage,
+        jumpToChapter: jumpToChapter,
+        
+        // Font and reflow
+        reflow: reflow,
+        setFontSize: setFontSize,
+        
+        // Position preservation
         getPageForSelector: getPageForSelector,
         createAnchorAroundViewportTop: createAnchorAroundViewportTop,
         scrollToAnchor: scrollToAnchor,
+        
+        // Chapter streaming (CONSTRUCTION mode only)
         appendChapter: appendChapterSegment,
         prependChapter: prependChapterSegment,
         removeChapter: removeChapterSegment,
         clearAllSegments: clearAllSegments,
         setInitialChapter: setInitialChapterIndex,
-        getSegmentPageCount: getSegmentPageCount,
-        jumpToChapter: jumpToChapter,
-        getLoadedChapters: getLoadedChapters,
-        getCurrentChapter: getCurrentChapter
+        getSegmentPageCount: getSegmentPageCount
     };
     
 })();

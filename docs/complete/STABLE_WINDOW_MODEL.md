@@ -506,6 +506,7 @@ Minimize WebView reload time during transitions:
 
 ## References
 
+- [WINDOW_COMMUNICATION_API.md](../complete/WINDOW_COMMUNICATION_API.md) - Android ↔ JavaScript communication API
 - [PAGINATOR_API.md](../complete/PAGINATOR_API.md) - JavaScript paginator API
 - [SLIDING_WINDOW_PAGINATION.md](../historical/SLIDING_WINDOW_PAGINATION.md) - Original design
 - [ARCHITECTURE.md](../complete/ARCHITECTURE.md) - Overall system architecture
@@ -513,4 +514,5 @@ Minimize WebView reload time during transitions:
 
 ## Change History
 
+- 2025-11-25: Added reference to Window Communication API
 - 2025-11-23: Initial stable window model documentation

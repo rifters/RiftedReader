@@ -70,6 +70,29 @@ data class WindowSnapshot(
     fun getChapter(chapterIndex: ChapterIndex): WindowChapterData? {
         return chapters.find { it.chapterIndex == chapterIndex }
     }
+    
+    /**
+     * Convert this snapshot to a WindowDescriptor for the loadWindow API.
+     * 
+     * @param entryPosition Optional entry position for navigation after loading
+     * @return WindowDescriptor suitable for JavaScript loadWindow() call
+     */
+    fun toDescriptor(entryPosition: EntryPosition? = null): WindowDescriptor {
+        return WindowDescriptor(
+            windowIndex = windowIndex,
+            firstChapterIndex = firstChapterIndex,
+            lastChapterIndex = lastChapterIndex,
+            chapters = chapters.map { chapter ->
+                ChapterDescriptor(
+                    chapterIndex = chapter.chapterIndex,
+                    title = chapter.title,
+                    elementId = "chapter-${chapter.chapterIndex}"
+                )
+            },
+            entryPosition = entryPosition,
+            estimatedPageCount = totalPages
+        )
+    }
 }
 
 /**
