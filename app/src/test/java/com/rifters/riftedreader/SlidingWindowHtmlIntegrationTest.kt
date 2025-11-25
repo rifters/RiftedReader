@@ -246,4 +246,82 @@ class SlidingWindowHtmlIntegrationTest {
             )
         }
     }
+
+    @Test
+    fun `generateWindowHtml produces consistent output with getWindowHtml`() = runTest {
+        val mockFile = File("test.epub")
+        val mockParser = MockBookParser(totalPages = 10)
+        
+        val paginator = ContinuousPaginator(mockFile, mockParser, windowSize = 5)
+        paginator.initialize()
+        paginator.loadInitialWindow(0)
+        
+        val windowManager = SlidingWindowManager(windowSize = 5)
+        val provider = ContinuousPaginatorWindowHtmlProvider(paginator, windowManager)
+        
+        // Get HTML via existing method
+        val htmlViaGetWindow = provider.getWindowHtml("test-book-id", windowIndex = 0)
+        
+        // Get HTML via new generateWindowHtml method
+        val htmlViaGenerate = provider.generateWindowHtml(
+            windowIndex = 0,
+            firstChapterIndex = 0,
+            lastChapterIndex = 4,
+            bookFile = mockFile,
+            parser = mockParser
+        )
+        
+        assertNotNull("getWindowHtml should not return null", htmlViaGetWindow)
+        assertNotNull("generateWindowHtml should not return null", htmlViaGenerate)
+        
+        // Extract non-null values for safe usage with descriptive error messages
+        val getWindowHtml = requireNotNull(htmlViaGetWindow) { "getWindowHtml returned null unexpectedly" }
+        val genWindowHtml = requireNotNull(htmlViaGenerate) { "generateWindowHtml returned null unexpectedly" }
+        
+        // Both methods should produce identical structure
+        assertTrue("Both should contain window-root container", 
+            getWindowHtml.contains("<div id=\"window-root\"") && genWindowHtml.contains("<div id=\"window-root\""))
+        assertTrue("Both should contain chapter 0 section", 
+            getWindowHtml.contains("<section id=\"chapter-0\"") && genWindowHtml.contains("<section id=\"chapter-0\""))
+        assertTrue("Both should contain chapter 4 section", 
+            getWindowHtml.contains("<section id=\"chapter-4\"") && genWindowHtml.contains("<section id=\"chapter-4\""))
+        assertTrue("Both should contain chapter content", 
+            getWindowHtml.contains("Content for page 0") && genWindowHtml.contains("Content for page 0"))
+    }
+
+    @Test
+    fun `generateWindowHtml generates correct HTML without paginator`() = runTest {
+        val mockFile = File("test.epub")
+        val mockParser = MockBookParser(totalPages = 10)
+        
+        // Create a paginator just to get the window manager, but we won't load any windows
+        val paginator = ContinuousPaginator(mockFile, mockParser, windowSize = 5)
+        paginator.initialize()
+        
+        val windowManager = SlidingWindowManager(windowSize = 5)
+        val provider = ContinuousPaginatorWindowHtmlProvider(paginator, windowManager)
+        
+        // Generate HTML directly for chapters 5-9 (window 1)
+        val html = provider.generateWindowHtml(
+            windowIndex = 1,
+            firstChapterIndex = 5,
+            lastChapterIndex = 9,
+            bookFile = mockFile,
+            parser = mockParser
+        )
+        
+        assertNotNull("generateWindowHtml should not return null", html)
+        val htmlContent = requireNotNull(html) { "generateWindowHtml returned null unexpectedly" }
+        
+        // Verify structure
+        assertTrue("Should contain window-root with index 1", htmlContent.contains("data-window-index=\"1\""))
+        assertTrue("Should contain chapter 5 section", htmlContent.contains("<section id=\"chapter-5\""))
+        assertTrue("Should contain chapter 9 section", htmlContent.contains("<section id=\"chapter-9\""))
+        assertTrue("Should contain chapter 5 content", htmlContent.contains("Content for page 5"))
+        assertTrue("Should contain chapter 9 content", htmlContent.contains("Content for page 9"))
+        
+        // Should NOT contain chapters from other windows
+        assertFalse("Should not contain chapter 0", htmlContent.contains("<section id=\"chapter-0\""))
+        assertFalse("Should not contain chapter 4", htmlContent.contains("<section id=\"chapter-4\""))
+    }
 }

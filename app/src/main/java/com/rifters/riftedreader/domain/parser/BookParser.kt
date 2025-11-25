@@ -46,10 +46,15 @@ data class TocEntry(
 
 /**
  * Represents both the plain text and optional formatted HTML for a page.
+ *
+ * @property text The plain text content of the page
+ * @property html Optional HTML-formatted content
+ * @property title Optional title of the page/chapter (from TOC or inferred)
  */
 data class PageContent(
     val text: String,
-    val html: String? = null
+    val html: String? = null,
+    val title: String? = null
 ) {
     companion object {
         val EMPTY = PageContent(text = "")
