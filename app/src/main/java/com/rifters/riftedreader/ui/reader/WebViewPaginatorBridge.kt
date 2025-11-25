@@ -587,6 +587,10 @@ object WebViewPaginatorBridge {
      * Helper method to jump to a specific position, typically used during
      * window transitions to restore reading position.
      * 
+     * Note: Uses non-smooth scrolling (false) to ensure immediate positioning.
+     * The jumpToChapter and goToPage calls update the internal currentPage state
+     * synchronously, even though the scrolling may have a small delay.
+     * 
      * @param webView The WebView containing the window content
      * @param entryPosition The position to navigate to
      */
@@ -597,6 +601,7 @@ object WebViewPaginatorBridge {
         )
         mainHandler.post {
             // First jump to the chapter, then to the specific page
+            // Using non-smooth scrolling (false) for immediate positioning
             webView.evaluateJavascript("""
                 if (window.inpagePaginator) {
                     window.inpagePaginator.jumpToChapter(${entryPosition.chapterIndex}, false);

@@ -1290,6 +1290,9 @@
                            entry.chapterIndex + ', page=' + entry.inPageIndex);
                 
                 // Jump to chapter first, then to specific page
+                // Note: jumpToChapter and goToPage update currentPage synchronously
+                // but scrolling may be animated. For entry position, we use non-smooth
+                // scrolling (false) to ensure immediate positioning.
                 jumpToChapter(entry.chapterIndex, false);
                 if (entry.inPageIndex > 0) {
                     goToPage(entry.inPageIndex, false);
@@ -1333,13 +1336,15 @@
             }
             
             const contentRect = contentWrapper.getBoundingClientRect();
+            const totalPages = getPageCount();
             
             return chapterSegments.map(function(seg) {
                 const chapterIndex = parseInt(seg.getAttribute('data-chapter-index'), 10);
                 const segmentRect = seg.getBoundingClientRect();
                 const offsetLeft = segmentRect.left - contentRect.left + columnContainer.scrollLeft;
                 const startPage = Math.floor(Math.max(0, offsetLeft) / pageWidth);
-                const endPage = Math.ceil((offsetLeft + segmentRect.width) / pageWidth);
+                // Clamp endPage to totalPages to avoid exceeding window bounds
+                const endPage = Math.min(totalPages, Math.ceil((offsetLeft + segmentRect.width) / pageWidth));
                 const pageCount = Math.max(1, endPage - startPage);
                 
                 return {

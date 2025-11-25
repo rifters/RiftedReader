@@ -199,10 +199,13 @@ data class PageMappingInfo(
  * Chapter boundary information with page range.
  * Used by getChapterBoundaries() to report chapter page mappings.
  * 
+ * Note: endPage is exclusive, meaning if a chapter occupies pages 3-5,
+ * startPage=3 and endPage=6 (following the convention that endPage - startPage = pageCount).
+ * 
  * @property chapterIndex Chapter index in the book
- * @property startPage First page of this chapter within the window (0-based)
- * @property endPage Last page of this chapter within the window (exclusive)
- * @property pageCount Number of pages in this chapter
+ * @property startPage First page of this chapter within the window (0-based, inclusive)
+ * @property endPage Page after the last page of this chapter (0-based, exclusive)
+ * @property pageCount Number of pages in this chapter (endPage - startPage)
  */
 data class ChapterBoundaryInfo(
     val chapterIndex: ChapterIndex,
@@ -277,7 +280,11 @@ data class BoundaryReachedEvent(
 /**
  * Event sent from JavaScript when finalizeWindow() is called.
  * Indicates the window is locked and ready for reading.
- * Sent via AndroidBridge.onWindowFinalized callback.
+ * 
+ * NOTE: The existing AndroidBridge.onWindowFinalized callback sends
+ * just the pageCount as an integer parameter. This type is provided
+ * for future use with JSON-based callbacks. Current implementation
+ * should handle the integer parameter directly.
  * 
  * @property windowIndex The window that was finalized
  * @property pageCount Total pages in the window
