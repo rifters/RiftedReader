@@ -2,6 +2,7 @@ package com.rifters.riftedreader.domain.pagination
 
 import android.text.TextUtils
 import com.rifters.riftedreader.domain.parser.BookParser
+import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -42,58 +43,25 @@ class ContinuousPaginatorWindowHtmlProvider(
             
             AppLogger.d(TAG, "Generating window HTML for window $windowIndex, chapters: ${chapterIndices.first()}-${chapterIndices.last()}")
             
-            // Build combined HTML with section tags for each chapter
-            // Wrap all sections in a window-root container for clear pagination root
-            val htmlBuilder = StringBuilder()
-            
-            // Start window-root container
-            htmlBuilder.append("<div id=\"window-root\" data-window-index=\"$windowIndex\">\n")
-            
+            // Collect chapter content from paginator
+            val chapterContents = mutableMapOf<Int, PageContent>()
             for (chapterIndex in chapterIndices) {
-                // Get the global page index for this chapter
                 val globalPageIndex = paginator.getGlobalIndexForChapterPage(chapterIndex, 0)
-                
                 if (globalPageIndex == null) {
                     AppLogger.w(TAG, "Could not get global page index for chapter $chapterIndex")
                     continue
                 }
                 
-                // Get the page content
                 val pageContent = paginator.getPageContent(globalPageIndex)
-                
                 if (pageContent == null) {
                     AppLogger.w(TAG, "No content available for chapter $chapterIndex")
                     continue
                 }
                 
-                // Extract HTML or convert text to HTML
-                val chapterHtml = pageContent.html ?: wrapTextAsHtml(pageContent.text)
-                
-                if (chapterHtml.isBlank()) {
-                    AppLogger.w(TAG, "Empty content for chapter $chapterIndex")
-                    continue
-                }
-                
-                // Wrap in section with chapter ID for navigation
-                htmlBuilder.append("  <section id=\"chapter-$chapterIndex\" data-chapter-index=\"$chapterIndex\">\n")
-                htmlBuilder.append("    ")
-                htmlBuilder.append(chapterHtml)
-                htmlBuilder.append("\n  </section>\n")
+                chapterContents[chapterIndex] = pageContent
             }
             
-            // Close window-root container
-            htmlBuilder.append("</div>\n")
-            
-            val combinedHtml = htmlBuilder.toString()
-            
-            if (combinedHtml.isBlank()) {
-                AppLogger.w(TAG, "Generated empty HTML for window $windowIndex")
-                return null
-            }
-            
-            AppLogger.d(TAG, "Successfully generated window HTML for window $windowIndex: ${combinedHtml.length} characters")
-            
-            combinedHtml
+            buildWindowHtml(windowIndex, chapterIndices, chapterContents)
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error generating window HTML for window $windowIndex", e)
             null
@@ -110,51 +78,86 @@ class ContinuousPaginatorWindowHtmlProvider(
         return try {
             AppLogger.d(TAG, "Generating window HTML directly from parser for window $windowIndex, chapters: $firstChapterIndex-$lastChapterIndex")
             
-            // Build combined HTML with section tags for each chapter
-            // Wrap all sections in a window-root container for clear pagination root
-            val htmlBuilder = StringBuilder()
+            val chapterIndices = (firstChapterIndex..lastChapterIndex).toList()
             
-            // Start window-root container
-            htmlBuilder.append("<div id=\"window-root\" data-window-index=\"$windowIndex\">\n")
-            
-            for (chapterIndex in firstChapterIndex..lastChapterIndex) {
-                // Get the page content directly from parser
+            // Collect chapter content from parser
+            val chapterContents = mutableMapOf<Int, PageContent>()
+            for (chapterIndex in chapterIndices) {
                 val pageContent = withContext(Dispatchers.IO) {
                     parser.getPageContent(bookFile, chapterIndex)
                 }
-                
-                // Extract HTML or convert text to HTML
-                val chapterHtml = pageContent.html ?: wrapTextAsHtml(pageContent.text)
-                
-                if (chapterHtml.isBlank()) {
-                    AppLogger.w(TAG, "Empty content for chapter $chapterIndex")
-                    continue
-                }
-                
-                // Wrap in section with chapter ID for navigation
-                htmlBuilder.append("  <section id=\"chapter-$chapterIndex\" data-chapter-index=\"$chapterIndex\">\n")
-                htmlBuilder.append("    ")
-                htmlBuilder.append(chapterHtml)
-                htmlBuilder.append("\n  </section>\n")
+                chapterContents[chapterIndex] = pageContent
             }
             
-            // Close window-root container
-            htmlBuilder.append("</div>\n")
-            
-            val combinedHtml = htmlBuilder.toString()
-            
-            if (combinedHtml.isBlank()) {
-                AppLogger.w(TAG, "Generated empty HTML for window $windowIndex")
-                return null
-            }
-            
-            AppLogger.d(TAG, "Successfully generated window HTML for window $windowIndex: ${combinedHtml.length} characters")
-            
-            combinedHtml
+            buildWindowHtml(windowIndex, chapterIndices, chapterContents)
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error generating window HTML for window $windowIndex", e)
             null
         }
+    }
+    
+    /**
+     * Build the combined HTML for a window from chapter content.
+     * 
+     * This is the shared logic for both getWindowHtml and generateWindowHtml methods.
+     * 
+     * @param windowIndex The window index for metadata
+     * @param chapterIndices List of chapter indices in this window
+     * @param chapterContents Map of chapter index to page content
+     * @return Combined HTML string, or null if empty
+     */
+    private fun buildWindowHtml(
+        windowIndex: Int,
+        chapterIndices: List<Int>,
+        chapterContents: Map<Int, PageContent>
+    ): String? {
+        val htmlBuilder = StringBuilder()
+        
+        // Start window-root container
+        htmlBuilder.append("<div id=\"window-root\" data-window-index=\"$windowIndex\">\n")
+        
+        for (chapterIndex in chapterIndices) {
+            val pageContent = chapterContents[chapterIndex] ?: continue
+            
+            // Extract HTML or convert text to HTML
+            val chapterHtml = pageContent.html ?: wrapTextAsHtml(pageContent.text)
+            
+            if (chapterHtml.isBlank()) {
+                AppLogger.w(TAG, "Empty content for chapter $chapterIndex")
+                continue
+            }
+            
+            // Wrap in section with chapter ID for navigation
+            appendChapterSection(htmlBuilder, chapterIndex, chapterHtml)
+        }
+        
+        // Close window-root container
+        htmlBuilder.append("</div>\n")
+        
+        val combinedHtml = htmlBuilder.toString()
+        
+        if (combinedHtml.isBlank()) {
+            AppLogger.w(TAG, "Generated empty HTML for window $windowIndex")
+            return null
+        }
+        
+        AppLogger.d(TAG, "Successfully generated window HTML for window $windowIndex: ${combinedHtml.length} characters")
+        
+        return combinedHtml
+    }
+    
+    /**
+     * Append a chapter section to the HTML builder.
+     */
+    private fun appendChapterSection(
+        htmlBuilder: StringBuilder,
+        chapterIndex: Int,
+        chapterHtml: String
+    ) {
+        htmlBuilder.append("  <section id=\"chapter-$chapterIndex\" data-chapter-index=\"$chapterIndex\">\n")
+        htmlBuilder.append("    ")
+        htmlBuilder.append(chapterHtml)
+        htmlBuilder.append("\n  </section>\n")
     }
     
     /**
