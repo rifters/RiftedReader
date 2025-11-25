@@ -38,8 +38,15 @@ This document provides visual representations of the system architecture.
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 │                                                               │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  Bookmark    │  │   Library    │  │   WebView    │      │
-│  │   Manager    │  │   Search     │  │  Paginator   │      │
+│  │  Bookmark    │  │   Library    │  │   Stable     │      │
+│  │   Manager    │  │   Search     │  │   Window     │      │
+│  │              │  │              │  │   Manager    │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│                                                               │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │   WebView    │  │  Sliding     │  │   Window     │      │
+│  │  Paginator   │  │   Window     │  │   HTML       │      │
+│  │              │  │  Manager     │  │  Provider    │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 └─────────┬───────────────────┬───────────────────┬───────────┘
           │                   │                   │
@@ -693,6 +700,85 @@ Main Thread (UI)
                  ├─► suspend functions
                  └─► Flow emissions
 ```
+
+---
+
+## Stable Sliding Window Reading Model
+
+The Stable Window Reading Model provides an immutable, predictable reading experience with efficient memory management. See [STABLE_WINDOW_MODEL.md](./STABLE_WINDOW_MODEL.md) for complete details.
+
+### Key Components
+
+```
+┌────────────────────────────────────────────────────────┐
+│                 StableWindowManager                    │
+│                                                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐│
+│  │ prevWindow   │  │activeWindow  │  │ nextWindow   ││
+│  │ (WindowSnap) │  │ (WindowSnap) │  │ (WindowSnap) ││
+│  │              │  │              │  │              ││
+│  │ LOADED       │  │ ACTIVE       │  │ LOADED       ││
+│  │ Ready        │  │ Immutable    │  │ Ready        ││
+│  └──────────────┘  └──────────────┘  └──────────────┘│
+│                                                        │
+│  Progress: 78% ━━━━━━━━━━━━━━━━━━━━━━━━━━━━●━━━━━━  │
+│             (Threshold: 75% - preload triggered)      │
+└────────────────────────────────────────────────────────┘
+```
+
+### Core Principles
+
+1. **Immutable Active Window**: The active window snapshot remains stable during reading - no append/prepend mutations
+2. **Background Construction**: New windows (prev/next) are loaded in background using mutable `WindowState`
+3. **Atomic Transitions**: Window switches happen atomically through explicit navigation calls
+4. **3-Window Policy**: Maximum 3 windows in memory (prev, active, next)
+5. **Progress-Based Preloading**: Adjacent windows preloaded at 75% threshold
+
+### Window Lifecycle
+
+```
+Background Construction → Ready (Snapshot) → Active → Cached → Dropped
+        (Mutable)            (Immutable)    (Reading)  (Memory)
+```
+
+### Data Model
+
+```kotlin
+// Immutable snapshot (active window)
+data class WindowSnapshot(
+    val windowIndex: WindowIndex,
+    val firstChapterIndex: ChapterIndex,
+    val lastChapterIndex: ChapterIndex,
+    val chapters: List<WindowChapterData>,
+    val totalPages: Int,
+    val htmlContent: String?,
+    val loadState: WindowLoadState
+)
+
+// Mutable state (background construction)
+data class WindowState(
+    val windowIndex: WindowIndex,
+    var loadState: WindowLoadState,
+    val chapters: MutableList<WindowChapterData>
+)
+```
+
+### JavaScript Integration Discipline
+
+The JavaScript paginator enforces strict construction vs. active mode discipline:
+
+**Construction Mode** (Background):
+- ✅ `appendChapter()` allowed
+- ✅ `prependChapter()` allowed
+- Building window content
+
+**Active Mode** (Reading):
+- ❌ `appendChapter()` forbidden (throws error)
+- ❌ `prependChapter()` forbidden (throws error)
+- ✅ `goToPage()` allowed (navigation only)
+- ✅ `finalizeWindow()` to lock down content
+
+See [JS_STREAMING_DISCIPLINE.md](./JS_STREAMING_DISCIPLINE.md) for complete details.
 
 ---
 
