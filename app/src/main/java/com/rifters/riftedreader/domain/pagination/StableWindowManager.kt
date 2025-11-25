@@ -95,6 +95,20 @@ class StableWindowManager(
         val activeSnapshot = loadWindow(windowIndex)
         _activeWindow.value = activeSnapshot
         
+        // Log window enter event
+        AppLogger.logWindowEnter(
+            windowIndex = windowIndex,
+            chapters = activeSnapshot.chapters.map { it.chapterIndex },
+            navigationMode = "INITIAL_LOAD"
+        )
+        
+        // Update the global window state for logging
+        AppLogger.updateWindowState(
+            windowIndex = windowIndex,
+            chapters = activeSnapshot.chapters.map { it.chapterIndex },
+            navigationMode = "INITIAL_LOAD"
+        )
+        
         // Update position (use internal version to avoid deadlock - we already hold the mutex)
         updatePositionInternal(windowIndex, safeChapterIndex, inPageIndex)
         
@@ -173,21 +187,70 @@ class StableWindowManager(
     suspend fun navigateToNextWindow(): WindowSnapshot? = mutex.withLock {
         val current = _activeWindow.value ?: run {
             AppLogger.w(TAG, "Cannot navigate to next window: no active window")
+            AppLogger.logBoundaryCondition(
+                boundaryType = "END",
+                windowIndex = -1,
+                chapterIndex = -1,
+                action = "BLOCKED_NO_ACTIVE_WINDOW"
+            )
             return null
         }
         
         val next = _nextWindow.value
         if (next == null || !next.isReady) {
             AppLogger.w(TAG, "Cannot navigate to next window: next window not ready")
+            AppLogger.logBoundaryCondition(
+                boundaryType = "END",
+                windowIndex = current.windowIndex,
+                chapterIndex = current.lastChapterIndex,
+                action = "BLOCKED_NEXT_NOT_READY"
+            )
             return null
         }
         
         AppLogger.d(TAG, "Navigating from window ${current.windowIndex} to ${next.windowIndex}")
         
+        // Log window exit event
+        AppLogger.logWindowExit(
+            windowIndex = current.windowIndex,
+            chapters = current.chapters.map { it.chapterIndex },
+            direction = "NEXT",
+            targetWindowIndex = next.windowIndex
+        )
+        
+        // Log navigation event
+        AppLogger.logNavigation(
+            eventType = "WINDOW_SWITCH",
+            fromWindowIndex = current.windowIndex,
+            toWindowIndex = next.windowIndex,
+            fromChapterIndex = current.lastChapterIndex,
+            toChapterIndex = next.firstChapterIndex,
+            additionalInfo = mapOf(
+                "direction" to "NEXT",
+                "fromChapters" to current.chapters.map { it.chapterIndex }.joinToString(","),
+                "toChapters" to next.chapters.map { it.chapterIndex }.joinToString(",")
+            )
+        )
+        
         // Atomic switch: drop prev, active → prev, next → active
         _prevWindow.value = current
         _activeWindow.value = next
         _nextWindow.value = null
+        
+        // Log window enter event
+        AppLogger.logWindowEnter(
+            windowIndex = next.windowIndex,
+            chapters = next.chapters.map { it.chapterIndex },
+            navigationMode = "USER_NAVIGATION",
+            previousWindowIndex = current.windowIndex
+        )
+        
+        // Update the global window state for logging
+        AppLogger.updateWindowState(
+            windowIndex = next.windowIndex,
+            chapters = next.chapters.map { it.chapterIndex },
+            navigationMode = "USER_NAVIGATION"
+        )
         
         // Update position to start of new active window (use internal version to avoid deadlock)
         updatePositionInternal(
@@ -212,21 +275,70 @@ class StableWindowManager(
     suspend fun navigateToPrevWindow(): WindowSnapshot? = mutex.withLock {
         val current = _activeWindow.value ?: run {
             AppLogger.w(TAG, "Cannot navigate to prev window: no active window")
+            AppLogger.logBoundaryCondition(
+                boundaryType = "START",
+                windowIndex = -1,
+                chapterIndex = -1,
+                action = "BLOCKED_NO_ACTIVE_WINDOW"
+            )
             return null
         }
         
         val prev = _prevWindow.value
         if (prev == null || !prev.isReady) {
             AppLogger.w(TAG, "Cannot navigate to prev window: prev window not ready")
+            AppLogger.logBoundaryCondition(
+                boundaryType = "START",
+                windowIndex = current.windowIndex,
+                chapterIndex = current.firstChapterIndex,
+                action = "BLOCKED_PREV_NOT_READY"
+            )
             return null
         }
         
         AppLogger.d(TAG, "Navigating from window ${current.windowIndex} to ${prev.windowIndex}")
         
+        // Log window exit event
+        AppLogger.logWindowExit(
+            windowIndex = current.windowIndex,
+            chapters = current.chapters.map { it.chapterIndex },
+            direction = "PREV",
+            targetWindowIndex = prev.windowIndex
+        )
+        
+        // Log navigation event
+        AppLogger.logNavigation(
+            eventType = "WINDOW_SWITCH",
+            fromWindowIndex = current.windowIndex,
+            toWindowIndex = prev.windowIndex,
+            fromChapterIndex = current.firstChapterIndex,
+            toChapterIndex = prev.lastChapterIndex,
+            additionalInfo = mapOf(
+                "direction" to "PREV",
+                "fromChapters" to current.chapters.map { it.chapterIndex }.joinToString(","),
+                "toChapters" to prev.chapters.map { it.chapterIndex }.joinToString(",")
+            )
+        )
+        
         // Atomic switch: drop next, active → next, prev → active
         _nextWindow.value = current
         _activeWindow.value = prev
         _prevWindow.value = null
+        
+        // Log window enter event
+        AppLogger.logWindowEnter(
+            windowIndex = prev.windowIndex,
+            chapters = prev.chapters.map { it.chapterIndex },
+            navigationMode = "USER_NAVIGATION",
+            previousWindowIndex = current.windowIndex
+        )
+        
+        // Update the global window state for logging
+        AppLogger.updateWindowState(
+            windowIndex = prev.windowIndex,
+            chapters = prev.chapters.map { it.chapterIndex },
+            navigationMode = "USER_NAVIGATION"
+        )
         
         // Update position to end of new active window (last page of last chapter)
         // Use internal version to avoid deadlock - we already hold the mutex
@@ -255,12 +367,13 @@ class StableWindowManager(
     
     /**
      * Check if we're at the boundary of the active window.
+     * Logs boundary conditions for debugging.
      */
     suspend fun isAtWindowBoundary(direction: NavigationDirection): Boolean = mutex.withLock {
         val position = _currentPosition.value ?: return false
         val active = _activeWindow.value ?: return false
         
-        return when (direction) {
+        val isAtBoundary = when (direction) {
             NavigationDirection.NEXT -> {
                 // At last page of last chapter in window
                 position.chapterIndex == active.lastChapterIndex &&
@@ -272,6 +385,18 @@ class StableWindowManager(
                     position.inPageIndex == 0
             }
         }
+        
+        if (isAtBoundary) {
+            val boundaryType = if (direction == NavigationDirection.NEXT) "WINDOW_END" else "WINDOW_START"
+            AppLogger.logBoundaryCondition(
+                boundaryType = boundaryType,
+                windowIndex = active.windowIndex,
+                chapterIndex = position.chapterIndex,
+                action = "BOUNDARY_DETECTED"
+            )
+        }
+        
+        return isAtBoundary
     }
     
     /**

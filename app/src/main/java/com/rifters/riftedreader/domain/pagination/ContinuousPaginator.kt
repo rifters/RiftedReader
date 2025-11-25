@@ -89,6 +89,21 @@ class ContinuousPaginator(
         // Recalculate global page mapping
         recalculateGlobalPageMapping()
         
+        // Log window enter event for initial load
+        val windowIndices = getWindowIndices(safeChapterIndex)
+        AppLogger.logWindowEnter(
+            windowIndex = safeChapterIndex,
+            chapters = windowIndices,
+            navigationMode = "INITIAL_LOAD"
+        )
+        
+        // Update the global window state for logging
+        AppLogger.updateWindowState(
+            windowIndex = safeChapterIndex,
+            chapters = windowIndices,
+            navigationMode = "INITIAL_LOAD"
+        )
+        
         // Return the global page index for the start of the chapter
         chapterMetadata[safeChapterIndex].globalPageStartIndex
     }
@@ -107,13 +122,35 @@ class ContinuousPaginator(
         }
         
         val location = globalPageMap[globalPageIndex]
+        val previousChapterIndex = currentChapterIndex
         
         // Check if we need to shift the window
         if (location.chapterIndex != currentChapterIndex) {
             AppLogger.d(TAG, "Shifting window from chapter $currentChapterIndex to ${location.chapterIndex}")
+            
+            // Log window exit for the old window
+            val oldWindowIndices = getWindowIndices(currentChapterIndex)
+            AppLogger.logWindowExit(
+                windowIndex = currentChapterIndex,
+                chapters = oldWindowIndices,
+                direction = if (location.chapterIndex > currentChapterIndex) "NEXT" else "PREV",
+                targetWindowIndex = location.chapterIndex
+            )
+            
             currentChapterIndex = location.chapterIndex
             loadWindow(currentChapterIndex)
             recalculateGlobalPageMapping()
+            
+            // Log navigation event
+            AppLogger.logNavigation(
+                eventType = "CHAPTER_SWITCH",
+                fromWindowIndex = previousChapterIndex,
+                toWindowIndex = currentChapterIndex,
+                fromChapterIndex = previousChapterIndex,
+                toChapterIndex = location.chapterIndex,
+                fromPageIndex = 0,
+                toPageIndex = location.inPageIndex
+            )
         }
         
         location
@@ -128,11 +165,48 @@ class ContinuousPaginator(
      */
     suspend fun navigateToChapter(chapterIndex: Int, inPageIndex: Int = 0): GlobalPageIndex = mutex.withLock {
         val safeChapterIndex = chapterIndex.coerceIn(0, totalChapters - 1)
+        val previousChapterIndex = currentChapterIndex
         
         if (safeChapterIndex != currentChapterIndex) {
+            // Log window exit for the old window
+            val oldWindowIndices = getWindowIndices(currentChapterIndex)
+            AppLogger.logWindowExit(
+                windowIndex = currentChapterIndex,
+                chapters = oldWindowIndices,
+                direction = if (safeChapterIndex > currentChapterIndex) "NEXT" else "PREV",
+                targetWindowIndex = safeChapterIndex
+            )
+            
             currentChapterIndex = safeChapterIndex
             loadWindow(currentChapterIndex)
             recalculateGlobalPageMapping()
+            
+            // Log window enter for the new window
+            val newWindowIndices = getWindowIndices(safeChapterIndex)
+            AppLogger.logWindowEnter(
+                windowIndex = safeChapterIndex,
+                chapters = newWindowIndices,
+                navigationMode = "USER_NAVIGATION",
+                previousWindowIndex = previousChapterIndex
+            )
+            
+            // Log navigation event
+            AppLogger.logNavigation(
+                eventType = "CHAPTER_JUMP",
+                fromWindowIndex = previousChapterIndex,
+                toWindowIndex = safeChapterIndex,
+                fromChapterIndex = previousChapterIndex,
+                toChapterIndex = safeChapterIndex,
+                fromPageIndex = 0,
+                toPageIndex = inPageIndex
+            )
+            
+            // Update the global window state for logging
+            AppLogger.updateWindowState(
+                windowIndex = safeChapterIndex,
+                chapters = newWindowIndices,
+                navigationMode = "USER_NAVIGATION"
+            )
         }
         
         // Find the global page index for this chapter + inPageIndex
