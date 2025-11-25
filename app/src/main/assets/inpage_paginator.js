@@ -1264,7 +1264,7 @@
     function loadWindow(descriptor) {
         if (!descriptor) {
             console.error('inpage_paginator: [WINDOW_API] loadWindow called with null descriptor');
-            notifyWindowLoadError(0, 'Null descriptor', 'INVALID_DESCRIPTOR');
+            notifyWindowLoadError(-1, 'Null descriptor', 'INVALID_DESCRIPTOR');
             return;
         }
         

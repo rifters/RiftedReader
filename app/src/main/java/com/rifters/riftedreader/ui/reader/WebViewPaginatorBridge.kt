@@ -529,10 +529,17 @@ object WebViewPaginatorBridge {
      */
     suspend fun getChapterBoundaries(webView: WebView): List<ChapterBoundaryInfo> {
         return try {
-            val json = evaluateString(
-                webView, 
-                "JSON.stringify(window.inpagePaginator.getChapterBoundaries ? window.inpagePaginator.getChapterBoundaries() : window.inpagePaginator.getLoadedChapters())"
-            )
+            // Use getChapterBoundaries if available, fallback to getLoadedChapters for compatibility
+            val jsExpression = """
+                (function() {
+                    var p = window.inpagePaginator;
+                    if (!p) return null;
+                    if (p.getChapterBoundaries) return p.getChapterBoundaries();
+                    if (p.getLoadedChapters) return p.getLoadedChapters();
+                    return [];
+                })()
+            """.trimIndent()
+            val json = evaluateString(webView, "JSON.stringify($jsExpression)")
             if (json == "null" || json == "[]") {
                 emptyList()
             } else {
