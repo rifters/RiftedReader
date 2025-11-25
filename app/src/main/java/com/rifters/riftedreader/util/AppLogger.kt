@@ -5,6 +5,7 @@ import android.os.Build
 import android.util.Log
 import com.rifters.riftedreader.BuildConfig
 import org.json.JSONObject
+import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
 import java.io.IOException
@@ -22,6 +23,10 @@ import java.util.UUID
  * 
  * Session log files use timestamp-based naming (session_log_YYYYMMDD_HHmmss.txt)
  * and each new session creates a new file, allowing for session-specific debugging.
+ * 
+ * Note: This logger is designed to be used from multiple threads. The writeToFile
+ * method uses synchronized access and maintains a persistent BufferedWriter for
+ * efficiency.
  */
 object AppLogger {
     private const val DEFAULT_TAG = "AppLogger"
@@ -29,6 +34,17 @@ object AppLogger {
     private var logsDir: File? = null
     private var sessionId: String? = null
     private var sessionMetadata: JSONObject? = null
+    
+    // BufferedWriter for efficient file logging (thread-safe via writeLock)
+    private var bufferedWriter: BufferedWriter? = null
+    private val writeLock = Any()
+    
+    // Thread-safe date format for timestamp generation
+    private val dateFormat: ThreadLocal<SimpleDateFormat> = object : ThreadLocal<SimpleDateFormat>() {
+        override fun initialValue(): SimpleDateFormat {
+            return SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+        }
+    }
     
     // Current logical state for window navigation logging
     private var currentWindowState: WindowLogState? = null
@@ -77,6 +93,9 @@ object AppLogger {
         
         sessionId = UUID.randomUUID().toString()
         
+        // Close existing writer if any
+        closeWriter()
+        
         // Create timestamped log file
         if (LoggerConfig.enableFileLogging) {
             val dir = logsDir ?: context.getExternalFilesDir("logs")
@@ -85,9 +104,18 @@ object AppLogger {
                     dir.mkdirs()
                 }
                 logsDir = dir
-                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                val timestamp = dateFormat.get()?.format(Date()) ?: "unknown"
                 val fileName = "session_log_$timestamp.txt"
                 logFile = File(dir, fileName)
+                
+                // Create buffered writer for efficient logging
+                try {
+                    synchronized(writeLock) {
+                        bufferedWriter = BufferedWriter(FileWriter(logFile, true))
+                    }
+                } catch (e: IOException) {
+                    Log.e(DEFAULT_TAG, "Failed to create log file writer", e)
+                }
             }
         }
         
@@ -130,6 +158,10 @@ object AppLogger {
         }
 
         logEvent("SessionEnd", "Session ended")
+        
+        // Close the buffered writer
+        closeWriter()
+        
         sessionId = null
         sessionMetadata = null
         currentWindowState = null
@@ -143,17 +175,44 @@ object AppLogger {
         totalPerformanceTime = 0
         tagCounts.clear()
     }
+    
+    /**
+     * Close the buffered writer if open.
+     * Thread-safe.
+     */
+    private fun closeWriter() {
+        synchronized(writeLock) {
+            try {
+                bufferedWriter?.flush()
+                bufferedWriter?.close()
+            } catch (e: IOException) {
+                Log.e(DEFAULT_TAG, "Failed to close log file writer", e)
+            } finally {
+                bufferedWriter = null
+            }
+        }
+    }
 
+    /**
+     * Write an entry to the log file.
+     * Thread-safe using a BufferedWriter for efficiency.
+     */
     private fun writeToFile(entry: String) {
         if (!LoggerConfig.enableFileLogging) return
-        val file = logFile ?: return
         
-        try {
-            FileWriter(file, true).use { writer ->
-                writer.write("$entry\n")
+        synchronized(writeLock) {
+            try {
+                // Use buffered writer if available, otherwise create one
+                val writer = bufferedWriter ?: run {
+                    val file = logFile ?: return
+                    BufferedWriter(FileWriter(file, true)).also { bufferedWriter = it }
+                }
+                writer.write(entry)
+                writer.newLine()
+                writer.flush() // Ensure writes are persisted for debugging
+            } catch (e: IOException) {
+                Log.e(DEFAULT_TAG, "Failed to write log file", e)
             }
-        } catch (e: IOException) {
-            Log.e(DEFAULT_TAG, "Failed to write log file", e)
         }
     }
 
@@ -434,7 +493,7 @@ object AppLogger {
      * @param toChapterIndex Target chapter index
      * @param fromPageIndex Current page index within chapter
      * @param toPageIndex Target page index within chapter
-     * @param additionalInfo Optional additional info map
+     * @param additionalInfo Optional additional info map (values must be JSON-compatible types)
      */
     fun logNavigation(
         eventType: String,
@@ -465,7 +524,13 @@ object AppLogger {
                 put("isWindowSwitch", fromWindowIndex != toWindowIndex)
                 put("isChapterSwitch", fromChapterIndex != toChapterIndex)
                 put("timestamp", System.currentTimeMillis())
-                additionalInfo?.forEach { (key, value) -> put(key, value) }
+                // Safely add additional info, converting to strings if not a basic type
+                additionalInfo?.forEach { (key, value) ->
+                    when (value) {
+                        is String, is Number, is Boolean -> put(key, value)
+                        else -> put(key, value.toString())
+                    }
+                }
                 currentWindowState?.let { state ->
                     put("logicalState", JSONObject().apply {
                         put("activeWindowIndex", state.windowIndex)
