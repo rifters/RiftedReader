@@ -199,8 +199,10 @@ data class PageMappingInfo(
  * Chapter boundary information with page range.
  * Used by getChapterBoundaries() to report chapter page mappings.
  * 
- * Note: endPage is exclusive, meaning if a chapter occupies pages 3-5,
- * startPage=3 and endPage=6 (following the convention that endPage - startPage = pageCount).
+ * Example: If a chapter occupies pages 3, 4, and 5 (3 pages total):
+ * - startPage = 3 (first page, 0-based, inclusive)
+ * - endPage = 6 (one past last page, 0-based, exclusive)
+ * - pageCount = 3 (6 - 3 = 3 pages)
  * 
  * @property chapterIndex Chapter index in the book
  * @property startPage First page of this chapter within the window (0-based, inclusive)
@@ -281,10 +283,10 @@ data class BoundaryReachedEvent(
  * Event sent from JavaScript when finalizeWindow() is called.
  * Indicates the window is locked and ready for reading.
  * 
- * NOTE: The existing AndroidBridge.onWindowFinalized callback sends
- * just the pageCount as an integer parameter. This type is provided
- * for future use with JSON-based callbacks. Current implementation
- * should handle the integer parameter directly.
+ * This type is provided for structured event handling. The current
+ * implementation of AndroidBridge.onWindowFinalized receives just the
+ * pageCount as an integer parameter. When integrating with the new
+ * Window Communication API via loadWindow(), use this structured type.
  * 
  * @property windowIndex The window that was finalized
  * @property pageCount Total pages in the window
