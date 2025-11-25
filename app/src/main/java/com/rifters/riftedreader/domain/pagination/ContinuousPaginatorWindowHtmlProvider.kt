@@ -104,7 +104,7 @@ class ContinuousPaginatorWindowHtmlProvider(
      * @param windowIndex The window index for metadata
      * @param chapterIndices List of chapter indices in this window
      * @param chapterContents Map of chapter index to page content
-     * @return Combined HTML string, or null if empty
+     * @return Combined HTML string, or null if no chapter sections were added
      */
     private fun buildWindowHtml(
         windowIndex: Int,
@@ -112,6 +112,7 @@ class ContinuousPaginatorWindowHtmlProvider(
         chapterContents: Map<Int, PageContent>
     ): String? {
         val htmlBuilder = StringBuilder()
+        var sectionsAdded = 0
         
         // Start window-root container
         htmlBuilder.append("<div id=\"window-root\" data-window-index=\"$windowIndex\">\n")
@@ -129,19 +130,20 @@ class ContinuousPaginatorWindowHtmlProvider(
             
             // Wrap in section with chapter ID for navigation
             appendChapterSection(htmlBuilder, chapterIndex, chapterHtml)
+            sectionsAdded++
         }
         
         // Close window-root container
         htmlBuilder.append("</div>\n")
         
-        val combinedHtml = htmlBuilder.toString()
-        
-        if (combinedHtml.isBlank()) {
-            AppLogger.w(TAG, "Generated empty HTML for window $windowIndex")
+        // Return null if no chapter sections were added
+        if (sectionsAdded == 0) {
+            AppLogger.w(TAG, "Generated empty HTML for window $windowIndex (no chapter sections)")
             return null
         }
         
-        AppLogger.d(TAG, "Successfully generated window HTML for window $windowIndex: ${combinedHtml.length} characters")
+        val combinedHtml = htmlBuilder.toString()
+        AppLogger.d(TAG, "Successfully generated window HTML for window $windowIndex: ${combinedHtml.length} characters, $sectionsAdded sections")
         
         return combinedHtml
     }

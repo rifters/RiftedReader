@@ -274,9 +274,9 @@ class SlidingWindowHtmlIntegrationTest {
         assertNotNull("getWindowHtml should not return null", htmlViaGetWindow)
         assertNotNull("generateWindowHtml should not return null", htmlViaGenerate)
         
-        // Extract non-null values for safe usage
-        val getWindowHtml = htmlViaGetWindow!!
-        val genWindowHtml = htmlViaGenerate!!
+        // Extract non-null values for safe usage with descriptive error messages
+        val getWindowHtml = requireNotNull(htmlViaGetWindow) { "getWindowHtml returned null unexpectedly" }
+        val genWindowHtml = requireNotNull(htmlViaGenerate) { "generateWindowHtml returned null unexpectedly" }
         
         // Both methods should produce identical structure
         assertTrue("Both should contain window-root container", 
@@ -311,7 +311,7 @@ class SlidingWindowHtmlIntegrationTest {
         )
         
         assertNotNull("generateWindowHtml should not return null", html)
-        val htmlContent = html!!
+        val htmlContent = requireNotNull(html) { "generateWindowHtml returned null unexpectedly" }
         
         // Verify structure
         assertTrue("Should contain window-root with index 1", htmlContent.contains("data-window-index=\"1\""))
