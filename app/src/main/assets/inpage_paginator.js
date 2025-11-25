@@ -22,6 +22,7 @@
     const SCROLL_BEHAVIOR_SMOOTH = 'smooth';
     const SCROLL_BEHAVIOR_AUTO = 'auto';
     const MAX_CHAPTER_SEGMENTS = 5; // Limit DOM growth when streaming chapters
+    const UNKNOWN_WINDOW_INDEX = -1; // Used when windowIndex is unknown or invalid
     
     // Paginator configuration - set via configure() before init()
     let paginatorConfig = {
@@ -1264,7 +1265,7 @@
     function loadWindow(descriptor) {
         if (!descriptor) {
             console.error('inpage_paginator: [WINDOW_API] loadWindow called with null descriptor');
-            notifyWindowLoadError(-1, 'Null descriptor', 'INVALID_DESCRIPTOR');
+            notifyWindowLoadError(UNKNOWN_WINDOW_INDEX, 'Null descriptor', 'INVALID_DESCRIPTOR');
             return;
         }
         
