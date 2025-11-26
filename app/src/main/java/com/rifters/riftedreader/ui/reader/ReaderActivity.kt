@@ -754,10 +754,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 "navigateToPreviousChapterToLastPage (window mode): currentWindow=$currentWindow -> previousWindow=$previousWindow mode=$readerMode " +
                         "[WINDOW_SWITCH_REASON:BACKWARD_WINDOW_NAVIGATION]"
             )
-            // Set flag before changing window so fragment can react when it loads
-            viewModel.setJumpToLastPageFlag()
             val moved = viewModel.previousWindow()
             if (readerMode == ReaderMode.PAGE && moved) {
+                // Set flag only after navigation succeeds to avoid race condition
+                viewModel.setJumpToLastPageFlag()
                 AppLogger.d(
                     "ReaderActivity",
                     "Programmatically setting ViewPager2 to window $previousWindow with jump-to-last-page flag [PROGRAMMATIC_WINDOW_CHANGE]"

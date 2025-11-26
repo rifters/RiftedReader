@@ -207,7 +207,9 @@ class ReaderViewModel(
                     AppLogger.w("ReaderViewModel", "Book has no chapters")
                     _totalPages.value = 0
                     _windowCount.value = 0
+                    _currentPage.value = 0
                     _currentWindowIndex.value = 0
+                    _content.value = PageContent(text = "No content available")
                     isContinuousInitialized = true
                     return@launch
                 }
@@ -624,8 +626,8 @@ class ReaderViewModel(
                 return null
             }
             
-            // Use the slidingWindowManager to get chapter ranges for this window
-            val windowSize = com.rifters.riftedreader.domain.pagination.SlidingWindowManager.DEFAULT_WINDOW_SIZE
+            // Use the slidingWindowManager's window size for consistency
+            val windowSize = slidingWindowManager.getWindowSize()
             
             // windowIndex is the ViewPager2 position, directly used as window index
             val firstChapterInWindow = slidingWindowManager.firstChapterInWindow(windowIndex)

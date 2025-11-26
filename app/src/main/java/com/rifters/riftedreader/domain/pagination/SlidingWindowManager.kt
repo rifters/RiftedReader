@@ -79,6 +79,13 @@ class SlidingWindowManager(private val windowSize: Int = DEFAULT_WINDOW_SIZE) {
         return (totalChapters + windowSize - 1) / windowSize
     }
     
+    /**
+     * Get the window size (number of chapters per window).
+     * 
+     * @return The window size
+     */
+    fun getWindowSize(): Int = windowSize
+    
     companion object {
         const val DEFAULT_WINDOW_SIZE = 5
     }
