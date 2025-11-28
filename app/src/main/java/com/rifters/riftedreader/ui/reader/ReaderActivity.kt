@@ -266,18 +266,18 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         binding.pageViewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 super.onPageSelected(position)
-                val previousPage = viewModel.currentPage.value
+                val previousWindow = viewModel.currentWindowIndex.value
                 AppLogger.d(
                     "ReaderActivity",
-                    "ViewPager2.onPageSelected: position=$position previousPage=$previousPage " +
-                            "mode=$readerMode [PAGE_CHANGE_FROM_VIEWPAGER2]"
+                    "ViewPager2.onPageSelected: position=$position (windowIndex) previousWindow=$previousWindow " +
+                            "mode=$readerMode paginationMode=${viewModel.paginationMode} [PAGE_CHANGE_FROM_VIEWPAGER2]"
                 )
-                if (readerMode == ReaderMode.PAGE && viewModel.currentPage.value != position) {
+                if (readerMode == ReaderMode.PAGE && viewModel.currentWindowIndex.value != position) {
                     AppLogger.d(
                         "ReaderActivity",
-                        "Updating ViewModel page: $previousPage -> $position (triggered by ViewPager2 gesture/animation) [PAGE_SWITCH_REASON]"
+                        "Updating ViewModel window: $previousWindow -> $position (triggered by ViewPager2 gesture/animation) [WINDOW_SWITCH_REASON]"
                     )
-                    viewModel.goToPage(position)
+                    viewModel.goToWindow(position)
                 }
                 controlsManager.onUserInteraction()
             }
@@ -292,7 +292,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 }
                 AppLogger.d(
                     "ReaderActivity",
-                    "ViewPager2.onPageScrollStateChanged: state=$stateName currentPage=${viewModel.currentPage.value} [PAGE_SCROLL_STATE]"
+                    "ViewPager2.onPageScrollStateChanged: state=$stateName currentWindow=${viewModel.currentWindowIndex.value} [PAGE_SCROLL_STATE]"
                 )
             }
         })
@@ -418,11 +418,32 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 }
                 
                 launch {
+                    viewModel.currentWindowIndex.collect { windowIndex ->
+                        // Update ViewPager2 position when window index changes
+                        if (readerMode == ReaderMode.PAGE && binding.pageViewPager.currentItem != windowIndex) {
+                            AppLogger.d("ReaderActivity", "Syncing ViewPager2 to window index: $windowIndex")
+                            binding.pageViewPager.setCurrentItem(windowIndex, false)
+                        }
+                    }
+                }
+                
+                launch {
                     viewModel.currentPage.collect { page ->
                         updatePageIndicator(page)
-                        if (readerMode == ReaderMode.PAGE && binding.pageViewPager.currentItem != page) {
-                            binding.pageViewPager.setCurrentItem(page, false)
+                        // For chapter-based mode, sync ViewPager2 with page
+                        // For continuous mode, ViewPager2 is synced via currentWindowIndex
+                        if (readerMode == ReaderMode.PAGE && viewModel.paginationMode == PaginationMode.CHAPTER_BASED) {
+                            if (binding.pageViewPager.currentItem != page) {
+                                binding.pageViewPager.setCurrentItem(page, false)
+                            }
                         }
+                    }
+                }
+                
+                launch {
+                    viewModel.windowCount.collect { windowCount ->
+                        AppLogger.d("ReaderActivity", "Window count changed: $windowCount")
+                        pagerAdapter.notifyDataSetChanged()
                     }
                 }
                 
@@ -441,8 +462,6 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                                 binding.pageSlider.valueTo = safeValueTo
                             }
                         }
-
-                        pagerAdapter.notifyDataSetChanged()
                         
                         // Update page indicator when total pages changes (e.g., during window shifts)
                         // This ensures the display is always accurate and instant
@@ -603,11 +622,21 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         ChaptersBottomSheet.show(supportFragmentManager, chapters) { chapterIndex ->
             if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
                 lifecycleScope.launch {
-                    val target = viewModel.navigateToChapter(chapterIndex) ?: return@launch
-                    binding.pageViewPager.setCurrentItem(target, true)
+                    // Navigate to chapter and get the target global page
+                    val targetGlobalPage = viewModel.navigateToChapter(chapterIndex) ?: return@launch
+                    
+                    // Calculate the window index using ViewModel's SlidingWindowManager for consistency
+                    val windowIndex = viewModel.getWindowIndexForChapter(chapterIndex)
+                    
+                    AppLogger.d("ReaderActivity", "TOC navigation: chapterIndex=$chapterIndex -> windowIndex=$windowIndex, globalPage=$targetGlobalPage")
+                    
+                    // Update ViewPager2 to show the correct window
+                    binding.pageViewPager.setCurrentItem(windowIndex, true)
                 }
             } else {
+                // Chapter-based mode: window index equals chapter index
                 viewModel.goToPage(chapterIndex)
+                binding.pageViewPager.setCurrentItem(chapterIndex, true)
             }
         }
     }
@@ -639,60 +668,118 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     }
 
     internal fun navigateToNextPage(animated: Boolean = true) {
-        val currentIndex = viewModel.currentPage.value
-        val nextIndex = currentIndex + 1
-        AppLogger.d(
-            "ReaderActivity",
-            "navigateToNextPage called: currentPage=$currentIndex -> nextPage=$nextIndex mode=$readerMode " +
-                    "[PAGE_SWITCH_REASON:USER_TAP_OR_BUTTON]"
-        )
-        val moved = viewModel.goToPage(nextIndex)
-        if (readerMode == ReaderMode.PAGE && moved) {
+        // In continuous mode, navigate windows; in chapter-based mode, navigate pages
+        if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            val currentWindow = viewModel.currentWindowIndex.value
+            val nextWindow = currentWindow + 1
             AppLogger.d(
                 "ReaderActivity",
-                "Programmatically setting ViewPager2 to page $nextIndex (user navigation) [PROGRAMMATIC_PAGE_CHANGE]"
+                "navigateToNextPage (window mode): currentWindow=$currentWindow -> nextWindow=$nextWindow mode=$readerMode " +
+                        "[WINDOW_SWITCH_REASON:USER_TAP_OR_BUTTON]"
             )
-            binding.pageViewPager.setCurrentItem(nextIndex, animated)
+            val moved = viewModel.nextWindow()
+            if (readerMode == ReaderMode.PAGE && moved) {
+                AppLogger.d(
+                    "ReaderActivity",
+                    "Programmatically setting ViewPager2 to window $nextWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
+                )
+                binding.pageViewPager.setCurrentItem(nextWindow, animated)
+            }
+        } else {
+            val currentIndex = viewModel.currentPage.value
+            val nextIndex = currentIndex + 1
+            AppLogger.d(
+                "ReaderActivity",
+                "navigateToNextPage called: currentPage=$currentIndex -> nextPage=$nextIndex mode=$readerMode " +
+                        "[PAGE_SWITCH_REASON:USER_TAP_OR_BUTTON]"
+            )
+            val moved = viewModel.goToPage(nextIndex)
+            if (readerMode == ReaderMode.PAGE && moved) {
+                AppLogger.d(
+                    "ReaderActivity",
+                    "Programmatically setting ViewPager2 to page $nextIndex (user navigation) [PROGRAMMATIC_PAGE_CHANGE]"
+                )
+                binding.pageViewPager.setCurrentItem(nextIndex, animated)
+            }
         }
     }
 
     internal fun navigateToPreviousPage(animated: Boolean = true) {
-        val currentIndex = viewModel.currentPage.value
-        val previousIndex = currentIndex - 1
-        AppLogger.d(
-            "ReaderActivity",
-            "navigateToPreviousPage called: currentPage=$currentIndex -> previousPage=$previousIndex mode=$readerMode " +
-                    "[PAGE_SWITCH_REASON:USER_TAP_OR_BUTTON]"
-        )
-        val moved = viewModel.goToPage(previousIndex)
-        if (readerMode == ReaderMode.PAGE && moved) {
+        // In continuous mode, navigate windows; in chapter-based mode, navigate pages
+        if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            val currentWindow = viewModel.currentWindowIndex.value
+            val previousWindow = currentWindow - 1
             AppLogger.d(
                 "ReaderActivity",
-                "Programmatically setting ViewPager2 to page $previousIndex (user navigation) [PROGRAMMATIC_PAGE_CHANGE]"
+                "navigateToPreviousPage (window mode): currentWindow=$currentWindow -> previousWindow=$previousWindow mode=$readerMode " +
+                        "[WINDOW_SWITCH_REASON:USER_TAP_OR_BUTTON]"
             )
-            binding.pageViewPager.setCurrentItem(previousIndex, animated)
+            val moved = viewModel.previousWindow()
+            if (readerMode == ReaderMode.PAGE && moved) {
+                AppLogger.d(
+                    "ReaderActivity",
+                    "Programmatically setting ViewPager2 to window $previousWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
+                )
+                binding.pageViewPager.setCurrentItem(previousWindow, animated)
+            }
+        } else {
+            val currentIndex = viewModel.currentPage.value
+            val previousIndex = currentIndex - 1
+            AppLogger.d(
+                "ReaderActivity",
+                "navigateToPreviousPage called: currentPage=$currentIndex -> previousPage=$previousIndex mode=$readerMode " +
+                        "[PAGE_SWITCH_REASON:USER_TAP_OR_BUTTON]"
+            )
+            val moved = viewModel.goToPage(previousIndex)
+            if (readerMode == ReaderMode.PAGE && moved) {
+                AppLogger.d(
+                    "ReaderActivity",
+                    "Programmatically setting ViewPager2 to page $previousIndex (user navigation) [PROGRAMMATIC_PAGE_CHANGE]"
+                )
+                binding.pageViewPager.setCurrentItem(previousIndex, animated)
+            }
         }
     }
 
     /**
-     * Navigate to the previous chapter and jump to its last internal page.
-     * Used when at the first page of current chapter and navigating backward.
+     * Navigate to the previous chapter/window and jump to its last internal page.
+     * Used when at the first page of current chapter/window and navigating backward.
      */
     internal fun navigateToPreviousChapterToLastPage(animated: Boolean = true) {
-        val currentIndex = viewModel.currentPage.value
-        val previousIndex = currentIndex - 1
-        AppLogger.d(
-            "ReaderActivity",
-            "navigateToPreviousChapterToLastPage called: currentPage=$currentIndex -> previousPage=$previousIndex mode=$readerMode " +
-                    "[PAGE_SWITCH_REASON:BACKWARD_CHAPTER_NAVIGATION]"
-        )
-        val moved = viewModel.previousChapterToLastPage()
-        if (readerMode == ReaderMode.PAGE && moved) {
+        if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            val currentWindow = viewModel.currentWindowIndex.value
+            val previousWindow = currentWindow - 1
             AppLogger.d(
                 "ReaderActivity",
-                "Programmatically setting ViewPager2 to page $previousIndex with jump-to-last-page flag [PROGRAMMATIC_PAGE_CHANGE]"
+                "navigateToPreviousChapterToLastPage (window mode): currentWindow=$currentWindow -> previousWindow=$previousWindow mode=$readerMode " +
+                        "[WINDOW_SWITCH_REASON:BACKWARD_WINDOW_NAVIGATION]"
             )
-            binding.pageViewPager.setCurrentItem(previousIndex, animated)
+            val moved = viewModel.previousWindow()
+            if (readerMode == ReaderMode.PAGE && moved) {
+                // Set flag only after navigation succeeds to avoid race condition
+                viewModel.setJumpToLastPageFlag()
+                AppLogger.d(
+                    "ReaderActivity",
+                    "Programmatically setting ViewPager2 to window $previousWindow with jump-to-last-page flag [PROGRAMMATIC_WINDOW_CHANGE]"
+                )
+                binding.pageViewPager.setCurrentItem(previousWindow, animated)
+            }
+        } else {
+            val currentIndex = viewModel.currentPage.value
+            val previousIndex = currentIndex - 1
+            AppLogger.d(
+                "ReaderActivity",
+                "navigateToPreviousChapterToLastPage called: currentPage=$currentIndex -> previousPage=$previousIndex mode=$readerMode " +
+                        "[PAGE_SWITCH_REASON:BACKWARD_CHAPTER_NAVIGATION]"
+            )
+            val moved = viewModel.previousChapterToLastPage()
+            if (readerMode == ReaderMode.PAGE && moved) {
+                AppLogger.d(
+                    "ReaderActivity",
+                    "Programmatically setting ViewPager2 to page $previousIndex with jump-to-last-page flag [PROGRAMMATIC_PAGE_CHANGE]"
+                )
+                binding.pageViewPager.setCurrentItem(previousIndex, animated)
+            }
         }
     }
 

@@ -37,9 +37,18 @@ class ReaderPageFragment : Fragment() {
 
     private val readerViewModel: ReaderViewModel by activityViewModels()
 
-    private val pageIndex: Int by lazy {
+    /**
+     * The window index (in continuous mode) or chapter index (in chapter-based mode).
+     * This represents the position in the ViewPager2, which corresponds to:
+     * - Continuous mode: window index (each window contains 5 chapters)
+     * - Chapter-based mode: chapter index (each window contains 1 chapter)
+     */
+    private val windowIndex: Int by lazy {
         requireArguments().getInt(ARG_PAGE_INDEX)
     }
+    
+    // Alias for backward compatibility with existing code
+    private val pageIndex: Int get() = windowIndex
 
     private var latestPageText: String = ""
     private var latestPageHtml: String? = null
@@ -94,7 +103,7 @@ class ReaderPageFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         resolvePageLocation()
-        com.rifters.riftedreader.util.AppLogger.event("ReaderPageFragment", "onViewCreated for page $pageIndex", "ui/webview/lifecycle")
+        com.rifters.riftedreader.util.AppLogger.event("ReaderPageFragment", "onViewCreated for windowIndex $windowIndex", "ui/webview/lifecycle")
         
         // Configure WebView for EPUB rendering
         binding.pageWebView.apply {
@@ -1001,19 +1010,21 @@ class ReaderPageFragment : Fragment() {
                 try {
                     val contentHtml = if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
                         // Get window HTML containing multiple chapters
-                        val windowPayload = readerViewModel.getWindowHtml(pageIndex)
+                        // windowIndex is the ViewPager2 position, directly used as window index
+                        val windowPayload = readerViewModel.getWindowHtml(windowIndex)
                         if (windowPayload != null) {
                             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
-                                "Using window HTML for page $pageIndex: window=${windowPayload.windowIndex}, " +
-                                "chapters=${windowPayload.chapterIndex} (${windowPayload.windowSize} chapters per window)"
+                                "Using window HTML for windowIndex=$windowIndex: window=${windowPayload.windowIndex}, " +
+                                "firstChapter=${windowPayload.chapterIndex} (${windowPayload.windowSize} chapters per window, totalChapters=${windowPayload.totalChapters})"
                             )
                             windowPayload.html
                         } else {
-                            com.rifters.riftedreader.util.AppLogger.w("ReaderPageFragment", "Failed to get window HTML, falling back to single chapter")
+                            com.rifters.riftedreader.util.AppLogger.w("ReaderPageFragment", "Failed to get window HTML for windowIndex=$windowIndex, falling back to single chapter")
                             html
                         }
                     } else {
                         // Chapter-based mode: use single chapter HTML as before
+                        // In this mode, windowIndex equals chapter index
                         html
                     }
                     
@@ -1026,14 +1037,14 @@ class ReaderPageFragment : Fragment() {
                     val wrappedHtml = com.rifters.riftedreader.domain.reader.ReaderHtmlWrapper.wrap(contentHtml, config)
                     
                     // Log the wrapped HTML for debugging
-                    val chapterIndex = resolvedChapterIndex ?: pageIndex
+                    val chapterIndex = resolvedChapterIndex ?: windowIndex
                     readerViewModel.bookId?.let { bookId ->
                         com.rifters.riftedreader.util.HtmlDebugLogger.logWrappedHtml(
                             bookId = bookId,
                             chapterIndex = chapterIndex,
                             wrappedHtml = wrappedHtml,
                             metadata = mapOf(
-                                "pageIndex" to pageIndex.toString(),
+                                "windowIndex" to windowIndex.toString(),
                                 "textSize" to settings.textSizeSp.toString(),
                                 "lineHeight" to settings.lineHeightMultiplier.toString(),
                                 "theme" to settings.theme.name,
@@ -1055,7 +1066,7 @@ class ReaderPageFragment : Fragment() {
                         null
                     )
                 } catch (e: Exception) {
-                    com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "Error loading window HTML, using fallback", e)
+                    com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "Error loading window HTML for windowIndex=$windowIndex, using fallback", e)
                     // Fallback to old method if there's any error
                     val wrappedHtml = wrapHtmlForWebView(html, settings.textSizeSp, settings.lineHeightMultiplier, palette)
                     isWebViewReady = false
@@ -1873,14 +1884,19 @@ class ReaderPageFragment : Fragment() {
     }
 
     companion object {
-        private const val ARG_PAGE_INDEX = "arg_page_index"
+        private const val ARG_PAGE_INDEX = "arg_page_index" // This is window index in continuous mode
         private const val FLING_THRESHOLD = 1000f // Minimum velocity for horizontal fling detection
         private const val SCROLL_DISTANCE_THRESHOLD_RATIO = 0.25f // 25% of viewport width triggers in-page navigation
 
-        fun newInstance(pageIndex: Int): ReaderPageFragment {
+        /**
+         * Create a new ReaderPageFragment for the given window/page index.
+         * 
+         * @param windowIndex The window index (in continuous mode) or chapter index (in chapter-based mode)
+         */
+        fun newInstance(windowIndex: Int): ReaderPageFragment {
             return ReaderPageFragment().apply {
                 arguments = Bundle().apply {
-                    putInt(ARG_PAGE_INDEX, pageIndex)
+                    putInt(ARG_PAGE_INDEX, windowIndex)
                 }
             }
         }

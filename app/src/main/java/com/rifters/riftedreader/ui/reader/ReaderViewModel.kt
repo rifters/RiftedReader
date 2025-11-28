@@ -61,11 +61,26 @@ class ReaderViewModel(
     private val _totalWebViewPages = MutableStateFlow(0)
     val totalWebViewPages: StateFlow<Int> = _totalWebViewPages.asStateFlow()
 
+    // Window count for ViewPager2 (number of windows, not chapters)
+    // In continuous mode: totalChapters / windowSize (rounded up)
+    // In chapter-based mode: equals totalPages (one window per chapter)
+    private val _windowCount = MutableStateFlow(0)
+    val windowCount: StateFlow<Int> = _windowCount.asStateFlow()
+    
+    // Current window index for ViewPager2 navigation
+    private val _currentWindowIndex = MutableStateFlow(0)
+    val currentWindowIndex: StateFlow<Int> = _currentWindowIndex.asStateFlow()
+
     val readerSettings: StateFlow<ReaderSettings> = readerPreferences.settings
 
     private val pageContentCache = mutableMapOf<Int, MutableStateFlow<PageContent>>()
     private var continuousPaginator: ContinuousPaginator? = null
     private var isContinuousInitialized = false
+    
+    // Sliding window manager for window index calculations
+    private val slidingWindowManager = com.rifters.riftedreader.domain.pagination.SlidingWindowManager(
+        windowSize = com.rifters.riftedreader.domain.pagination.SlidingWindowManager.DEFAULT_WINDOW_SIZE
+    )
 
     val paginationMode: PaginationMode
         get() {
@@ -140,6 +155,8 @@ class ReaderViewModel(
 
                 _pages.value = pages
                 _totalPages.value = pages.size
+                // In chapter-based mode, one window per chapter
+                _windowCount.value = pages.size
 
                 pages.forEachIndexed { index, content ->
                     pageContentCache.getOrPut(index) { MutableStateFlow(PageContent.EMPTY) }.value = content
@@ -151,11 +168,14 @@ class ReaderViewModel(
                     0
                 }
                 _currentPage.value = initialPage
+                _currentWindowIndex.value = initialPage
                 _content.value = pages.getOrNull(initialPage) ?: PageContent.EMPTY
             } catch (e: Exception) {
                 _pages.value = emptyList()
                 _totalPages.value = 0
+                _windowCount.value = 0
                 _currentPage.value = 0
+                _currentWindowIndex.value = 0
                 _content.value = PageContent(text = "Error loading content: ${e.message}")
                 e.printStackTrace()
             }
@@ -177,19 +197,47 @@ class ReaderViewModel(
                 // Load the initial window
                 paginator.loadInitialWindow(startChapter)
                 _totalPages.value = paginator.getTotalGlobalPages()
+                
+                // Calculate window count for ViewPager2 (number of windows, not chapters)
+                val windowInfo = paginator.getWindowInfo()
+                val totalChapters = windowInfo.totalChapters
+                
+                // Handle empty book case properly - set all state to consistent values
+                if (totalChapters <= 0) {
+                    AppLogger.w("ReaderViewModel", "Book has no chapters")
+                    _totalPages.value = 0
+                    _windowCount.value = 0
+                    _currentPage.value = 0
+                    _currentWindowIndex.value = 0
+                    _content.value = PageContent(text = "No content available")
+                    isContinuousInitialized = true
+                    return@launch
+                }
+                
+                _windowCount.value = slidingWindowManager.totalWindows(totalChapters)
+                
+                // Calculate initial window index with bounds validation
+                val safeStartChapter = startChapter.coerceIn(0, totalChapters - 1)
+                val initialWindowIndex = slidingWindowManager.windowForChapter(safeStartChapter)
+                _currentWindowIndex.value = initialWindowIndex
+                
+                AppLogger.d("ReaderViewModel", "Continuous pagination: totalChapters=$totalChapters, windowCount=${_windowCount.value}, initialWindowIndex=$initialWindowIndex")
+                
                 isContinuousInitialized = true
 
                 // Try to restore position using chapter + in-page index first
-                val initialGlobalPage = paginator.navigateToChapter(startChapter, startInPage)
+                val initialGlobalPage = paginator.navigateToChapter(safeStartChapter, startInPage)
 
                 updateForGlobalPage(initialGlobalPage)
                 
-                AppLogger.d("ReaderViewModel", "Restored position: chapter=$startChapter, inPage=$startInPage, globalPage=$initialGlobalPage")
+                AppLogger.d("ReaderViewModel", "Restored position: chapter=$safeStartChapter, inPage=$startInPage, globalPage=$initialGlobalPage")
             } catch (e: Exception) {
                 AppLogger.e("ReaderViewModel", "Failed to initialize continuous paginator", e)
                 _pages.value = emptyList()
                 _totalPages.value = 0
+                _windowCount.value = 0
                 _currentPage.value = 0
+                _currentWindowIndex.value = 0
                 _content.value = PageContent(text = "Error loading content: ${e.message}")
             }
         }
@@ -274,6 +322,13 @@ class ReaderViewModel(
      */
     fun clearJumpToLastPageFlag() {
         _shouldJumpToLastPage.value = false
+    }
+    
+    /**
+     * Set the jump-to-last-page flag. Used when navigating backward across windows.
+     */
+    fun setJumpToLastPageFlag() {
+        _shouldJumpToLastPage.value = true
     }
 
     fun goToPage(page: Int): Boolean {
@@ -552,35 +607,38 @@ class ReaderViewModel(
     }
 
     /**
-     * Get the window HTML for a specific page/chapter index.
+     * Get the window HTML for a specific window index.
      * In continuous mode, this returns a sliding window combining multiple chapters.
      * In chapter-based mode, this returns just the single chapter HTML.
      * 
-     * @param pageIndex The global page index (continuous) or chapter index (chapter-based)
+     * @param windowIndex The window index for ViewPager2 (in continuous mode) or chapter index (in chapter-based mode)
      * @return WindowHtmlPayload containing the window HTML and metadata, or null if unavailable
      */
-    suspend fun getWindowHtml(pageIndex: Int): WindowHtmlPayload? {
+    suspend fun getWindowHtml(windowIndex: Int): WindowHtmlPayload? {
         return if (isContinuousMode) {
             val paginator = continuousPaginator ?: return null
-            // Use same window size as ContinuousPaginator (default: 5)
-            val windowSize = com.rifters.riftedreader.domain.pagination.SlidingWindowManager.DEFAULT_WINDOW_SIZE
-            val windowManager = com.rifters.riftedreader.domain.pagination.SlidingWindowManager(windowSize = windowSize)
-            val provider = com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider(
-                paginator,
-                windowManager
-            )
+            val windowInfo = paginator.getWindowInfo()
+            val totalChapters = windowInfo.totalChapters
             
-            // Get the page location to determine chapter and window
-            val location = paginator.getPageLocation(pageIndex)
-            if (location == null) {
-                AppLogger.w("ReaderViewModel", "Could not get page location for index $pageIndex")
+            // Guard against empty book
+            if (totalChapters <= 0) {
+                AppLogger.w("ReaderViewModel", "Cannot get window HTML: no chapters available")
                 return null
             }
             
-            val windowIndex = windowManager.windowForChapter(location.chapterIndex)
-            val windowInfo = paginator.getWindowInfo()
+            // Use the slidingWindowManager's window size for consistency
+            val windowSize = slidingWindowManager.getWindowSize()
             
-            AppLogger.d("ReaderViewModel", "Getting window HTML: pageIndex=$pageIndex, chapterIndex=${location.chapterIndex}, windowIndex=$windowIndex")
+            // windowIndex is the ViewPager2 position, directly used as window index
+            val firstChapterInWindow = slidingWindowManager.firstChapterInWindow(windowIndex)
+            val lastChapterInWindow = slidingWindowManager.lastChapterInWindow(windowIndex, totalChapters)
+            
+            AppLogger.d("ReaderViewModel", "Getting window HTML: windowIndex=$windowIndex, chapters=$firstChapterInWindow-$lastChapterInWindow (totalChapters=$totalChapters)")
+            
+            val provider = com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider(
+                paginator,
+                slidingWindowManager
+            )
             
             val html = provider.getWindowHtml(bookId, windowIndex)
             if (html == null) {
@@ -591,29 +649,103 @@ class ReaderViewModel(
             WindowHtmlPayload(
                 html = html,
                 windowIndex = windowIndex,
-                chapterIndex = location.chapterIndex,
-                inPageIndex = location.inPageIndex,
+                chapterIndex = firstChapterInWindow,
+                inPageIndex = 0,
                 windowSize = windowSize,
-                totalChapters = windowInfo.totalChapters
+                totalChapters = totalChapters
             )
         } else {
-            // Chapter-based mode: return single chapter HTML
-            val content = _pages.value.getOrNull(pageIndex)
+            // Chapter-based mode: windowIndex is chapter index (one window per chapter)
+            val content = _pages.value.getOrNull(windowIndex)
             if (content == null) {
-                AppLogger.w("ReaderViewModel", "No content for page index $pageIndex")
+                AppLogger.w("ReaderViewModel", "No content for chapter index $windowIndex")
                 return null
             }
             
             val html = content.html ?: wrapPlainTextAsHtml(content.text)
             WindowHtmlPayload(
                 html = html,
-                windowIndex = 0,
-                chapterIndex = pageIndex,
+                windowIndex = windowIndex,
+                chapterIndex = windowIndex,
                 inPageIndex = 0,
                 windowSize = 1,
                 totalChapters = _pages.value.size
             )
         }
+    }
+    
+    /**
+     * Navigate to a specific window index (for ViewPager2 navigation).
+     * Updates the current window and the corresponding global page index.
+     * 
+     * @param windowIndex The target window index
+     * @return true if navigation succeeded
+     */
+    fun goToWindow(windowIndex: Int): Boolean {
+        val totalWindows = _windowCount.value
+        if (totalWindows <= 0 || windowIndex !in 0 until totalWindows) {
+            return false
+        }
+        
+        _currentWindowIndex.value = windowIndex
+        
+        if (isContinuousMode) {
+            viewModelScope.launch {
+                val paginator = continuousPaginator ?: return@launch
+                val windowInfo = paginator.getWindowInfo()
+                val totalChapters = windowInfo.totalChapters
+                
+                // Guard against empty book
+                if (totalChapters <= 0) {
+                    AppLogger.w("ReaderViewModel", "goToWindow: no chapters available")
+                    return@launch
+                }
+                
+                // Calculate the first chapter in this window
+                val firstChapter = slidingWindowManager.firstChapterInWindow(windowIndex)
+                    .coerceIn(0, totalChapters - 1)
+                
+                // Navigate to the first chapter in this window
+                val globalPage = paginator.navigateToChapter(firstChapter, 0)
+                updateForGlobalPage(globalPage)
+                
+                AppLogger.d("ReaderViewModel", "goToWindow: windowIndex=$windowIndex -> firstChapter=$firstChapter, globalPage=$globalPage")
+            }
+        } else {
+            // Chapter-based mode: window index equals chapter index
+            updateCurrentPage(windowIndex)
+        }
+        
+        return true
+    }
+    
+    /**
+     * Navigate to the next window.
+     * @return true if navigation succeeded
+     */
+    fun nextWindow(): Boolean {
+        val currentWindow = _currentWindowIndex.value
+        return goToWindow(currentWindow + 1)
+    }
+    
+    /**
+     * Navigate to the previous window.
+     * @return true if navigation succeeded
+     */
+    fun previousWindow(): Boolean {
+        val currentWindow = _currentWindowIndex.value
+        return goToWindow(currentWindow - 1)
+    }
+    
+    /**
+     * Get the window index for a given chapter.
+     * This uses the same SlidingWindowManager instance used internally for consistency.
+     * 
+     * @param chapterIndex The chapter index
+     * @return The window index containing this chapter
+     */
+    fun getWindowIndexForChapter(chapterIndex: Int): Int {
+        return slidingWindowManager.windowForChapter(chapterIndex.coerceAtLeast(0))
     }
 }
 
