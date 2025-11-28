@@ -14,7 +14,12 @@ import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.BookParser
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.domain.parser.TxtParser
+import com.rifters.riftedreader.pagination.SlidingWindowPaginator
+import com.rifters.riftedreader.pagination.WindowSyncHelpers
 import com.rifters.riftedreader.util.AppLogger
+import android.util.Log
+import androidx.lifecycle.MutableLiveData
+import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -82,6 +87,17 @@ class ReaderViewModel(
         windowSize = com.rifters.riftedreader.domain.pagination.SlidingWindowManager.DEFAULT_WINDOW_SIZE
     )
 
+    // Deterministic sliding window paginator for grouping chapters into windows
+    private val chaptersPerWindow: Int = 5
+    private val slidingWindowPaginator = SlidingWindowPaginator(chaptersPerWindow)
+    
+    // LiveData for window count (for UI observation)
+    val windowCountLiveData = MutableLiveData<Int>(0)
+    
+    // Pagination mode LiveData for the guard (uses existing paginationMode logic)
+    private val paginationModeLiveData = MutableLiveData<PaginationMode>()
+    private val paginationModeGuard = PaginationModeGuard(paginationModeLiveData)
+
     val paginationMode: PaginationMode
         get() {
             val settings = readerPreferences.settings.value
@@ -113,6 +129,9 @@ class ReaderViewModel(
     }
     
     init {
+        // Initialize paginationModeLiveData with current pagination mode
+        paginationModeLiveData.value = paginationMode
+        
         if (isContinuousMode) {
             initializeContinuousPagination()
         } else {
@@ -747,6 +766,42 @@ class ReaderViewModel(
     fun getWindowIndexForChapter(chapterIndex: Int): Int {
         return slidingWindowManager.windowForChapter(chapterIndex.coerceAtLeast(0))
     }
+    
+    /**
+     * Recompute the window structure using the deterministic SlidingWindowPaginator.
+     * This method ensures thread-safe updates to LiveData and adapter.
+     *
+     * @param totalChapters Total number of chapters in the book
+     * @param adapter The RecyclerView.Adapter to notify of changes
+     */
+    fun recomputeWindowStructure(totalChapters: Int, adapter: RecyclerView.Adapter<*>) {
+        paginationModeGuard.beginWindowBuild()
+        try {
+            slidingWindowPaginator.recomputeWindows(totalChapters)
+            Log.d("SlidingWindowPaginator", slidingWindowPaginator.debugWindowMap())
+            
+            // Debug invariant check (development builds only)
+            val expectedWindowCount = if (totalChapters == 0) 0 else {
+                kotlin.math.ceil(totalChapters.toDouble() / chaptersPerWindow).toInt()
+            }
+            val actualWindowCount = slidingWindowPaginator.windowCount
+            if (actualWindowCount != expectedWindowCount) {
+                Log.e("SlidingWindowPaginator", 
+                    "INVARIANT VIOLATION: windowCount=$actualWindowCount != expected=$expectedWindowCount " +
+                    "(totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow)")
+            }
+            
+            WindowSyncHelpers.syncWindowCountToUi(slidingWindowPaginator, windowCountLiveData, adapter)
+        } finally {
+            paginationModeGuard.endWindowBuild()
+        }
+    }
+    
+    /**
+     * Get the SlidingWindowPaginator for external access.
+     * Primarily used for testing and debugging.
+     */
+    fun getSlidingWindowPaginator(): SlidingWindowPaginator = slidingWindowPaginator
 }
 
 private fun StringBuilder.isNotBlank(): Boolean = this.any { !it.isWhitespace() }

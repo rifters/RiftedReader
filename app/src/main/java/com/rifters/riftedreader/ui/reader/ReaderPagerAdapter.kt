@@ -11,9 +11,8 @@ import com.rifters.riftedreader.util.AppLogger
  * In continuous mode, each page represents a WINDOW (containing multiple chapters).
  * In chapter-based mode, each page represents a single chapter.
  * 
- * The adapter uses windowCount which:
- * - In continuous mode: totalChapters / windowSize (rounded up)
- * - In chapter-based mode: equals totalChapters (one window per chapter)
+ * The adapter uses windowCountLiveData from the ViewModel's SlidingWindowPaginator
+ * for deterministic pagination, falling back to windowCount StateFlow if needed.
  */
 class ReaderPagerAdapter(
     activity: FragmentActivity,
@@ -21,10 +20,10 @@ class ReaderPagerAdapter(
 ) : FragmentStateAdapter(activity) {
 
     override fun getItemCount(): Int {
-        // Use windowCount instead of totalPages
-        // This ensures proper window-based pagination
-        val count = viewModel.windowCount.value
-        AppLogger.d("ReaderPagerAdapter", "getItemCount: $count (windows)")
+        // Prefer windowCountLiveData from SlidingWindowPaginator for deterministic pagination
+        // Fall back to windowCount StateFlow if LiveData is not yet initialized
+        val count = viewModel.windowCountLiveData.value ?: viewModel.windowCount.value
+        AppLogger.d("ReaderPagerAdapter", "getItemCount: $count (windows, from LiveData=${viewModel.windowCountLiveData.value != null})")
         return count
     }
 
@@ -37,7 +36,7 @@ class ReaderPagerAdapter(
     override fun getItemId(position: Int): Long = position.toLong()
 
     override fun containsItem(itemId: Long): Boolean {
-        val total = viewModel.windowCount.value
+        val total = viewModel.windowCountLiveData.value ?: viewModel.windowCount.value
         return itemId >= 0 && itemId < total
     }
 }
