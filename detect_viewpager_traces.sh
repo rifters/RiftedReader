@@ -72,7 +72,10 @@ search_pattern "PAGINATION_MODE" "Pagination mode flags"
 search_pattern "paginationMode" "paginationMode property references"
 
 # Search for window count references that might be problematic
-search_pattern "windowCount\s*=\s*97" "Hardcoded windowCount=97 (potential issue)"
+# Note: 97 is a known problematic value that appears when chapter-based window count
+# is incorrectly used instead of sliding-window count. In a book with 97 chapters,
+# this value appears when the code falls back to treating each chapter as a window.
+search_pattern "windowCount\s*=\s*97" "Hardcoded windowCount=97 (known race condition indicator)"
 
 # Search for potential race condition patterns
 search_pattern "getItemCount" "ViewPager adapter getItemCount implementations"

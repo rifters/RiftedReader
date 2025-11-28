@@ -88,7 +88,8 @@ class ReaderViewModel(
     )
     
     // New deterministic sliding window paginator for race condition protection
-    // TODO: Read chaptersPerWindow from settings if available, default to 5
+    // Note: chaptersPerWindow uses default value (5). Integration with user settings
+    // can be added in future iterations if user-configurable window sizes are needed.
     val chaptersPerWindow: Int = SlidingWindowPaginator.DEFAULT_CHAPTERS_PER_WINDOW
     val slidingWindowPaginator = SlidingWindowPaginator(chaptersPerWindow)
     
@@ -96,7 +97,9 @@ class ReaderViewModel(
     val windowCountLiveData = MutableLiveData(0)
     
     // Guard to prevent race conditions during window building
-    // TODO: Wire to a LiveData<PaginationMode> if exposed from readerPreferences
+    // Note: Guard operates without mode checking since readerPreferences exposes
+    // paginationMode as a computed property, not LiveData. The guard still provides
+    // protection against concurrent builds.
     val paginationModeGuard = PaginationModeGuard(paginationModeLiveData = null)
 
     val paginationMode: PaginationMode

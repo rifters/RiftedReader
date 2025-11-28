@@ -145,9 +145,9 @@ class PaginationModeGuard(
                     "isBuilding=$isBuilding, mode=${paginationModeLiveData?.value}"
             Log.e(TAG, message)
             
-            // In debug builds, we might want to throw an AssertionError
-            // For now, just log the error to avoid crashing in production
-            // assert(false) { message }
+            // Note: This logs the error for debugging but does not throw to avoid
+            // crashing in production. The invariant violation indicates a potential
+            // race condition that should be investigated during development.
         }
     }
 }
