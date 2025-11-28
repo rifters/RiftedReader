@@ -50,9 +50,6 @@ SEARCH_DIRS=(
     "app/src/main/res"
 )
 
-# File extensions to search
-EXTENSIONS="-name '*.kt' -o -name '*.java' -o -name '*.xml' -o -name '*.js'"
-
 FOUND_ANY=0
 
 for pattern in "${PATTERNS[@]}"; do

@@ -59,7 +59,7 @@ class SlidingWindowPaginator(initialChaptersPerWindow: Int = DEFAULT_CHAPTERS_PE
      * @return IntRange of chapter indices in this window, or empty range if invalid
      */
     fun getWindowRange(windowIndex: Int): IntRange {
-        if (windowIndex < 0 || windowIndex >= _windowCount || _totalChapters == 0) {
+        if (windowIndex < 0 || windowIndex >= _windowCount) {
             Log.d(TAG, "getWindowRange: invalid windowIndex=$windowIndex (windowCount=$_windowCount)")
             return IntRange.EMPTY
         }

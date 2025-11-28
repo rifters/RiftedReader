@@ -781,6 +781,7 @@ class ReaderViewModel(
             Log.d("SlidingWindowPaginator", slidingWindowPaginator.debugWindowMap())
             
             // Debug invariant check (development builds only)
+            // This duplicates the calculation intentionally to verify SlidingWindowPaginator's correctness
             val expectedWindowCount = if (totalChapters == 0) 0 else {
                 kotlin.math.ceil(totalChapters.toDouble() / chaptersPerWindow).toInt()
             }
