@@ -21,7 +21,8 @@ class ReaderPagerAdapter(
 ) : FragmentStateAdapter(activity) {
 
     override fun getItemCount(): Int {
-        // Use windowCount instead of totalPages
+        // Use windowCount StateFlow for window-based pagination
+        // Alternative: viewModel.windowCountLiveData.value ?: 0 for LiveData-based access
         // This ensures proper window-based pagination
         val count = viewModel.windowCount.value
         AppLogger.d("ReaderPagerAdapter", "getItemCount: $count (windows)")
