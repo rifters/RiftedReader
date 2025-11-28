@@ -11,6 +11,8 @@ import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.domain.pagination.ContinuousPaginator
 import com.rifters.riftedreader.domain.pagination.PageLocation
 import com.rifters.riftedreader.domain.pagination.PaginationMode
+import com.rifters.riftedreader.domain.pagination.PaginationModeGuard
+import com.rifters.riftedreader.domain.pagination.SlidingWindowPaginator
 import com.rifters.riftedreader.domain.parser.BookParser
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.domain.parser.TxtParser
@@ -81,6 +83,14 @@ class ReaderViewModel(
     private val slidingWindowManager = com.rifters.riftedreader.domain.pagination.SlidingWindowManager(
         windowSize = com.rifters.riftedreader.domain.pagination.SlidingWindowManager.DEFAULT_WINDOW_SIZE
     )
+    
+    // Deterministic sliding window paginator for window computation
+    private val slidingWindowPaginator = SlidingWindowPaginator(
+        chaptersPerWindow = SlidingWindowPaginator.DEFAULT_CHAPTERS_PER_WINDOW
+    )
+    
+    // Guard to prevent pagination mode changes during window builds
+    private val paginationModeGuard = PaginationModeGuard()
 
     val paginationMode: PaginationMode
         get() {
@@ -137,6 +147,8 @@ class ReaderViewModel(
 
     private fun buildPagination() {
         viewModelScope.launch {
+            // Begin window build - lock pagination mode during construction
+            paginationModeGuard.beginWindowBuild()
             try {
                 val book = repository.getBookById(bookId)
                 val savedPage = book?.currentPage ?: 0
@@ -155,8 +167,21 @@ class ReaderViewModel(
 
                 _pages.value = pages
                 _totalPages.value = pages.size
-                // In chapter-based mode, one window per chapter
-                _windowCount.value = pages.size
+                
+                // Use SlidingWindowPaginator for deterministic window computation
+                // In chapter-based mode: chaptersPerWindow = 1 (one window per chapter)
+                slidingWindowPaginator.setChaptersPerWindow(1)
+                val computedWindowCount = slidingWindowPaginator.recomputeWindows(pages.size)
+                _windowCount.value = computedWindowCount
+                
+                // Log window map for debugging
+                AppLogger.d("ReaderViewModel", "[WINDOW_BUILD] ${slidingWindowPaginator.debugWindowMap()}")
+                
+                // Validate assertion: windowCount should equal totalChapters in chapter-based mode
+                val assertionValid = slidingWindowPaginator.assertWindowCountValid()
+                if (!assertionValid) {
+                    AppLogger.e("ReaderViewModel", "[WINDOW_BUILD] Window count assertion failed!")
+                }
 
                 pages.forEachIndexed { index, content ->
                     pageContentCache.getOrPut(index) { MutableStateFlow(PageContent.EMPTY) }.value = content
@@ -170,6 +195,8 @@ class ReaderViewModel(
                 _currentPage.value = initialPage
                 _currentWindowIndex.value = initialPage
                 _content.value = pages.getOrNull(initialPage) ?: PageContent.EMPTY
+                
+                AppLogger.d("ReaderViewModel", "[WINDOW_BUILD] CHAPTER_BASED complete: windowCount=$computedWindowCount, initialPage=$initialPage")
             } catch (e: Exception) {
                 _pages.value = emptyList()
                 _totalPages.value = 0
@@ -178,12 +205,17 @@ class ReaderViewModel(
                 _currentWindowIndex.value = 0
                 _content.value = PageContent(text = "Error loading content: ${e.message}")
                 e.printStackTrace()
+            } finally {
+                // End window build - unlock pagination mode
+                paginationModeGuard.endWindowBuild()
             }
         }
     }
 
     private fun initializeContinuousPagination() {
         viewModelScope.launch {
+            // Begin window build - lock pagination mode during construction
+            paginationModeGuard.beginWindowBuild()
             try {
                 AppLogger.d("ReaderViewModel", "Initializing continuous pagination")
                 val paginator = ContinuousPaginator(bookFile, parser, windowSize = 5)
@@ -214,14 +246,25 @@ class ReaderViewModel(
                     return@launch
                 }
                 
-                _windowCount.value = slidingWindowManager.totalWindows(totalChapters)
+                // Use SlidingWindowPaginator for deterministic window computation
+                val computedWindowCount = slidingWindowPaginator.recomputeWindows(totalChapters)
+                _windowCount.value = computedWindowCount
+                
+                // Log window map for debugging
+                AppLogger.d("ReaderViewModel", "[WINDOW_BUILD] ${slidingWindowPaginator.debugWindowMap()}")
+                
+                // Validate assertion: windowCount == ceil(totalChapters / chaptersPerWindow)
+                val assertionValid = slidingWindowPaginator.assertWindowCountValid()
+                if (!assertionValid) {
+                    AppLogger.e("ReaderViewModel", "[WINDOW_BUILD] Window count assertion failed!")
+                }
                 
                 // Calculate initial window index with bounds validation
                 val safeStartChapter = startChapter.coerceIn(0, totalChapters - 1)
-                val initialWindowIndex = slidingWindowManager.windowForChapter(safeStartChapter)
+                val initialWindowIndex = slidingWindowPaginator.getWindowForChapter(safeStartChapter)
                 _currentWindowIndex.value = initialWindowIndex
                 
-                AppLogger.d("ReaderViewModel", "Continuous pagination: totalChapters=$totalChapters, windowCount=${_windowCount.value}, initialWindowIndex=$initialWindowIndex")
+                AppLogger.d("ReaderViewModel", "[WINDOW_BUILD] CONTINUOUS complete: totalChapters=$totalChapters, windowCount=$computedWindowCount, initialWindowIndex=$initialWindowIndex")
                 
                 isContinuousInitialized = true
 
@@ -239,6 +282,9 @@ class ReaderViewModel(
                 _currentPage.value = 0
                 _currentWindowIndex.value = 0
                 _content.value = PageContent(text = "Error loading content: ${e.message}")
+            } finally {
+                // End window build - unlock pagination mode
+                paginationModeGuard.endWindowBuild()
             }
         }
     }
