@@ -99,12 +99,19 @@ class SlidingWindowPaginatorTest {
     
     @Test
     fun `setChaptersPerWindow updates window size`() {
-        paginator.setChaptersPerWindow(3)
+        val changed = paginator.setChaptersPerWindow(3)
+        assertTrue(changed)
         paginator.recomputeWindows(10)
         
         assertEquals(4, paginator.windowCount) // ceil(10/3) = 4
         assertEquals(0, paginator.getWindowForChapter(0))
         assertEquals(1, paginator.getWindowForChapter(3))
+    }
+    
+    @Test
+    fun `setChaptersPerWindow returns false when unchanged`() {
+        val changed = paginator.setChaptersPerWindow(5) // already 5
+        assertFalse(changed)
     }
     
     @Test

@@ -85,11 +85,16 @@ class SlidingWindowPaginator(
      * after changing this value if windows have already been computed.
      *
      * @param newSize The new number of chapters per window
+     * @return true if the size changed and recomputation may be needed, false if unchanged
      */
-    fun setChaptersPerWindow(newSize: Int) {
+    fun setChaptersPerWindow(newSize: Int): Boolean {
         require(newSize > 0) { "chaptersPerWindow must be positive, got: $newSize" }
-        Log.d(TAG, "setChaptersPerWindow: $chaptersPerWindow -> $newSize")
+        if (chaptersPerWindow == newSize) {
+            return false
+        }
+        Log.d(TAG, "setChaptersPerWindow: $chaptersPerWindow -> $newSize (recomputation may be needed)")
         chaptersPerWindow = newSize
+        return true
     }
 
     /**
@@ -137,5 +142,7 @@ class SlidingWindowPaginator(
     companion object {
         private const val TAG = "SlidingWindowPaginator"
         const val DEFAULT_CHAPTERS_PER_WINDOW = 5
+        /** For chapter-based mode: one window per chapter */
+        const val CHAPTER_BASED_CHAPTERS_PER_WINDOW = 1
     }
 }

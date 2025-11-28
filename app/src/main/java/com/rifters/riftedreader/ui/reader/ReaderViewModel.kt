@@ -169,8 +169,8 @@ class ReaderViewModel(
                 _totalPages.value = pages.size
                 
                 // Use SlidingWindowPaginator for deterministic window computation
-                // In chapter-based mode: chaptersPerWindow = 1 (one window per chapter)
-                slidingWindowPaginator.setChaptersPerWindow(1)
+                // In chapter-based mode: one window per chapter
+                slidingWindowPaginator.setChaptersPerWindow(SlidingWindowPaginator.CHAPTER_BASED_CHAPTERS_PER_WINDOW)
                 val computedWindowCount = slidingWindowPaginator.recomputeWindows(pages.size)
                 _windowCount.value = computedWindowCount
                 

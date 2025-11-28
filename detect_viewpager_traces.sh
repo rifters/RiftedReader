@@ -103,9 +103,11 @@ grep -rn --include="*.kt" --include="*.java" $CONTEXT_FLAG \
 echo ""
 
 echo "--- 6. Potential Race Condition Patterns ---"
-echo "(Looking for mixed mode transitions and async window updates)"
+echo "(Looking for window/page state updates that could race with UI)"
 grep -rn --include="*.kt" --include="*.java" $CONTEXT_FLAG \
-    -e "\.value\s*=" \
+    -e "_windowCount\.value\s*=" \
+    -e "_currentWindowIndex\.value\s*=" \
+    -e "_totalPages\.value\s*=" \
     -e "notifyDataSetChanged" \
     "$REPO_ROOT/app/src/main/java/com/rifters/riftedreader/ui/reader" 2>/dev/null | \
     grep -v "^Binary" || echo "No race condition patterns found in reader package."

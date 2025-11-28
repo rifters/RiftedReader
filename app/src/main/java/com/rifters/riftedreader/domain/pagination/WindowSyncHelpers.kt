@@ -36,16 +36,18 @@ object WindowSyncHelpers {
         windowCountLiveData: MutableLiveData<Int>,
         adapter: RecyclerView.Adapter<*>
     ) {
-        val newWindowCount = paginator.windowCount
-        Log.d(TAG, "syncWindowCountToUi: scheduling update with windowCount=$newWindowCount")
-
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            // Already on main thread, execute directly
-            performSync(newWindowCount, windowCountLiveData, adapter)
+            // Already on main thread, read and execute directly
+            val windowCount = paginator.windowCount
+            Log.d(TAG, "syncWindowCountToUi: direct update with windowCount=$windowCount")
+            performSync(windowCount, windowCountLiveData, adapter)
         } else {
-            // Post to main thread
+            // Post to main thread - read inside the runnable to avoid stale data
+            Log.d(TAG, "syncWindowCountToUi: scheduling update on main thread")
             mainHandler.post {
-                performSync(newWindowCount, windowCountLiveData, adapter)
+                val windowCount = paginator.windowCount
+                Log.d(TAG, "syncWindowCountToUi: executing update with windowCount=$windowCount")
+                performSync(windowCount, windowCountLiveData, adapter)
             }
         }
     }
@@ -65,16 +67,18 @@ object WindowSyncHelpers {
         windowCountStateFlow: MutableStateFlow<Int>,
         adapter: RecyclerView.Adapter<*>
     ) {
-        val newWindowCount = paginator.windowCount
-        Log.d(TAG, "syncWindowCountToUiStateFlow: scheduling update with windowCount=$newWindowCount")
-
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            // Already on main thread, execute directly
-            performSyncStateFlow(newWindowCount, windowCountStateFlow, adapter)
+            // Already on main thread, read and execute directly
+            val windowCount = paginator.windowCount
+            Log.d(TAG, "syncWindowCountToUiStateFlow: direct update with windowCount=$windowCount")
+            performSyncStateFlow(windowCount, windowCountStateFlow, adapter)
         } else {
-            // Post to main thread
+            // Post to main thread - read inside the runnable to avoid stale data
+            Log.d(TAG, "syncWindowCountToUiStateFlow: scheduling update on main thread")
             mainHandler.post {
-                performSyncStateFlow(newWindowCount, windowCountStateFlow, adapter)
+                val windowCount = paginator.windowCount
+                Log.d(TAG, "syncWindowCountToUiStateFlow: executing update with windowCount=$windowCount")
+                performSyncStateFlow(windowCount, windowCountStateFlow, adapter)
             }
         }
     }
@@ -90,14 +94,16 @@ object WindowSyncHelpers {
         paginator: SlidingWindowPaginator,
         windowCountStateFlow: MutableStateFlow<Int>
     ) {
-        val newWindowCount = paginator.windowCount
-        Log.d(TAG, "syncWindowCountOnly: updating StateFlow with windowCount=$newWindowCount")
-
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            windowCountStateFlow.value = newWindowCount
+            val windowCount = paginator.windowCount
+            Log.d(TAG, "syncWindowCountOnly: direct update with windowCount=$windowCount")
+            windowCountStateFlow.value = windowCount
         } else {
+            Log.d(TAG, "syncWindowCountOnly: scheduling update on main thread")
             mainHandler.post {
-                windowCountStateFlow.value = newWindowCount
+                val windowCount = paginator.windowCount
+                Log.d(TAG, "syncWindowCountOnly: executing update with windowCount=$windowCount")
+                windowCountStateFlow.value = windowCount
             }
         }
     }
