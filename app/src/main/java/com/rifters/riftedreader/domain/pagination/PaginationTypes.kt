@@ -4,7 +4,7 @@ package com.rifters.riftedreader.domain.pagination
  * Type aliases for pagination concepts to provide semantic clarity.
  * 
  * The paginator system distinguishes between three different types of indices:
- * - WindowIndex: ViewPager2 page position (one HTML document per window)
+ * - WindowIndex: RecyclerView page position (one HTML document per window)
  * - ChapterIndex: Logical chapter in the book
  * - InPageIndex: Sub-page within a window (horizontal scroll position)
  * 
@@ -13,7 +13,7 @@ package com.rifters.riftedreader.domain.pagination
  */
 
 /**
- * Index of a window in the ViewPager2.
+ * Index of a window in the RecyclerView.
  * 
  * A window is a contiguous subset of chapters that are wrapped together into one HTML
  * document and loaded into one WebView instance. In continuous pagination mode, multiple

@@ -6,7 +6,7 @@ import android.util.Log
  * Deterministic sliding-window paginator for chapter-to-window grouping.
  * 
  * Provides stable, predictable mapping between chapters and windows to prevent
- * race conditions in ViewPager/ViewPager2 pagination. Windows are computed once
+ * race conditions in RecyclerView pagination. Windows are computed once
  * and remain stable until explicitly recomputed.
  * 
  * Example with chaptersPerWindow=5 and 120 total chapters:

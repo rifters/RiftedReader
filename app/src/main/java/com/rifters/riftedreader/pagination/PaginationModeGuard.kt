@@ -5,7 +5,7 @@ import androidx.lifecycle.LiveData
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 
 /**
- * Guard to prevent race conditions during window building/rebuilding in ViewPager/ViewPager2.
+ * Guard to prevent race conditions during window building/rebuilding in RecyclerView.
  * 
  * This guard ensures that pagination mode changes don't interfere with window building operations,
  * which could lead to inconsistent state (e.g., windowCount switching from 24 to 97 mid-operation).

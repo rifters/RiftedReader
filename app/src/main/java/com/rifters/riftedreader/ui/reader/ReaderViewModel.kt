@@ -135,7 +135,7 @@ class ReaderViewModel(
                 paginator.loadInitialWindow(startChapter)
                 _totalPages.value = paginator.getTotalGlobalPages()
                 
-                // Calculate window count for ViewPager2 (number of windows, not chapters)
+                // Calculate window count for RecyclerView (number of windows, not chapters)
                 val windowInfo = paginator.getWindowInfo()
                 val totalChapters = windowInfo.totalChapters
                 
@@ -572,7 +572,7 @@ class ReaderViewModel(
      * In continuous mode, this returns a sliding window combining multiple chapters.
      * In chapter-based mode, this returns just the single chapter HTML.
      * 
-     * @param windowIndex The window index for ViewPager2 (in continuous mode) or chapter index (in chapter-based mode)
+     * @param windowIndex The window index for RecyclerView (in continuous mode) or chapter index (in chapter-based mode)
      * @return WindowHtmlPayload containing the window HTML and metadata, or null if unavailable
      */
     suspend fun getWindowHtml(windowIndex: Int): WindowHtmlPayload? {
@@ -590,7 +590,7 @@ class ReaderViewModel(
             // Use the slidingWindowManager's window size for consistency
             val windowSize = slidingWindowManager.getWindowSize()
             
-            // windowIndex is the ViewPager2 position, directly used as window index
+            // windowIndex is the RecyclerView position, directly used as window index
             val firstChapterInWindow = slidingWindowManager.firstChapterInWindow(windowIndex)
             val lastChapterInWindow = slidingWindowManager.lastChapterInWindow(windowIndex, totalChapters)
             
@@ -636,7 +636,7 @@ class ReaderViewModel(
     }
     
     /**
-     * Navigate to a specific window index (for ViewPager2 navigation).
+     * Navigate to a specific window index (for RecyclerView navigation).
      * Updates the current window and the corresponding global page index.
      * 
      * @param windowIndex The target window index

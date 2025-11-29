@@ -20,7 +20,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.database.BookDatabase
-import androidx.viewpager2.widget.ViewPager2
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.PagerSnapHelper
+import androidx.recyclerview.widget.RecyclerView
 import com.rifters.riftedreader.data.preferences.ReaderMode
 import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
@@ -60,6 +62,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var autoContinueTts: Boolean = false
     private var pendingTtsResume: Boolean = false
     private var usingWebViewSlider: Boolean = false
+    private lateinit var layoutManager: LinearLayoutManager
+    private lateinit var snapHelper: PagerSnapHelper
+    private var currentPagerPosition: Int = 0
+    private var isUserScrolling: Boolean = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppLogger.event("ReaderActivity", "onCreate started", "ui/ReaderActivity/lifecycle")
@@ -189,20 +195,20 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             
             AppLogger.d(
                 "ReaderActivity",
-                "ViewPager2.onTouch: action=$actionName(masked=$actionMasked) x=${event.x} y=${event.y} " +
+                "RecyclerView.onTouch: action=$actionName(masked=$actionMasked) x=${event.x} y=${event.y} " +
                         "pointerCount=$pointerCount pointerIndex=$pointerIndex pointerId=$pointerId mode=$readerMode currentPage=${viewModel.currentPage.value}"
             )
             val result = gestureDetector.onTouchEvent(event)
             AppLogger.d(
                 "ReaderActivity",
-                "ViewPager2.onTouch RETURNED=$result for action=$actionName"
+                "RecyclerView.onTouch RETURNED=$result for action=$actionName"
             )
-            // Don't consume the event - let ViewPager handle paging
+            // Don't consume the event - let RecyclerView handle paging
             false
         }
         
         binding.contentScrollView.setOnTouchListener(scrollTouchListener)
-        binding.pageViewPager.setOnTouchListener(pagerTouchListener)
+        binding.pageRecyclerView.setOnTouchListener(pagerTouchListener)
     }
     
     private fun setupControls(bookTitle: String) {
@@ -234,79 +240,67 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         }
 
         pagerAdapter = ReaderPagerAdapter(this, viewModel)
-        binding.pageViewPager.adapter = pagerAdapter
-        binding.pageViewPager.offscreenPageLimit = 1
         
-        // DEBUG-ONLY: Instrument ViewPager2's internal RecyclerView for gesture tracing
-        // ViewPager2 contains a RecyclerView as its direct child at index 0
-        binding.pageViewPager.post {
-            if (binding.pageViewPager.childCount > 0) {
-                val recyclerView = binding.pageViewPager.getChildAt(0)
-                recyclerView.setOnTouchListener { _, event ->
-                    val actionMasked = event.actionMasked
-                    val actionName = when (actionMasked) {
-                        MotionEvent.ACTION_DOWN -> "DOWN"
-                        MotionEvent.ACTION_MOVE -> "MOVE"
-                        MotionEvent.ACTION_UP -> "UP"
-                        MotionEvent.ACTION_CANCEL -> "CANCEL"
-                        MotionEvent.ACTION_POINTER_DOWN -> "POINTER_DOWN"
-                        MotionEvent.ACTION_POINTER_UP -> "POINTER_UP"
-                        else -> "OTHER($actionMasked)"
+        // Set up RecyclerView with horizontal LinearLayoutManager and PagerSnapHelper
+        layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        snapHelper = PagerSnapHelper()
+        
+        binding.pageRecyclerView.apply {
+            this.layoutManager = this@ReaderActivity.layoutManager
+            adapter = pagerAdapter
+            // Attach snap helper for page snapping behavior (one page at a time)
+            snapHelper.attachToRecyclerView(this)
+            // Set up scroll listener to detect page changes
+            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                    super.onScrollStateChanged(recyclerView, newState)
+                    val stateName = when (newState) {
+                        RecyclerView.SCROLL_STATE_IDLE -> "IDLE"
+                        RecyclerView.SCROLL_STATE_DRAGGING -> "DRAGGING"
+                        RecyclerView.SCROLL_STATE_SETTLING -> "SETTLING"
+                        else -> "UNKNOWN($newState)"
                     }
-                    val timestamp = System.currentTimeMillis()
-                    val currentPage = viewModel.currentPage.value
-                    val pointerCount = event.pointerCount
-                    val pointerIndex = event.actionIndex
-                    val pointerId = if (pointerCount > pointerIndex) event.getPointerId(pointerIndex) else -1
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "RecyclerView.onScrollStateChanged: state=$stateName currentWindow=${viewModel.currentWindowIndex.value} [PAGE_SCROLL_STATE]"
+                    )
                     
-                    AppLogger.d(
-                        "ReaderActivity",
-                        "DEBUG-ONLY: ViewPager2.RecyclerView.onTouch: action=$actionName(masked=$actionMasked) " +
-                                "x=${event.x} y=${event.y} pointerCount=$pointerCount pointerIndex=$pointerIndex " +
-                                "pointerId=$pointerId timestamp=$timestamp currentPage=$currentPage"
-                    )
-                    // Don't consume - let RecyclerView handle its touch events
-                    false
+                    isUserScrolling = newState == RecyclerView.SCROLL_STATE_DRAGGING
+                    
+                    if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                        // Get the current snapped position
+                        val snapView = snapHelper.findSnapView(this@ReaderActivity.layoutManager)
+                        val position = if (snapView != null) {
+                            this@ReaderActivity.layoutManager.getPosition(snapView)
+                        } else {
+                            // Fallback: try to get position from first visible item
+                            val firstVisible = this@ReaderActivity.layoutManager.findFirstVisibleItemPosition()
+                            if (firstVisible != RecyclerView.NO_POSITION) firstVisible else currentPagerPosition
+                        }
+                        
+                        if (position >= 0 && position != currentPagerPosition) {
+                            val previousWindow = currentPagerPosition
+                            currentPagerPosition = position
+                            
+                            AppLogger.d(
+                                "ReaderActivity",
+                                "RecyclerView.onPageSelected: position=$position (windowIndex) previousWindow=$previousWindow " +
+                                        "mode=$readerMode paginationMode=${viewModel.paginationMode} [PAGE_CHANGE_FROM_RECYCLERVIEW]"
+                            )
+                            
+                            if (readerMode == ReaderMode.PAGE && viewModel.currentWindowIndex.value != position) {
+                                AppLogger.d(
+                                    "ReaderActivity",
+                                    "Updating ViewModel window: $previousWindow -> $position (triggered by RecyclerView gesture/animation) [WINDOW_SWITCH_REASON]"
+                                )
+                                viewModel.goToWindow(position)
+                            }
+                            controlsManager.onUserInteraction()
+                        }
+                    }
                 }
-                AppLogger.d("ReaderActivity", "DEBUG-ONLY: ViewPager2 RecyclerView instrumentation attached")
-            } else {
-                AppLogger.w("ReaderActivity", "DEBUG-ONLY: ViewPager2 has no children to instrument")
-            }
+            })
         }
-        
-        binding.pageViewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                super.onPageSelected(position)
-                val previousWindow = viewModel.currentWindowIndex.value
-                AppLogger.d(
-                    "ReaderActivity",
-                    "ViewPager2.onPageSelected: position=$position (windowIndex) previousWindow=$previousWindow " +
-                            "mode=$readerMode paginationMode=${viewModel.paginationMode} [PAGE_CHANGE_FROM_VIEWPAGER2]"
-                )
-                if (readerMode == ReaderMode.PAGE && viewModel.currentWindowIndex.value != position) {
-                    AppLogger.d(
-                        "ReaderActivity",
-                        "Updating ViewModel window: $previousWindow -> $position (triggered by ViewPager2 gesture/animation) [WINDOW_SWITCH_REASON]"
-                    )
-                    viewModel.goToWindow(position)
-                }
-                controlsManager.onUserInteraction()
-            }
-            
-            override fun onPageScrollStateChanged(state: Int) {
-                super.onPageScrollStateChanged(state)
-                val stateName = when (state) {
-                    ViewPager2.SCROLL_STATE_IDLE -> "IDLE"
-                    ViewPager2.SCROLL_STATE_DRAGGING -> "DRAGGING"
-                    ViewPager2.SCROLL_STATE_SETTLING -> "SETTLING"
-                    else -> "UNKNOWN($state)"
-                }
-                AppLogger.d(
-                    "ReaderActivity",
-                    "ViewPager2.onPageScrollStateChanged: state=$stateName currentWindow=${viewModel.currentWindowIndex.value} [PAGE_SCROLL_STATE]"
-                )
-            }
-        })
 
         binding.prevButton.setOnClickListener {
             navigateToPreviousPage()
@@ -356,7 +350,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 }
                 readerMode == ReaderMode.PAGE -> {
                     viewModel.goToPage(target)
-                    binding.pageViewPager.setCurrentItem(target, true)
+                    setCurrentItem(target, true)
                 }
                 else -> viewModel.goToPage(target)
             }
@@ -430,10 +424,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 
                 launch {
                     viewModel.currentWindowIndex.collect { windowIndex ->
-                        // Update ViewPager2 position when window index changes
-                        if (readerMode == ReaderMode.PAGE && binding.pageViewPager.currentItem != windowIndex) {
-                            AppLogger.d("ReaderActivity", "Syncing ViewPager2 to window index: $windowIndex")
-                            binding.pageViewPager.setCurrentItem(windowIndex, false)
+                        // Update RecyclerView position when window index changes
+                        if (readerMode == ReaderMode.PAGE && currentPagerPosition != windowIndex) {
+                            AppLogger.d("ReaderActivity", "Syncing RecyclerView to window index: $windowIndex")
+                            setCurrentItem(windowIndex, false)
                         }
                     }
                 }
@@ -441,11 +435,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 launch {
                     viewModel.currentPage.collect { page ->
                         updatePageIndicator(page)
-                        // For chapter-based mode, sync ViewPager2 with page
-                        // For continuous mode, ViewPager2 is synced via currentWindowIndex
+                        // For chapter-based mode, sync RecyclerView with page
+                        // For continuous mode, RecyclerView is synced via currentWindowIndex
                         if (readerMode == ReaderMode.PAGE && viewModel.paginationMode == PaginationMode.CHAPTER_BASED) {
-                            if (binding.pageViewPager.currentItem != page) {
-                                binding.pageViewPager.setCurrentItem(page, false)
+                            if (currentPagerPosition != page) {
+                                setCurrentItem(page, false)
                             }
                         }
                     }
@@ -604,7 +598,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         val palette = ReaderThemePaletteResolver.resolve(this, settings.theme)
         binding.readerRoot.setBackgroundColor(palette.backgroundColor)
         binding.contentTextView.setTextColor(palette.textColor)
-        binding.pageViewPager.setBackgroundColor(palette.backgroundColor)
+        binding.pageRecyclerView.setBackgroundColor(palette.backgroundColor)
         readerMode = settings.mode
         AppLogger.d(
             "ReaderActivity",
@@ -641,13 +635,13 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     
                     AppLogger.d("ReaderActivity", "TOC navigation: chapterIndex=$chapterIndex -> windowIndex=$windowIndex, globalPage=$targetGlobalPage")
                     
-                    // Update ViewPager2 to show the correct window
-                    binding.pageViewPager.setCurrentItem(windowIndex, true)
+                    // Update RecyclerView to show the correct window
+                    setCurrentItem(windowIndex, true)
                 }
             } else {
                 // Chapter-based mode: window index equals chapter index
                 viewModel.goToPage(chapterIndex)
-                binding.pageViewPager.setCurrentItem(chapterIndex, true)
+                setCurrentItem(chapterIndex, true)
             }
         }
     }
@@ -692,9 +686,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             if (readerMode == ReaderMode.PAGE && moved) {
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically setting ViewPager2 to window $nextWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Programmatically setting RecyclerView to window $nextWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
                 )
-                binding.pageViewPager.setCurrentItem(nextWindow, animated)
+                setCurrentItem(nextWindow, animated)
             }
         } else {
             val currentIndex = viewModel.currentPage.value
@@ -708,9 +702,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             if (readerMode == ReaderMode.PAGE && moved) {
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically setting ViewPager2 to page $nextIndex (user navigation) [PROGRAMMATIC_PAGE_CHANGE]"
+                    "Programmatically setting RecyclerView to page $nextIndex (user navigation) [PROGRAMMATIC_PAGE_CHANGE]"
                 )
-                binding.pageViewPager.setCurrentItem(nextIndex, animated)
+                setCurrentItem(nextIndex, animated)
             }
         }
     }
@@ -729,9 +723,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             if (readerMode == ReaderMode.PAGE && moved) {
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically setting ViewPager2 to window $previousWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Programmatically setting RecyclerView to window $previousWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
                 )
-                binding.pageViewPager.setCurrentItem(previousWindow, animated)
+                setCurrentItem(previousWindow, animated)
             }
         } else {
             val currentIndex = viewModel.currentPage.value
@@ -745,9 +739,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             if (readerMode == ReaderMode.PAGE && moved) {
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically setting ViewPager2 to page $previousIndex (user navigation) [PROGRAMMATIC_PAGE_CHANGE]"
+                    "Programmatically setting RecyclerView to page $previousIndex (user navigation) [PROGRAMMATIC_PAGE_CHANGE]"
                 )
-                binding.pageViewPager.setCurrentItem(previousIndex, animated)
+                setCurrentItem(previousIndex, animated)
             }
         }
     }
@@ -771,9 +765,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 viewModel.setJumpToLastPageFlag()
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically setting ViewPager2 to window $previousWindow with jump-to-last-page flag [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Programmatically setting RecyclerView to window $previousWindow with jump-to-last-page flag [PROGRAMMATIC_WINDOW_CHANGE]"
                 )
-                binding.pageViewPager.setCurrentItem(previousWindow, animated)
+                setCurrentItem(previousWindow, animated)
             }
         } else {
             val currentIndex = viewModel.currentPage.value
@@ -787,9 +781,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             if (readerMode == ReaderMode.PAGE && moved) {
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically setting ViewPager2 to page $previousIndex with jump-to-last-page flag [PROGRAMMATIC_PAGE_CHANGE]"
+                    "Programmatically setting RecyclerView to page $previousIndex with jump-to-last-page flag [PROGRAMMATIC_PAGE_CHANGE]"
                 )
-                binding.pageViewPager.setCurrentItem(previousIndex, animated)
+                setCurrentItem(previousIndex, animated)
             }
         }
     }
@@ -902,16 +896,13 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         binding.root.post {
             if (readerMode == ReaderMode.PAGE) {
                 binding.contentScrollView.isVisible = false
-                binding.pageViewPager.isVisible = true
-                // Disable ViewPager2 user input to let WebView handle swipes
-                // and enable tap zones to work properly
-                binding.pageViewPager.isUserInputEnabled = false
-                AppLogger.d("ReaderActivity", "ViewPager2 user input disabled for PAGE mode")
+                binding.pageRecyclerView.isVisible = true
+                // RecyclerView touch handling is managed by gesture detection in fragments
+                AppLogger.d("ReaderActivity", "RecyclerView visible for PAGE mode")
                 viewModel.publishHighlight(viewModel.currentPage.value, currentHighlightRange)
             } else {
                 // Switching to SCROLL mode
-                binding.pageViewPager.isVisible = false
-                binding.pageViewPager.isUserInputEnabled = true
+                binding.pageRecyclerView.isVisible = false
                 binding.contentScrollView.isVisible = true
                 currentHighlightRange?.let { applyScrollHighlight(it) }
                 
@@ -1195,6 +1186,37 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
     private fun shouldUseWebViewSlider(): Boolean {
         return readerMode == ReaderMode.PAGE && viewModel.paginationMode == PaginationMode.CHAPTER_BASED
+    }
+    
+    /**
+     * Set the current item in the RecyclerView with optional smooth scrolling.
+     * Enables page-based navigation behavior.
+     */
+    private fun setCurrentItem(position: Int, smoothScroll: Boolean) {
+        // Note: currentPagerPosition is updated in the OnScrollListener when scroll settles
+        // to ensure consistency with actual scroll state
+        if (smoothScroll) {
+            binding.pageRecyclerView.smoothScrollToPosition(position)
+        } else {
+            layoutManager.scrollToPositionWithOffset(position, 0)
+            // For non-smooth scrolls, update position immediately since there's no animation
+            currentPagerPosition = position
+        }
+    }
+    
+    /**
+     * Get the current item position in the RecyclerView.
+     * Enables page position tracking for page-based scrolling.
+     */
+    private fun getCurrentItem(): Int {
+        val snapView = snapHelper.findSnapView(layoutManager)
+        return snapView?.let { layoutManager.getPosition(it) } ?: currentPagerPosition
+    }
+    
+    override fun onDestroy() {
+        // Clean up adapter fragments
+        pagerAdapter.cleanUp()
+        super.onDestroy()
     }
 
 }

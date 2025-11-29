@@ -8,7 +8,7 @@ import com.rifters.riftedreader.util.AppLogger
 
 /**
  * Custom WebView that logs touch event handling for debugging gesture interactions.
- * This helps diagnose touch event flow between WebView and parent ViewPager2.
+ * This helps diagnose touch event flow between WebView and parent RecyclerView.
  */
 class DebugWebView @JvmOverloads constructor(
     context: Context,

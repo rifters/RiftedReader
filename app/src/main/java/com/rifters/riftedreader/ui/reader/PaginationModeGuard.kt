@@ -9,7 +9,7 @@ import com.rifters.riftedreader.domain.pagination.PaginationMode
  * during window building operations.
  *
  * This guard prevents mode changes while windows are being rebuilt, ensuring
- * deterministic behavior with ViewPager2/RecyclerView adapters.
+ * deterministic behavior with RecyclerView adapters.
  *
  * @param paginationModeLiveData The LiveData holding the current pagination mode
  */
