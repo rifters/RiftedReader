@@ -168,7 +168,8 @@ class ReaderViewModel(
                 if (computedWindowCount == 0 && totalChapters > 0) {
                     AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] FALLBACK: Zero windows computed for $totalChapters chapters - forcing windowCount=1")
                     _windowCount.value = 1
-                    windowCountLiveData.postValue(1)
+                    // Also update LiveData for observers using traditional LiveData pattern
+                    windowCountLiveData.value = 1
                 }
                 
                 // Log window map for debugging

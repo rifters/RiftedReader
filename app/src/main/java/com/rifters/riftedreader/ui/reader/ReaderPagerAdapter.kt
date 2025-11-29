@@ -38,12 +38,10 @@ class ReaderPagerAdapter(
 
     override fun getItemCount(): Int {
         val count = viewModel.windowCount.value
-        // [PAGINATION_DEBUG] Log window count on each query
+        // [PAGINATION_DEBUG] Log window count only when it changes to avoid performance impact
         if (count != lastKnownItemCount) {
             AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] getItemCount changed: $lastKnownItemCount -> $count (windows)")
             lastKnownItemCount = count
-        } else {
-            AppLogger.d("ReaderPagerAdapter", "getItemCount: $count (windows)")
         }
         
         // [FALLBACK] If zero windows, log warning for debugging
