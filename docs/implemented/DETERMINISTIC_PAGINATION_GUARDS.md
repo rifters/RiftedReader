@@ -2,11 +2,13 @@
 
 ## Overview
 
-This document describes the deterministic sliding-window pagination infrastructure added in PRs #180, #181, and #182. The goal is to prevent ViewPager2/continuous pagination race conditions by introducing:
+This document describes the deterministic sliding-window pagination infrastructure added in PRs #180, #181, and #182. The goal is to prevent RecyclerView/continuous pagination race conditions by introducing:
 
 1. A single source-of-truth paginator (`SlidingWindowPaginator`)
 2. Mode transition guards (`PaginationModeGuard`)
 3. Thread-safe UI synchronization (`WindowSyncHelpers`)
+
+**Note:** ViewPager2 has been removed and replaced with RecyclerView + PagerSnapHelper. See [VIEWPAGER2_REMOVAL.md](./VIEWPAGER2_REMOVAL.md) for details.
 
 ## Problem Statement
 
