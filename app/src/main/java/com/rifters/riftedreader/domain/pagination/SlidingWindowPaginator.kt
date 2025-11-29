@@ -1,6 +1,5 @@
 package com.rifters.riftedreader.domain.pagination
 
-import android.util.Log
 import com.rifters.riftedreader.util.AppLogger
 import kotlin.math.ceil
 
