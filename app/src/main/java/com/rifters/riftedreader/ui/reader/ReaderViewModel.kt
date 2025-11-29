@@ -165,7 +165,7 @@ class ReaderViewModel(
                 _totalPages.value = 0
                 _windowCount.value = 0
                 windowCountLiveData.postValue(0)
-                _content.value = PageContent(text = "Error loading content: ${e.message}")
+                _content.value = PageContent.EMPTY
             }
         }
     }
@@ -219,7 +219,7 @@ class ReaderViewModel(
                     AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] Book has no chapters - applying fallback")
                     _totalPages.value = 0
                     _windowCount.value = 0
-                    windowCountLiveData.value = 0
+                    windowCountLiveData.postValue(0)
                     _currentPage.value = 0
                     _currentWindowIndex.value = 0
                     _content.value = PageContent(text = "No content available")
