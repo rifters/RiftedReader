@@ -100,17 +100,14 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         val factory = ReaderViewModel.Factory(bookId, bookFile, parser, repository, readerPreferences)
         viewModel = ViewModelProvider(this, factory)[ReaderViewModel::class.java]
         
-        // DEBUG: Log initial pagination state
-        if (isDebugBuild()) {
-            val initialPaginationMode = viewModel.paginationMode
-            val initialWindowCount = viewModel.windowCount.value
-            val initialWindowCountLiveData = viewModel.windowCountLiveData.value
-            Log.d("ReaderActivity", "[DEBUG] Initial pagination state: " +
-                "paginationMode=$initialPaginationMode, " +
-                "windowCount=$initialWindowCount, " +
-                "windowCountLiveData=$initialWindowCountLiveData")
-            Log.d("ReaderActivity", "[DEBUG] Run detect_viewpager_traces.sh to find leftover ViewPager2 references")
-        }
+        // Debug log: assert initial pagination mode and window count
+        AppLogger.d(
+            "ReaderActivity",
+            "[STARTUP_ASSERT] Initial paginationMode=${viewModel.paginationMode}, " +
+                    "windowCount=${viewModel.windowCount.value}, " +
+                    "totalPages=${viewModel.totalPages.value}, " +
+                    "bookId=${viewModel.bookId}"
+        )
         
         setupControls(bookTitle)
         setupGestures()
