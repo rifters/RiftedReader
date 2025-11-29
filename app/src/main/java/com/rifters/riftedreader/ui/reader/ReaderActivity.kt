@@ -98,6 +98,16 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         
         val factory = ReaderViewModel.Factory(bookId, bookFile, parser, repository, readerPreferences)
         viewModel = ViewModelProvider(this, factory)[ReaderViewModel::class.java]
+        
+        // Debug log: assert initial pagination mode and window count
+        AppLogger.d(
+            "ReaderActivity",
+            "[STARTUP_ASSERT] Initial paginationMode=${viewModel.paginationMode}, " +
+                    "windowCount=${viewModel.windowCount.value}, " +
+                    "totalPages=${viewModel.totalPages.value}, " +
+                    "bookId=${viewModel.bookId}"
+        )
+        
         setupControls(bookTitle)
         setupGestures()
         observeViewModel()
