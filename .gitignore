@@ -84,3 +84,9 @@ lint-results.xml
 
 # VS Code
 .vscode/
+
+# Node.js
+node_modules/
+tests/js/node_modules/
+package-lock.json
+tests/js/package-lock.json

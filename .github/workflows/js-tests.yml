@@ -1,0 +1,40 @@
+name: JavaScript Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'app/src/main/assets/**/*.js'
+      - 'tests/js/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'app/src/main/assets/**/*.js'
+      - 'tests/js/**'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: tests/js
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: tests/js/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test

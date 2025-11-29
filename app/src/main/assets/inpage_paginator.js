@@ -198,15 +198,22 @@
     /**
      * Update column styles on the content wrapper
      * Preserves existing fontSize to avoid breaking dynamic font size adjustments
+     * 
+     * CRITICAL FIX: Sets wrapper width to an exact multiple of viewport width
+     * to ensure horizontal paging aligns correctly and prevents vertical stacking.
      */
     function updateColumnStyles(wrapper) {
         viewportWidth = window.innerWidth;
         const columnWidth = viewportWidth;
         
+        console.log('inpage_paginator: [STYLES] updateColumnStyles called, viewportWidth=' + viewportWidth);
+        
         // Preserve the current font size before updating styles
         const preservedFontSize = wrapper.style.fontSize;
         
+        // Set up column CSS with explicit display and height
         wrapper.style.cssText = `
+            display: block;
             column-width: ${columnWidth}px;
             column-gap: ${COLUMN_GAP}px;
             column-fill: auto;
@@ -219,15 +226,22 @@
             wrapper.style.fontSize = preservedFontSize;
         }
         
-        // CRITICAL FIX: Set explicit width on wrapper to enable horizontal scrolling
-        // Without this, scrollWidth reports correctly but scrollLeft stays 0
-        // Force a layout to get accurate scrollWidth measurement
+        // CRITICAL FIX: Force reflow before measurement to get accurate scrollWidth
         wrapper.offsetHeight; // Force reflow
-        const totalWidth = wrapper.scrollWidth;
-        if (totalWidth > 0) {
-            wrapper.style.width = totalWidth + 'px';
-            console.log('inpage_paginator: Set wrapper width to ' + totalWidth + 'px for scrolling');
-        }
+        
+        // CRITICAL FIX: Compute page count and set wrapper width to an exact multiple
+        // of viewport width. This guarantees horizontal grid alignment and prevents
+        // vertical stacking that breaks horizontal paging.
+        const scrollWidth = wrapper.scrollWidth;
+        const pageCount = Math.max(1, Math.ceil(scrollWidth / viewportWidth));
+        const exactWidth = pageCount * viewportWidth;
+        
+        wrapper.style.width = exactWidth + 'px';
+        
+        // Force another reflow after setting width to ensure layout is stable
+        wrapper.offsetHeight;
+        
+        console.log('inpage_paginator: [STYLES] Set wrapper width=' + exactWidth + 'px (pageCount=' + pageCount + ', scrollWidth=' + scrollWidth + ', viewportWidth=' + viewportWidth + ')');
     }
 
     function wrapExistingContentAsSegment() {
@@ -1254,11 +1268,16 @@
      * This is the primary entry point for initializing a window after loading
      * HTML content into the WebView.
      * 
+     * CRITICAL FIX: This function now keeps windowMode='CONSTRUCTION' while appending
+     * initial chapters from descriptor.chapters, allowing Android-initiated streaming
+     * during initial load. It only calls finalizeWindow() after all initial segments
+     * are appended and reflowed.
+     * 
      * @param {Object} descriptor - WindowDescriptor from Android
      * @param {number} descriptor.windowIndex - Window index
      * @param {number} descriptor.firstChapterIndex - First chapter index
      * @param {number} descriptor.lastChapterIndex - Last chapter index
-     * @param {Array} descriptor.chapters - Array of ChapterDescriptor objects
+     * @param {Array} [descriptor.chapters] - Optional array of chapter data (string HTML or {chapterIndex, html} objects)
      * @param {Object} [descriptor.entryPosition] - Optional entry position
      * @param {number} [descriptor.estimatedPageCount] - Optional estimated page count
      */
@@ -1273,17 +1292,57 @@
                    ' with chapters ' + descriptor.firstChapterIndex + '-' + descriptor.lastChapterIndex);
         
         try {
-            // 1. Configure paginator for window mode
+            // 1. Configure paginator for window mode (keeps windowMode = 'CONSTRUCTION')
             configure({
                 mode: 'window',
                 windowIndex: descriptor.windowIndex,
                 rootSelector: '#window-root'
             });
             
-            // 2. Finalize window (lock down for reading)
+            // 2. CRITICAL FIX: Append chapters from descriptor.chapters BEFORE finalizing
+            // This allows Android-initiated streaming during initial load while still
+            // in CONSTRUCTION mode. Without this, appendChapterSegment would throw.
+            if (descriptor.chapters && Array.isArray(descriptor.chapters) && descriptor.chapters.length > 0) {
+                console.log('inpage_paginator: [WINDOW_API] Appending ' + descriptor.chapters.length + 
+                           ' chapter(s) from descriptor.chapters (windowMode=' + windowMode + ')');
+                
+                for (let i = 0; i < descriptor.chapters.length; i++) {
+                    const chapterData = descriptor.chapters[i];
+                    let chapterIndex;
+                    let html;
+                    
+                    // Support both simple string arrays and {chapterIndex, html} objects
+                    if (typeof chapterData === 'string') {
+                        // String array: use firstChapterIndex + offset as chapterIndex
+                        chapterIndex = descriptor.firstChapterIndex + i;
+                        html = chapterData;
+                    } else if (chapterData && typeof chapterData === 'object') {
+                        // Object with chapterIndex and html
+                        chapterIndex = chapterData.chapterIndex !== undefined ? chapterData.chapterIndex : (descriptor.firstChapterIndex + i);
+                        html = chapterData.html || '';
+                    } else {
+                        console.warn('inpage_paginator: [WINDOW_API] Skipping invalid chapter data at index ' + i);
+                        continue;
+                    }
+                    
+                    if (html && html.trim() !== '') {
+                        console.log('inpage_paginator: [WINDOW_API] Building segment for chapter ' + chapterIndex);
+                        const segment = buildSegmentFromHtml(chapterIndex, html);
+                        contentWrapper.appendChild(segment);
+                        chapterSegments.push(segment);
+                    }
+                }
+                
+                // 3. Reflow once after appending all initial segments
+                console.log('inpage_paginator: [WINDOW_API] Reflowing after appending ' + chapterSegments.length + ' segment(s)');
+                reflow(false);
+            }
+            
+            // 4. Now finalize window (lock down for reading - enter ACTIVE mode)
+            console.log('inpage_paginator: [WINDOW_API] Finalizing window after initial segment load');
             finalizeWindow();
             
-            // 3. Navigate to entry position if specified
+            // 5. Navigate to entry position if specified
             if (descriptor.entryPosition) {
                 const entry = descriptor.entryPosition;
                 console.log('inpage_paginator: [WINDOW_API] Navigating to entry position: chapter=' + 
@@ -1299,7 +1358,7 @@
                 }
             }
             
-            // 4. Report ready to Android with chapter boundaries
+            // 6. Report ready to Android with chapter boundaries
             const pageCount = getPageCount();
             const chapterBoundaries = getChapterBoundaries();
             
