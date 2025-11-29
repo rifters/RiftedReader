@@ -7,12 +7,16 @@ plugins {
 
 android {
     namespace = "com.rifters.riftedreader"
-    compileSdk = 34
+    compileSdk = 35
+
+    // NDK version for 16 KB page size compatibility (Android 15+ requirement)
+    // NDK r28+ includes native 16KB page alignment support
+    ndkVersion = "28.0.13004108"
 
     defaultConfig {
         applicationId = "com.rifters.riftedreader"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
 
@@ -20,6 +24,23 @@ android {
         
         vectorDrawables {
             useSupportLibrary = true
+        }
+
+        // Native library configuration for 16 KB page size alignment
+        // Required for Android 15+ devices with 16 KB page sizes
+        ndk {
+            // Support all common ABIs
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+        }
+
+        // ExternalNativeBuild arguments for CMake (when native code is added)
+        externalNativeBuild {
+            cmake {
+                // Linker flag for 16 KB page alignment
+                arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+                cFlags += "-D__ANDROID_16KB_PAGE_SIZE__"
+                cppFlags += "-D__ANDROID_16KB_PAGE_SIZE__"
+            }
         }
     }
 
@@ -50,6 +71,14 @@ android {
     testOptions {
         unitTests {
             isReturnDefaultValues = true
+        }
+    }
+
+    // Packaging options for native libraries
+    packaging {
+        // Ensure native libraries are not compressed for proper page alignment
+        jniLibs {
+            useLegacyPackaging = false
         }
     }
 }

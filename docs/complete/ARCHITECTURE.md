@@ -566,10 +566,76 @@ Testing
 └─► Room Testing (2.6.1)
 
 Build Tools
-├─► Android Gradle Plugin (8.2.0)
-├─► Kotlin Plugin (1.9.20)
-└─► KSP (1.9.20-1.0.14)
+├─► Android Gradle Plugin (8.5.2)
+├─► Kotlin Plugin (1.9.24)
+├─► KSP (1.9.24-1.0.20)
+├─► Gradle (8.7)
+└─► NDK (28.0.13004108) - for 16 KB page size support
 ```
+
+---
+
+## Native Library Requirements (16 KB Page Size)
+
+Starting with Android 15 (API 35), devices may use 16 KB page sizes instead of the traditional
+4 KB. All native libraries (.so files) must be built with 16 KB page alignment to ensure
+compatibility.
+
+### Current Native Libraries
+
+The following native libraries are included via the `android-pdf-viewer` dependency:
+- `libc++_shared.so` - C++ standard library
+- `libjniPdfium.so` - JNI bindings for PDFium
+- `libmodft2.so` - FreeType font library
+- `libmodpdfium.so` - PDFium PDF rendering library
+- `libmodpng.so` - PNG image library
+
+### Configuration
+
+The project is configured for 16 KB page size compatibility:
+
+1. **NDK Version**: r28+ (28.0.13004108) - includes native 16 KB page support
+2. **Target SDK**: 35 (Android 15+)
+3. **Gradle Plugin**: 8.5.2+ - supports flexible page sizes
+4. **CMake Arguments**: `-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON`
+5. **JNI Libs Packaging**: `useLegacyPackaging = false`
+
+### Building Native Code
+
+When adding custom native code, use the following linker flags:
+
+```cmake
+# In CMakeLists.txt
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
+```
+
+Or in `build.gradle.kts`:
+```kotlin
+externalNativeBuild {
+    cmake {
+        arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+    }
+}
+```
+
+### Verification
+
+To verify native library alignment, use:
+```bash
+readelf -l <library>.so | grep -A1 LOAD
+```
+
+LOAD segments should be aligned to 0x4000 (16 KB) offsets.
+
+### Third-Party Libraries
+
+Third-party libraries with native code must provide 16 KB compatible builds. When evaluating
+new dependencies:
+1. Check if the library uses native code
+2. Verify the library is updated for Android 15+ compatibility
+3. Test on 16 KB page size emulators/devices
+
+**Reference**: https://developer.android.com/16kb-page-size
 
 ---
 

@@ -662,6 +662,24 @@ implementation("com.github.barteksc:android-pdf-viewer:3.2.0-beta.1")
 - Keep functions small
 - Avoid code duplication
 
+### Native Library Requirements (16 KB Page Size)
+
+Starting November 1st, 2025, all apps targeting Android 15+ must support 16 KB page size devices.
+
+**Requirements for native libraries:**
+- All .so files must have LOAD segments aligned at 16 KB (0x4000) boundaries
+- Use NDK r28+ for native code compilation
+- Add linker flag `-Wl,-z,max-page-size=16384` to CMake builds
+- Configure Gradle with `ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON`
+
+**When adding new native dependencies:**
+1. Verify the library provides 16 KB compatible .so files
+2. If building from source, use the correct linker flags
+3. Test on Android 15+ emulator with 16 KB page size
+4. Verify alignment with `readelf -l <library>.so`
+
+**Reference**: https://developer.android.com/16kb-page-size
+
 ### Testing
 - Unit tests for business logic
 - UI tests for critical flows
@@ -704,6 +722,10 @@ implementation("com.github.barteksc:android-pdf-viewer:3.2.0-beta.1")
 4. **Memory Constraints**
    - Risk: Out of memory errors
    - Mitigation: Proper resource management, testing
+
+5. **16 KB Page Size Compatibility**
+   - Risk: App crashes on Android 15+ devices with 16 KB pages
+   - Mitigation: Use NDK r28+, verify third-party libraries, test on 16KB emulator
 
 ### Project Risks
 
