@@ -250,6 +250,32 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             adapter = pagerAdapter
             // Attach snap helper for page snapping behavior (one page at a time)
             snapHelper.attachToRecyclerView(this)
+            
+            // [PAGINATION_DEBUG] Add layout listener to log RecyclerView measurements
+            addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                val newWidth = right - left
+                val newHeight = bottom - top
+                val oldWidth = oldRight - oldLeft
+                val oldHeight = oldBottom - oldTop
+                
+                if (newWidth != oldWidth || newHeight != oldHeight) {
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "[PAGINATION_DEBUG] RecyclerView layout changed: " +
+                        "width=$newWidth (was $oldWidth), height=$newHeight (was $oldHeight), " +
+                        "adapterItemCount=${pagerAdapter.itemCount}, windowCount=${viewModel.windowCount.value}"
+                    )
+                    
+                    // Log if RecyclerView has been measured and is ready for pagination
+                    if (newWidth > 0 && newHeight > 0) {
+                        AppLogger.d(
+                            "ReaderActivity",
+                            "[PAGINATION_DEBUG] RecyclerView measured and ready: ${newWidth}x${newHeight}"
+                        )
+                    }
+                }
+            }
+            
             // Set up scroll listener to detect page changes
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
@@ -447,8 +473,28 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 
                 launch {
                     viewModel.windowCount.collect { windowCount ->
-                        AppLogger.d("ReaderActivity", "Window count changed: $windowCount")
+                        // [PAGINATION_DEBUG] Log window count change with RecyclerView measurement
+                        val recyclerViewWidth = binding.pageRecyclerView.width
+                        val recyclerViewMeasuredWidth = binding.pageRecyclerView.measuredWidth
+                        val isMeasured = recyclerViewWidth > 0
+                        
+                        AppLogger.d("ReaderActivity", 
+                            "[PAGINATION_DEBUG] Window count changed: $windowCount, " +
+                            "RecyclerView width=$recyclerViewWidth, measuredWidth=$recyclerViewMeasuredWidth, " +
+                            "isMeasured=$isMeasured, paginationMode=${viewModel.paginationMode}"
+                        )
+                        
+                        // [FALLBACK] If zero windows, log warning but still notify adapter
+                        if (windowCount == 0) {
+                            AppLogger.w("ReaderActivity", 
+                                "[PAGINATION_DEBUG] WARNING: windowCount is 0 - book may have failed to load or pagination failed"
+                            )
+                        }
+                        
                         pagerAdapter.notifyDataSetChanged()
+                        
+                        // [PAGINATION_DEBUG] Log adapter state after notifyDataSetChanged
+                        pagerAdapter.logAdapterStateAfterUpdate("windowCount.collect")
                     }
                 }
                 
