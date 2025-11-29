@@ -122,7 +122,7 @@ class ReaderViewModel(
             // Begin window build - lock pagination mode during construction
             paginationModeGuard.beginWindowBuild()
             try {
-                AppLogger.d("ReaderViewModel", "Initializing continuous pagination")
+                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Initializing continuous pagination for book=$bookId")
                 val paginator = ContinuousPaginator(bookFile, parser, windowSize = 5)
                 paginator.initialize()
                 continuousPaginator = paginator
@@ -130,6 +130,8 @@ class ReaderViewModel(
                 val book = repository.getBookById(bookId)
                 val startChapter = book?.currentChapterIndex ?: 0
                 val startInPage = book?.currentInPageIndex ?: 0
+                
+                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Book info: startChapter=$startChapter, startInPage=$startInPage")
                 
                 // Load the initial window
                 paginator.loadInitialWindow(startChapter)
@@ -139,9 +141,11 @@ class ReaderViewModel(
                 val windowInfo = paginator.getWindowInfo()
                 val totalChapters = windowInfo.totalChapters
                 
+                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] WindowInfo: totalChapters=$totalChapters, totalGlobalPages=${windowInfo.totalGlobalPages}")
+                
                 // Handle empty book case properly - set all state to consistent values
                 if (totalChapters <= 0) {
-                    AppLogger.w("ReaderViewModel", "Book has no chapters")
+                    AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] Book has no chapters - applying fallback")
                     _totalPages.value = 0
                     _windowCount.value = 0
                     windowCountLiveData.value = 0
@@ -156,6 +160,16 @@ class ReaderViewModel(
                 // Use SlidingWindowPaginator for deterministic window computation
                 val computedWindowCount = slidingWindowPaginator.recomputeWindows(totalChapters)
                 _windowCount.value = computedWindowCount
+                
+                // [PAGINATION_DEBUG] Log window computation details
+                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Window computation: totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow, computedWindowCount=$computedWindowCount")
+                
+                // [FALLBACK] If zero windows computed, create at least one window with all content
+                if (computedWindowCount == 0 && totalChapters > 0) {
+                    AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] FALLBACK: Zero windows computed for $totalChapters chapters - forcing windowCount=1")
+                    _windowCount.value = 1
+                    windowCountLiveData.postValue(1)
+                }
                 
                 // Log window map for debugging
                 AppLogger.d("ReaderViewModel", "[WINDOW_BUILD] ${slidingWindowPaginator.debugWindowMap()}")
@@ -187,9 +201,9 @@ class ReaderViewModel(
 
                 updateForGlobalPage(initialGlobalPage)
                 
-                AppLogger.d("ReaderViewModel", "Restored position: chapter=$safeStartChapter, inPage=$startInPage, globalPage=$initialGlobalPage")
+                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Restored position: chapter=$safeStartChapter, inPage=$startInPage, globalPage=$initialGlobalPage")
             } catch (e: Exception) {
-                AppLogger.e("ReaderViewModel", "Failed to initialize continuous paginator", e)
+                AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] Failed to initialize continuous paginator", e)
                 _pages.value = emptyList()
                 _totalPages.value = 0
                 _windowCount.value = 0
@@ -576,14 +590,19 @@ class ReaderViewModel(
      * @return WindowHtmlPayload containing the window HTML and metadata, or null if unavailable
      */
     suspend fun getWindowHtml(windowIndex: Int): WindowHtmlPayload? {
+        AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] getWindowHtml called: windowIndex=$windowIndex, mode=$paginationMode")
+        
         return if (isContinuousMode) {
-            val paginator = continuousPaginator ?: return null
+            val paginator = continuousPaginator ?: run {
+                AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] getWindowHtml: continuousPaginator is null")
+                return null
+            }
             val windowInfo = paginator.getWindowInfo()
             val totalChapters = windowInfo.totalChapters
             
             // Guard against empty book
             if (totalChapters <= 0) {
-                AppLogger.w("ReaderViewModel", "Cannot get window HTML: no chapters available")
+                AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] Cannot get window HTML: no chapters available (totalChapters=$totalChapters)")
                 return null
             }
             
@@ -594,7 +613,7 @@ class ReaderViewModel(
             val firstChapterInWindow = slidingWindowManager.firstChapterInWindow(windowIndex)
             val lastChapterInWindow = slidingWindowManager.lastChapterInWindow(windowIndex, totalChapters)
             
-            AppLogger.d("ReaderViewModel", "Getting window HTML: windowIndex=$windowIndex, chapters=$firstChapterInWindow-$lastChapterInWindow (totalChapters=$totalChapters)")
+            AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Getting window HTML: windowIndex=$windowIndex, chapters=$firstChapterInWindow-$lastChapterInWindow (totalChapters=$totalChapters, windowSize=$windowSize)")
             
             val provider = com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider(
                 paginator,
@@ -603,9 +622,12 @@ class ReaderViewModel(
             
             val html = provider.getWindowHtml(bookId, windowIndex)
             if (html == null) {
-                AppLogger.w("ReaderViewModel", "Window HTML provider returned null for window $windowIndex")
+                AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] Window HTML provider returned null for window $windowIndex")
                 return null
             }
+            
+            // [PAGINATION_DEBUG] Log HTML size for debugging
+            AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Window HTML generated: windowIndex=$windowIndex, htmlLength=${html.length}")
             
             WindowHtmlPayload(
                 html = html,
@@ -619,11 +641,15 @@ class ReaderViewModel(
             // Chapter-based mode: windowIndex is chapter index (one window per chapter)
             val content = _pages.value.getOrNull(windowIndex)
             if (content == null) {
-                AppLogger.w("ReaderViewModel", "No content for chapter index $windowIndex")
+                AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] No content for chapter index $windowIndex (pages.size=${_pages.value.size})")
                 return null
             }
             
             val html = content.html ?: wrapPlainTextAsHtml(content.text)
+            
+            // [PAGINATION_DEBUG] Log chapter HTML details
+            AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Chapter HTML: chapterIndex=$windowIndex, htmlLength=${html.length}, hasRawHtml=${content.html != null}")
+            
             WindowHtmlPayload(
                 html = html,
                 windowIndex = windowIndex,

@@ -19,6 +19,11 @@ import com.rifters.riftedreader.util.AppLogger
  * 
  * Uses FragmentManager to manage fragment lifecycle within RecyclerView items.
  * Fragment tag format: "f{position}" (e.g., "f0", "f1", "f2")
+ * 
+ * Debug logging is included at key lifecycle points for pagination debugging:
+ * - getItemCount: logs window count
+ * - onBindViewHolder: logs HTML binding to WebView
+ * - notifyDataSetChanged: logs adapter state after update
  */
 class ReaderPagerAdapter(
     private val activity: FragmentActivity,
@@ -27,10 +32,25 @@ class ReaderPagerAdapter(
 
     private val fragmentManager: FragmentManager = activity.supportFragmentManager
     private val mainHandler = Handler(Looper.getMainLooper())
+    
+    // Track last known item count for debugging adapter updates
+    private var lastKnownItemCount: Int = 0
 
     override fun getItemCount(): Int {
         val count = viewModel.windowCount.value
-        AppLogger.d("ReaderPagerAdapter", "getItemCount: $count (windows)")
+        // [PAGINATION_DEBUG] Log window count on each query
+        if (count != lastKnownItemCount) {
+            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] getItemCount changed: $lastKnownItemCount -> $count (windows)")
+            lastKnownItemCount = count
+        } else {
+            AppLogger.d("ReaderPagerAdapter", "getItemCount: $count (windows)")
+        }
+        
+        // [FALLBACK] If zero windows, log warning for debugging
+        if (count == 0) {
+            AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] WARNING: Zero windows returned from getItemCount - book may not have loaded content")
+        }
+        
         return count
     }
 
@@ -41,7 +61,9 @@ class ReaderPagerAdapter(
     }
 
     override fun onBindViewHolder(holder: PageViewHolder, position: Int) {
-        AppLogger.d("ReaderPagerAdapter", "onBindViewHolder: position=$position")
+        // [PAGINATION_DEBUG] Log binding with full context
+        val totalWindows = viewModel.windowCount.value
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onBindViewHolder: position=$position, totalWindows=$totalWindows, containerWidth=${holder.containerView.width}")
         
         val fragmentTag = "f$position"
         
@@ -50,12 +72,13 @@ class ReaderPagerAdapter(
         
         if (existingFragment != null && existingFragment.isAdded) {
             // Fragment already exists and is added, no need to recreate
-            AppLogger.d("ReaderPagerAdapter", "Fragment already exists for position=$position")
+            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment already exists for position=$position, reusing")
             return
         }
         
         // Create new fragment for this position
         val fragment = ReaderPageFragment.newInstance(position)
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Creating new fragment for position=$position (windowIndex=$position)")
         
         // Capture holder position for validation in the posted transaction
         val holderPosition = position
@@ -71,9 +94,9 @@ class ReaderPagerAdapter(
                         add(holder.containerView.id, fragment, fragmentTag)
                     }.commitAllowingStateLoss()
                     
-                    AppLogger.d("ReaderPagerAdapter", "Created new fragment for position=$position")
+                    AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment committed for position=$position, containerId=${holder.containerView.id}")
                 } else {
-                    AppLogger.d("ReaderPagerAdapter", "Holder position changed, skipping fragment creation for position=$position")
+                    AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Holder position changed, skipping fragment creation for position=$position (was $holderPosition, now ${holder.adapterPosition})")
                 }
             }
         }
@@ -120,10 +143,40 @@ class ReaderPagerAdapter(
     }
     
     /**
+     * Log adapter state after data set change for debugging.
+     * Call this method after notifyDataSetChanged to track pagination updates.
+     */
+    fun logAdapterStateAfterUpdate(caller: String) {
+        val itemCount = itemCount
+        val windowCount = viewModel.windowCount.value
+        val paginationMode = viewModel.paginationMode
+        
+        AppLogger.d("ReaderPagerAdapter", 
+            "[PAGINATION_DEBUG] Adapter state after update (caller=$caller): " +
+            "itemCount=$itemCount, windowCount=$windowCount, paginationMode=$paginationMode"
+        )
+        
+        // [FALLBACK] Log warning if adapter has zero items but viewModel has windows
+        if (itemCount == 0 && windowCount > 0) {
+            AppLogger.e("ReaderPagerAdapter", 
+                "[PAGINATION_DEBUG] ERROR: itemCount=0 but windowCount=$windowCount - adapter/viewModel mismatch!"
+            )
+        }
+        
+        // Log if adapter successfully has content
+        if (itemCount > 0) {
+            AppLogger.d("ReaderPagerAdapter", 
+                "[PAGINATION_DEBUG] Adapter has $itemCount items ready for display"
+            )
+        }
+    }
+    
+    /**
      * Clean up all fragments when adapter is detached.
      * Should only be called on the main thread.
      */
     fun cleanUp() {
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] cleanUp called - removing all fragments")
         if (activity.isFinishing || activity.isDestroyed) return
         
         val transaction = fragmentManager.beginTransaction()

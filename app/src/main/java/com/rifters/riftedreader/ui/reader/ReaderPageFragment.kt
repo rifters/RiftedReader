@@ -126,6 +126,13 @@ class ReaderPageFragment : Fragment() {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
+                    // [PAGINATION_DEBUG] Enhanced logging for onPageFinished
+                    val webViewWidth = view?.width ?: 0
+                    val webViewHeight = view?.height ?: 0
+                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+                        "[PAGINATION_DEBUG] onPageFinished fired: windowIndex=$pageIndex, " +
+                        "url=$url, webViewSize=${webViewWidth}x${webViewHeight}"
+                    )
                     com.rifters.riftedreader.util.AppLogger.event("ReaderPageFragment", "WebView onPageFinished for page $pageIndex", "ui/webview/lifecycle")
                     isWebViewReady = true
                     
@@ -134,7 +141,7 @@ class ReaderPageFragment : Fragment() {
                     
                     // Initialize the in-page paginator
                     val settings = readerViewModel.readerSettings.value
-                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Initializing paginator with fontSize=${settings.textSizeSp}px")
+                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "[PAGINATION_DEBUG] Initializing paginator with fontSize=${settings.textSizeSp}px")
                     
                     // Set font size, which will trigger a reflow
                     WebViewPaginatorBridge.setFontSize(binding.pageWebView, settings.textSizeSp.toInt())
@@ -995,6 +1002,13 @@ class ReaderPageFragment : Fragment() {
         if (_binding == null) return
         val html = latestPageHtml
         
+        // [PAGINATION_DEBUG] Log render request details
+        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+            "[PAGINATION_DEBUG] renderBaseContent called: windowIndex=$windowIndex, " +
+            "hasHtml=${!html.isNullOrBlank()}, htmlLength=${html?.length ?: 0}, " +
+            "paginationMode=${readerViewModel.paginationMode}"
+        )
+        
         if (!html.isNullOrBlank()) {
             // Use WebView for rich HTML content (EPUB)
             binding.pageWebView.visibility = View.VISIBLE
@@ -1013,17 +1027,21 @@ class ReaderPageFragment : Fragment() {
                         val windowPayload = readerViewModel.getWindowHtml(windowIndex)
                         if (windowPayload != null) {
                             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
-                                "Using window HTML for windowIndex=$windowIndex: window=${windowPayload.windowIndex}, " +
-                                "firstChapter=${windowPayload.chapterIndex} (${windowPayload.windowSize} chapters per window, totalChapters=${windowPayload.totalChapters})"
+                                "[PAGINATION_DEBUG] Using window HTML for windowIndex=$windowIndex: window=${windowPayload.windowIndex}, " +
+                                "firstChapter=${windowPayload.chapterIndex} (${windowPayload.windowSize} chapters per window, totalChapters=${windowPayload.totalChapters}), " +
+                                "htmlLength=${windowPayload.html.length}"
                             )
                             windowPayload.html
                         } else {
-                            com.rifters.riftedreader.util.AppLogger.w("ReaderPageFragment", "Failed to get window HTML for windowIndex=$windowIndex, falling back to single chapter")
+                            com.rifters.riftedreader.util.AppLogger.w("ReaderPageFragment", "[PAGINATION_DEBUG] Failed to get window HTML for windowIndex=$windowIndex, falling back to single chapter")
                             html
                         }
                     } else {
                         // Chapter-based mode: use single chapter HTML as before
                         // In this mode, windowIndex equals chapter index
+                        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+                            "[PAGINATION_DEBUG] Using chapter HTML for chapterIndex=$windowIndex, htmlLength=${html.length}"
+                        )
                         html
                     }
                     
@@ -1034,6 +1052,11 @@ class ReaderPageFragment : Fragment() {
                         palette = palette
                     )
                     val wrappedHtml = com.rifters.riftedreader.domain.reader.ReaderHtmlWrapper.wrap(contentHtml, config)
+                    
+                    // [PAGINATION_DEBUG] Log wrapped HTML size
+                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+                        "[PAGINATION_DEBUG] Wrapped HTML prepared: windowIndex=$windowIndex, wrappedLength=${wrappedHtml.length}"
+                    )
                     
                     // Log the wrapped HTML for debugging
                     val chapterIndex = resolvedChapterIndex ?: windowIndex
@@ -1056,6 +1079,12 @@ class ReaderPageFragment : Fragment() {
                     isWebViewReady = false
                     // Reset paginator initialization flag - will be set to true in onPaginationReady callback
                     isPaginatorInitialized = false
+                    
+                    // [PAGINATION_DEBUG] Log before WebView load
+                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+                        "[PAGINATION_DEBUG] Loading HTML into WebView: windowIndex=$windowIndex, isWebViewReady=false"
+                    )
+                    
                     // Use file:///android_asset/ as base URL to allow loading of inpage_paginator.js
                     binding.pageWebView.loadDataWithBaseURL(
                         "file:///android_asset/", 
@@ -1065,7 +1094,7 @@ class ReaderPageFragment : Fragment() {
                         null
                     )
                 } catch (e: Exception) {
-                    com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "Error loading window HTML for windowIndex=$windowIndex, using fallback", e)
+                    com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "[PAGINATION_DEBUG] Error loading window HTML for windowIndex=$windowIndex, using fallback", e)
                     // Fallback to old method if there's any error
                     val wrappedHtml = wrapHtmlForWebView(html, settings.textSizeSp, settings.lineHeightMultiplier, palette)
                     isWebViewReady = false
@@ -1081,6 +1110,9 @@ class ReaderPageFragment : Fragment() {
             }
         } else {
             // Use TextView for plain text content (TXT)
+            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+                "[PAGINATION_DEBUG] Using TextView for plain text: windowIndex=$windowIndex, textLength=${latestPageText.length}"
+            )
             binding.pageWebView.visibility = View.GONE
             binding.pageTextView.visibility = View.VISIBLE
             binding.pageTextView.text = latestPageText
@@ -1353,8 +1385,35 @@ class ReaderPageFragment : Fragment() {
         }
     }
 
+    /**
+     * Handle a streaming request from the WebView paginator when a boundary is reached.
+     * 
+     * This method is called when the user reaches the edge of the current window and
+     * the WebView paginator requests streaming of adjacent chapter content.
+     * 
+     * In continuous pagination mode, streaming allows seamless navigation across chapter
+     * boundaries within a single WebView instance, reducing ViewPager/RecyclerView churn.
+     * 
+     * Note: The `continuousStreamingEnabled` setting is currently checked via the pagination
+     * mode. When `paginationMode == CONTINUOUS`, streaming is implicitly enabled.
+     * 
+     * @param direction The direction of the boundary (NEXT or PREVIOUS)
+     * @param boundaryPage The page number at the boundary
+     * @param totalPages Total pages in the current window
+     */
     private fun handleStreamingRequest(direction: BoundaryDirection, boundaryPage: Int, totalPages: Int) {
+        // [PAGINATION_DEBUG] Log streaming request details
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "[PAGINATION_DEBUG] handleStreamingRequest: direction=$direction, boundaryPage=$boundaryPage/$totalPages, " +
+            "windowIndex=$pageIndex, paginationMode=${readerViewModel.paginationMode}"
+        )
+        
         if (readerViewModel.paginationMode != PaginationMode.CONTINUOUS) {
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "[PAGINATION_DEBUG] Not in CONTINUOUS mode - falling back to chapter boundary handling"
+            )
             readerViewModel.updateWebViewPageState(boundaryPage, totalPages)
             handleChapterBoundary(direction, boundaryPage, totalPages)
             return
@@ -1543,14 +1602,31 @@ class ReaderPageFragment : Fragment() {
         fun onPaginationReady(totalPages: Int) {
             // Called when pagination is complete and total page count is known
             activity?.runOnUiThread {
+                // [PAGINATION_DEBUG] Enhanced logging for pagination ready callback
+                val webViewWidth = _binding?.pageWebView?.width ?: 0
+                val webViewHeight = _binding?.pageWebView?.height ?: 0
                 com.rifters.riftedreader.util.AppLogger.d(
                     "ReaderPageFragment",
-                    "PaginationBridge.onPaginationReady: chapter=$pageIndex, totalPages=$totalPages"
+                    "[PAGINATION_DEBUG] onPaginationReady callback: windowIndex=$pageIndex, totalPages=$totalPages, " +
+                    "webViewSize=${webViewWidth}x${webViewHeight}, paginationMode=${readerViewModel.paginationMode}"
                 )
+                
+                // [PAGINATION_DEBUG] Warn if zero pages returned
+                if (totalPages == 0) {
+                    com.rifters.riftedreader.util.AppLogger.w(
+                        "ReaderPageFragment",
+                        "[PAGINATION_DEBUG] WARNING: onPaginationReady reported 0 pages for windowIndex=$pageIndex - pagination may have failed"
+                    )
+                }
                 
                 // CRITICAL: Set paginator initialized flag now that JS paginator is ready
                 // This prevents navigation logic from using stale/default values
                 isPaginatorInitialized = true
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "[PAGINATION_DEBUG] isPaginatorInitialized set to true for windowIndex=$pageIndex"
+                )
+                
                 if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
                     viewLifecycleOwner.lifecycleScope.launch {
                         val location = readerViewModel.getPageLocation(pageIndex)

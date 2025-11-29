@@ -1,5 +1,48 @@
 # Sliding Window Pagination - Implementation Status
 
+## 2025-11-29 Update - Debug Logging & Validation
+
+- **Targeted debug logging**: Added `[PAGINATION_DEBUG]` tagged logs at key lifecycle points:
+  - Before pagination runs: Log RecyclerView/item width, HTML length, measurement status
+  - After pagination: Log window count, pages, first few window sizes, WebView dimensions
+  - When updating adapter: Log after `notifyDataSetChanged()`, adapter item count, window count sync
+  - In WebView binding: Log which HTML is loaded, confirm `onPageFinished` and `onPaginationReady` fire
+  
+- **Pipeline validation logging**: Each step of the pagination pipeline is now logged:
+  1. RecyclerView measurement via layout change listener
+  2. Window count computation in `ReaderViewModel.initializeContinuousPagination()`
+  3. Adapter updates in `ReaderActivity` and `ReaderPagerAdapter`
+  4. WebView HTML loading in `ReaderPageFragment.renderBaseContent()`
+  5. Pagination ready callback in `PaginationBridge.onPaginationReady()`
+
+- **Fallback logic for zero windows**: Added safeguards:
+  - `ReaderPagerAdapter.getItemCount()` logs warning if zero windows
+  - `ReaderViewModel.initializeContinuousPagination()` forces `windowCount=1` if zero computed for non-empty book
+  - `PaginationBridge.onPaginationReady()` logs warning if zero pages reported
+
+- **Default settings verification**: Confirmed defaults for page flipping:
+  - `ReaderMode = PAGE` (page flipping enabled by default)
+  - `PaginationMode = CONTINUOUS` (sliding window pagination default)
+  - `continuousStreamingEnabled = true` (chapter streaming enabled by default)
+
+- **Continuous streaming integration**: The `continuousStreamingEnabled` setting exists in `ReaderSettings` but streaming behavior is implicitly controlled by `PaginationMode.CONTINUOUS`. When in continuous mode, streaming is automatically active. The setting toggle exists for user opt-out if streaming causes issues.
+
+### Debug Logging Tags
+
+All debug logs use the `[PAGINATION_DEBUG]` prefix for easy filtering:
+```bash
+adb logcat | grep "PAGINATION_DEBUG"
+```
+
+Key log points:
+- `RecyclerView layout changed` - Tracks measurement
+- `Window count changed` - Tracks adapter sync
+- `onBindViewHolder` - Tracks fragment binding
+- `renderBaseContent` - Tracks HTML loading
+- `onPageFinished` - Tracks WebView ready state
+- `onPaginationReady` - Tracks JS paginator ready state
+- `handleStreamingRequest` - Tracks boundary streaming
+
 ## 2025-11-20 Update
 
 - **Pagination engine hardening**: `ContinuousPaginator` now rebalances its start/end indices so the sliding window keeps its full configured size even when the user lands near the beginning or end of a book. This avoids unexpected fragment churn and matches the behavior expected by our older tests.
