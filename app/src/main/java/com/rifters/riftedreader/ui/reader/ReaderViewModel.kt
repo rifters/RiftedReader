@@ -7,31 +7,63 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.recyclerview.widget.RecyclerView
+import com.rifters.riftedreader.data.preferences.ReaderPreferences
+import com.rifters.riftedreader.data.preferences.ReaderSettings
+import com.rifters.riftedreader.data.repository.BookRepository
+import com.rifters.riftedreader.domain.pagination.ContinuousPaginator
+import com.rifters.riftedreader.domain.pagination.PageLocation
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.BookParser
 import com.rifters.riftedreader.domain.parser.PageContent
+import com.rifters.riftedreader.domain.parser.TocEntry
 import com.rifters.riftedreader.domain.parser.TxtParser
 import com.rifters.riftedreader.pagination.PaginationModeGuard
 import com.rifters.riftedreader.pagination.SlidingWindowPaginator
 import com.rifters.riftedreader.pagination.WindowSyncHelpers
 import com.rifters.riftedreader.util.AppLogger
-import android.util.Log
-import androidx.lifecycle.MutableLiveData
-import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
-// NOTE: This file was updated to integrate deterministic sliding-window pagination and
-// a guard to protect window-building from race conditions. The changes try to keep
-// existing behavior intact while wiring in the new components. If the project uses
-// different field names (StateFlow vs LiveData) adjust accordingly.
-
+/**
+ * ViewModel for the reader screen, managing book content, pagination, and reading state.
+ * 
+ * Supports two pagination modes:
+ * - CHAPTER_BASED: Each chapter is a separate page/window (1:1 mapping)
+ * - CONTINUOUS: Chapters are grouped into sliding windows (N chapters per window)
+ * 
+ * Integrates deterministic sliding-window pagination with race condition guards to prevent
+ * inconsistent state during window building operations.
+ */
 class ReaderViewModel(
-    // Keep the original constructor parameters unchanged.
+    val bookId: String,
+    private val bookFile: File,
+    private val parser: BookParser,
+    private val repository: BookRepository,
+    private val readerPreferences: ReaderPreferences
 ) : ViewModel() {
 
-    // --- existing fields (preserve original repo fields here) ---
+    // Expose reader settings as StateFlow for UI consumption
+    val readerSettings: StateFlow<ReaderSettings>
+        get() = readerPreferences.settings
+    
+    // Table of Contents - list of chapter entries
+    private val _tableOfContents = MutableStateFlow<List<TocEntry>>(emptyList())
+    val tableOfContents: StateFlow<List<TocEntry>> = _tableOfContents.asStateFlow()
+
+    // Pagination mode from preferences
+    val paginationMode: PaginationMode
+        get() = readerPreferences.settings.value.paginationMode
+    
+    val isContinuousMode: Boolean
+        get() = paginationMode == PaginationMode.CONTINUOUS
+
+    // Sliding window manager for window index calculations
     private val slidingWindowManager = com.rifters.riftedreader.domain.pagination.SlidingWindowManager(
         windowSize = com.rifters.riftedreader.domain.pagination.SlidingWindowManager.DEFAULT_WINDOW_SIZE
     )
@@ -56,188 +88,34 @@ class ReaderViewModel(
     private val _currentWindowIndex = MutableStateFlow(0)
     private val _content = MutableStateFlow(PageContent.EMPTY)
 
-    // Example integration of the guard + paginator into the pagination build workflow.
-    // Merge this pattern into the repository's actual buildPagination logic.
-    private fun buildPagination() {
-        viewModelScope.launch(Dispatchers.IO) {
-            // Begin window build with guard
-            if (!paginationModeGuard.beginWindowBuild()) {
-                Log.d("SlidingWindowPaginator", "Window build already in progress, skipping")
-                return@launch
-            }
-
-            try {
-                // --- ORIGINAL LOGIC PLACEHOLDER ---
-                // Replace the placeholders below with the repo's actual logic for
-                // obtaining pages, savedPage, pageContentCache, etc.
-
-                val pages: List<PageContent> = run {
-                    // TODO: replace with actual repository parsing/loading logic
-                    emptyList()
-                }
-
-                _pages.value = pages
-                _totalPages.value = pages.size
-
+    // Add missing member variables that were in duplicate block
     private val pageContentCache = mutableMapOf<Int, MutableStateFlow<PageContent>>()
     private var continuousPaginator: ContinuousPaginator? = null
     private var isContinuousInitialized = false
     
-    // Sliding window manager for window index calculations
-    private val slidingWindowManager = com.rifters.riftedreader.domain.pagination.SlidingWindowManager(
-        windowSize = com.rifters.riftedreader.domain.pagination.SlidingWindowManager.DEFAULT_WINDOW_SIZE
-    )
+    // TTS highlight state
+    private val _highlight = MutableStateFlow<TtsHighlight?>(null)
+    val highlight: StateFlow<TtsHighlight?> = _highlight.asStateFlow()
     
-    // New deterministic sliding window paginator for race condition protection
-    // Note: chaptersPerWindow uses default value (5). Integration with user settings
-    // can be added in future iterations if user-configurable window sizes are needed.
-    val chaptersPerWindow: Int = SlidingWindowPaginator.DEFAULT_CHAPTERS_PER_WINDOW
-    val slidingWindowPaginator = SlidingWindowPaginator(chaptersPerWindow)
+    // WebView page state
+    private val _currentWebViewPage = MutableStateFlow(0)
+    val currentWebViewPage: StateFlow<Int> = _currentWebViewPage.asStateFlow()
+    private val _totalWebViewPages = MutableStateFlow(0)
+    val totalWebViewPages: StateFlow<Int> = _totalWebViewPages.asStateFlow()
     
-    // LiveData for window count (for compatibility with WindowSyncHelpers)
-    val windowCountLiveData = MutableLiveData(0)
+    // Jump to last page flag (for navigating back to previous window)
+    private val _jumpToLastPage = MutableStateFlow(false)
+    val jumpToLastPage: StateFlow<Boolean> = _jumpToLastPage.asStateFlow()
+    // Alias for backwards compatibility
+    val shouldJumpToLastPage: StateFlow<Boolean> = _jumpToLastPage.asStateFlow()
     
-    // Guard to prevent race conditions during window building
-    // Note: Guard operates without mode checking since readerPreferences exposes
-    // paginationMode as a computed property, not LiveData. The guard still provides
-    // protection against concurrent builds.
-    val paginationModeGuard = PaginationModeGuard(paginationModeLiveData = null)
-                // Use SlidingWindowPaginator for deterministic window computation
-                val totalChapters = pages.size
-                slidingWindowPaginator.recomputeWindows(totalChapters)
-                Log.d("SlidingWindowPaginator", slidingWindowPaginator.debugWindowMap())
-
-                // Sync to UI using helper; update both StateFlow and LiveData for compatibility
-                WindowSyncHelpers.syncWindowCountToUiFlow(
-                    slidingWindowPaginator,
-                    updateCallback = { count ->
-                        _windowCount.value = count
-                        windowCountLiveData.value = count
-                    }
-                )
-
-                // Set current page/window/content similar to original code
-                val initialPage = 0 // TODO: set using original savedPage/restore logic
-                _currentPage.value = initialPage
-                _currentWindowIndex.value = initialPage
-                _content.value = pages.getOrNull(initialPage) ?: PageContent.EMPTY
-
-                // Verify invariant (will log if mismatch)
-                paginationModeGuard.assertWindowCountInvariant(
-                    slidingWindowPaginator.getWindowCount(),
-                    _windowCount.value
-                )
-                // --- END ORIGINAL LOGIC PLACEHOLDER ---
-
-            } catch (e: Exception) {
-                _pages.value = emptyList()
-                _totalPages.value = 0
-                _windowCount.value = 0
-                windowCountLiveData.value = 0
-                _currentPage.value = 0
-                _currentWindowIndex.value = 0
-                _content.value = PageContent(text = "Error loading content: ${e.message}")
-                e.printStackTrace()
-            } finally {
-                // End window build
-                paginationModeGuard.endWindowBuild()
-            }
-        }
-    }
-
-    // Example continuous pagination initializer: follow the same guard + paginator pattern.
-    private fun initializeContinuousPagination(bookFile: Any?, parser: BookParser?, startChapter: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
-            // Begin window build with guard
-            if (!paginationModeGuard.beginWindowBuild()) {
-                Log.d("SlidingWindowPaginator", "Window build already in progress, skipping")
-                return@launch
-            }
-            
-
-            try {
-                AppLogger.d("ReaderViewModel", "Initializing continuous pagination")
-
-                // TODO: compute real totalChapters from bookFile/parser
-                val totalChapters = 0
-
-                if (totalChapters <= 0) {
-                    AppLogger.w("ReaderViewModel", "Book has no chapters")
-                    _totalPages.value = 0
-                    _windowCount.value = 0
-                    windowCountLiveData.value = 0
-                    _currentPage.value = 0
-                    _currentWindowIndex.value = 0
-                    _content.value = PageContent(text = "No content available")
-                    return@launch
-                }
-
-                slidingWindowPaginator.recomputeWindows(totalChapters)
-                Log.d("SlidingWindowPaginator", slidingWindowPaginator.debugWindowMap())
-
-                WindowSyncHelpers.syncWindowCountToUiFlow(
-                    slidingWindowPaginator,
-                    updateCallback = { count ->
-                        _windowCount.value = count
-                        windowCountLiveData.value = count
-                    }
-                )
-
-                val safeStartChapter = startChapter.coerceIn(0, totalChapters - 1)
-                val initialWindowIndex = slidingWindowPaginator.getWindowForChapter(safeStartChapter)
-                _currentWindowIndex.value = initialWindowIndex
-
-                AppLogger.d("ReaderViewModel", "Continuous pagination: totalChapters=$totalChapters, windowCount=${_windowCount.value}, initialWindowIndex=$initialWindowIndex")
-
-                paginationModeGuard.assertWindowCountInvariant(
-                    slidingWindowPaginator.getWindowCount(),
-                    _windowCount.value
-                )
-
-                // Continue with existing logic to load pages for the initial window...
-            } catch (e: Exception) {
-                _pages.value = emptyList()
-                _totalPages.value = 0
-                _windowCount.value = 0
-                windowCountLiveData.value = 0
-                _currentPage.value = 0
-                _currentWindowIndex.value = 0
-                _content.value = PageContent(text = "Error loading content: ${e.message}")
-            } finally {
-                paginationModeGuard.endWindowBuild()
-            }
-        }
-    }
-
-                pages.forEachIndexed { index, content ->
-                    pageContentCache.getOrPut(index) { MutableStateFlow(PageContent.EMPTY) }.value = content
-                }
-
-                val initialPage = if (pages.isNotEmpty()) {
-                    savedPage.coerceIn(0, pages.lastIndex)
-                } else {
-                    0
-                }
-                _currentPage.value = initialPage
-                _currentWindowIndex.value = initialPage
-                _content.value = pages.getOrNull(initialPage) ?: PageContent.EMPTY
-                
-                AppLogger.d("ReaderViewModel", "[WINDOW_BUILD] CHAPTER_BASED complete: windowCount=$computedWindowCount, initialPage=$initialPage")
-            } catch (e: Exception) {
-                _pages.value = emptyList()
-                _totalPages.value = 0
-                _windowCount.value = 0
-                windowCountLiveData.value = 0
-                _currentPage.value = 0
-                _currentWindowIndex.value = 0
-                _content.value = PageContent(text = "Error loading content: ${e.message}")
-                e.printStackTrace()
-            } finally {
-                // End window build - unlock pagination mode
-                paginationModeGuard.endWindowBuild()
-            }
-        }
-    }
+    // Public accessors for StateFlows
+    val pages: StateFlow<List<PageContent>> = _pages.asStateFlow()
+    val totalPages: StateFlow<Int> = _totalPages.asStateFlow()
+    val windowCount: StateFlow<Int> = _windowCount.asStateFlow()
+    val currentPage: StateFlow<Int> = _currentPage.asStateFlow()
+    val currentWindowIndex: StateFlow<Int> = _currentWindowIndex.asStateFlow()
+    val content: StateFlow<PageContent> = _content.asStateFlow()
 
     private fun initializeContinuousPagination() {
         viewModelScope.launch {
@@ -282,10 +160,11 @@ class ReaderViewModel(
                 // Log window map for debugging
                 AppLogger.d("ReaderViewModel", "[WINDOW_BUILD] ${slidingWindowPaginator.debugWindowMap()}")
                 
-                // Validate assertion: windowCount == ceil(totalChapters / chaptersPerWindow)
-                val assertionValid = slidingWindowPaginator.assertWindowCountValid()
-                if (!assertionValid) {
-                    AppLogger.e("ReaderViewModel", "[WINDOW_BUILD] Window count assertion failed!")
+                // Validate invariant: windowCount == ceil(totalChapters / chaptersPerWindow)
+                val expectedWindowCount = if (totalChapters <= 0) 0 else 
+                    kotlin.math.ceil(totalChapters.toDouble() / chaptersPerWindow).toInt()
+                if (computedWindowCount != expectedWindowCount) {
+                    AppLogger.e("ReaderViewModel", "[WINDOW_BUILD] Window count assertion failed! computed=$computedWindowCount expected=$expectedWindowCount")
                 }
                 
                 // Calculate initial window index with bounds validation
@@ -394,7 +273,7 @@ class ReaderViewModel(
             return false
         }
         // Set flag before changing page so fragment can react when it loads
-        _shouldJumpToLastPage.value = true
+        _jumpToLastPage.value = true
         updateCurrentPage(current - 1)
         return true
     }
@@ -403,14 +282,14 @@ class ReaderViewModel(
      * Clear the jump-to-last-page flag. Called by fragment after jumping.
      */
     fun clearJumpToLastPageFlag() {
-        _shouldJumpToLastPage.value = false
+        _jumpToLastPage.value = false
     }
     
     /**
      * Set the jump-to-last-page flag. Used when navigating backward across windows.
      */
     fun setJumpToLastPageFlag() {
-        _shouldJumpToLastPage.value = true
+        _jumpToLastPage.value = true
     }
 
     fun goToPage(page: Int): Boolean {
@@ -848,24 +727,39 @@ class ReaderViewModel(
             val expectedWindowCount = if (totalChapters == 0) 0 else {
                 kotlin.math.ceil(totalChapters.toDouble() / chaptersPerWindow).toInt()
             }
-            val actualWindowCount = slidingWindowPaginator.windowCount
+            val actualWindowCount = slidingWindowPaginator.getWindowCount()
             if (actualWindowCount != expectedWindowCount) {
                 Log.e("SlidingWindowPaginator", 
                     "INVARIANT VIOLATION: windowCount=$actualWindowCount != expected=$expectedWindowCount " +
                     "(totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow)")
             }
             
-            WindowSyncHelpers.syncWindowCountToUi(slidingWindowPaginator, windowCountLiveData, adapter)
+            WindowSyncHelpers.syncWindowCountToUi(slidingWindowPaginator, windowCountLiveData) {
+                adapter.notifyDataSetChanged()
+            }
         } finally {
             paginationModeGuard.endWindowBuild()
         }
     }
     
     /**
-     * Get the SlidingWindowPaginator for external access.
-     * Primarily used for testing and debugging.
+     * Factory for creating ReaderViewModel instances with the necessary dependencies.
      */
-    fun getSlidingWindowPaginator(): SlidingWindowPaginator = slidingWindowPaginator
+    class Factory(
+        private val bookId: String,
+        private val bookFile: File,
+        private val parser: BookParser,
+        private val repository: BookRepository,
+        private val readerPreferences: ReaderPreferences
+    ) : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            if (modelClass.isAssignableFrom(ReaderViewModel::class.java)) {
+                return ReaderViewModel(bookId, bookFile, parser, repository, readerPreferences) as T
+            }
+            throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+        }
+    }
 }
 
 private fun StringBuilder.isNotBlank(): Boolean = this.any { !it.isWhitespace() }

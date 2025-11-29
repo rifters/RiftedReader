@@ -1,43 +1,39 @@
 package com.rifters.riftedreader.ui.reader
 
+import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.rifters.riftedreader.util.AppLogger
 
+/**
+ * Adapter for the ViewPager2 in the reader screen.
+ * 
+ * In continuous mode, each page represents a window containing multiple chapters.
+ * In chapter-based mode, each page represents a single chapter.
+ */
 class ReaderPagerAdapter(
     private val activity: FragmentActivity,
-    private val viewModel: /* ReaderViewModel type */ Any
+    private val viewModel: ReaderViewModel
 ) : FragmentStateAdapter(activity) {
 
     override fun getItemCount(): Int {
-        // Prefer the ViewModel's window count (StateFlow/State or LiveData).
-        // The branch added a windowCount LiveData and StateFlow _windowCount. Adapt to your ViewModel API:
-        // - If ViewModel exposes StateFlow/State: read viewModel.windowCountState.value
-        // - If ViewModel exposes LiveData: read viewModel.windowCountLiveData.value
-        // Use safe fallback to 0 to avoid crashes during initialization.
-
-        val count = try {
-            // Try the StateFlow-backed value first (if viewModel.windowCount exists and is a State / StateFlow)
-            // Replace the reflection below with the actual property usage in your codebase.
-            when {
-                // If viewModel has a public 'windowCount' State/StateFlow property:
-                // (Uncomment and adapt the line below to your actual ViewModel)
-                // viewModel.windowCount.value != null -> viewModel.windowCount.value
-                // Else, if using LiveData:
-                // viewModel.windowCountLiveData.value ?: 0
-                else -> {
-                    // Fallback: attempt to read LiveData-like property by reflection is not recommended;
-                    // instead, change this adapter to accept the window count or access the ViewModel directly.
-                    0
-                }
-            }
-        } catch (e: Exception) {
-            0
-        }
-
+        val count = viewModel.windowCount.value
         AppLogger.d("ReaderPagerAdapter", "getItemCount: $count (windows)")
         return count
     }
 
-    // ... rest of adapter implementation ...
+    override fun createFragment(position: Int): Fragment {
+        AppLogger.d("ReaderPagerAdapter", "createFragment: position=$position")
+        return ReaderPageFragment.newInstance(position)
+    }
+    
+    override fun getItemId(position: Int): Long {
+        // Each window has a unique ID based on position
+        return position.toLong()
+    }
+    
+    override fun containsItem(itemId: Long): Boolean {
+        // Check if the item is within the current window count
+        return itemId >= 0 && itemId < viewModel.windowCount.value
+    }
 }
