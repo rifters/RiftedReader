@@ -29,7 +29,7 @@ object WindowSyncHelpers {
      *
      * @param paginator The SlidingWindowPaginator to read windowCount from
      * @param windowCountLiveData The MutableLiveData to update
-     * @param adapter The RecyclerView.Adapter to notify (typically a ViewPager2 adapter)
+     * @param adapter The RecyclerView.Adapter to notify
      */
     fun syncWindowCountToUi(
         paginator: SlidingWindowPaginator,
@@ -60,7 +60,7 @@ object WindowSyncHelpers {
      *
      * @param paginator The SlidingWindowPaginator to read windowCount from
      * @param windowCountStateFlow The MutableStateFlow to update
-     * @param adapter The RecyclerView.Adapter to notify (typically a ViewPager2 adapter)
+     * @param adapter The RecyclerView.Adapter to notify
      */
     fun syncWindowCountToUiStateFlow(
         paginator: SlidingWindowPaginator,

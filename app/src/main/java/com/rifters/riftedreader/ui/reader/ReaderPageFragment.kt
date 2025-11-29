@@ -39,7 +39,7 @@ class ReaderPageFragment : Fragment() {
 
     /**
      * The window index (in continuous mode) or chapter index (in chapter-based mode).
-     * This represents the position in the ViewPager2, which corresponds to:
+     * This represents the position in the RecyclerView, which corresponds to:
      * - Continuous mode: window index (each window contains 5 chapters)
      * - Chapter-based mode: chapter index (each window contains 1 chapter)
      */
@@ -456,8 +456,7 @@ class ReaderPageFragment : Fragment() {
 
     /**
      * Set up swipe gesture handling for in-page horizontal pagination.
-     * This prevents ViewPager2 from intercepting swipes when there are more pages
-     * within the current chapter.
+     * This handles navigation within the current chapter/window.
      */
     private fun setupWebViewSwipeHandling() {
         com.rifters.riftedreader.util.AppLogger.d(
@@ -563,7 +562,7 @@ class ReaderPageFragment : Fragment() {
                                             } else {
                                                 com.rifters.riftedreader.util.AppLogger.d(
                                                     "ReaderPageFragment", 
-                                                    "SCROLL_EDGE: At last in-page ($currentPage/$pageCount), falling back to ViewPager (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
+                                                    "SCROLL_EDGE: At last in-page ($currentPage/$pageCount), falling back to RecyclerView (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
                                                 )
                                             }
                                             (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
@@ -588,7 +587,7 @@ class ReaderPageFragment : Fragment() {
                                             } else {
                                                 com.rifters.riftedreader.util.AppLogger.d(
                                                     "ReaderPageFragment", 
-                                                    "SCROLL_EDGE: At first in-page ($currentPage/$pageCount), falling back to ViewPager (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
+                                                    "SCROLL_EDGE: At first in-page ($currentPage/$pageCount), falling back to RecyclerView (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
                                                 )
                                             }
                                             (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
@@ -679,7 +678,7 @@ class ReaderPageFragment : Fragment() {
                                     } else {
                                         com.rifters.riftedreader.util.AppLogger.d(
                                             "ReaderPageFragment", 
-                                            "FLING_EDGE: At last in-page ($currentPage/$pageCount), falling back to ViewPager (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
+                                            "FLING_EDGE: At last in-page ($currentPage/$pageCount), falling back to RecyclerView (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
                                         )
                                     }
                                     (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
@@ -704,7 +703,7 @@ class ReaderPageFragment : Fragment() {
                                     } else {
                                         com.rifters.riftedreader.util.AppLogger.d(
                                             "ReaderPageFragment", 
-                                            "FLING_EDGE: At first in-page ($currentPage/$pageCount), falling back to ViewPager (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
+                                            "FLING_EDGE: At first in-page ($currentPage/$pageCount), falling back to RecyclerView (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
                                         )
                                     }
                                     (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
@@ -1010,7 +1009,7 @@ class ReaderPageFragment : Fragment() {
                 try {
                     val contentHtml = if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
                         // Get window HTML containing multiple chapters
-                        // windowIndex is the ViewPager2 position, directly used as window index
+                        // windowIndex is the RecyclerView position, directly used as window index
                         val windowPayload = readerViewModel.getWindowHtml(windowIndex)
                         if (windowPayload != null) {
                             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
@@ -1808,7 +1807,7 @@ class ReaderPageFragment : Fragment() {
                         } else {
                             com.rifters.riftedreader.util.AppLogger.d(
                                 "ReaderPageFragment",
-                                "HARDWARE_EDGE: at last in-page ($currentPage/$pageCount), falling back to ViewPager (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
+                                "HARDWARE_EDGE: at last in-page ($currentPage/$pageCount), falling back to RecyclerView (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
                             )
                             (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
                         }
@@ -1832,7 +1831,7 @@ class ReaderPageFragment : Fragment() {
                         } else {
                             com.rifters.riftedreader.util.AppLogger.d(
                                 "ReaderPageFragment",
-                                "HARDWARE_EDGE: at first in-page ($currentPage/$pageCount), falling back to ViewPager (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
+                                "HARDWARE_EDGE: at first in-page ($currentPage/$pageCount), falling back to RecyclerView (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
                             )
                             (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
                         }
@@ -1842,7 +1841,7 @@ class ReaderPageFragment : Fragment() {
                 // If anything goes wrong, fallback to activity navigation
                 com.rifters.riftedreader.util.AppLogger.e(
                     "ReaderPageFragment",
-                    "ERROR handling hardware page key for page $pageIndex: ${e.message} - falling back to ViewPager",
+                    "ERROR handling hardware page key for page $pageIndex: ${e.message} - falling back to RecyclerView",
                     e
                 )
                 if (isNext) {

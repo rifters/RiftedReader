@@ -8,7 +8,7 @@ import androidx.lifecycle.MutableLiveData
 /**
  * Helper functions for synchronizing window count updates to the UI thread.
  * 
- * These helpers ensure that ViewPager/ViewPager2 adapter updates happen on the
+ * These helpers ensure that RecyclerView adapter updates happen on the
  * main thread and are properly synchronized with the paginator state.
  */
 object WindowSyncHelpers {
