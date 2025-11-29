@@ -29,11 +29,13 @@ android {
         // Native library configuration for 16 KB page size alignment
         // Required for Android 15+ devices with 16 KB page sizes
         ndk {
-            // Support all common ABIs
+            // Support all common ABIs including x86/x86_64 for emulator testing
+            // x86_64 is especially important for 16 KB page size emulator testing
             abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
         }
 
-        // ExternalNativeBuild arguments for CMake (when native code is added)
+        // ExternalNativeBuild arguments for CMake (prepared for future native code)
+        // These settings will apply when CMakeLists.txt is added to the project
         externalNativeBuild {
             cmake {
                 // Linker flag for 16 KB page alignment
