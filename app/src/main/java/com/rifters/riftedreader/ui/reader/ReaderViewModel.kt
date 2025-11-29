@@ -117,6 +117,77 @@ class ReaderViewModel(
     val currentWindowIndex: StateFlow<Int> = _currentWindowIndex.asStateFlow()
     val content: StateFlow<PageContent> = _content.asStateFlow()
 
+    init {
+        AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] init: bookId=$bookId, paginationMode=$paginationMode")
+        
+        // Initialize content loading based on pagination mode
+        if (isContinuousMode) {
+            AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Starting continuous mode initialization")
+            initializeContinuousPagination()
+        } else {
+            AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Starting chapter-based mode initialization")
+            initializeChapterBasedPagination()
+        }
+        
+        // Load table of contents
+        loadTableOfContents()
+    }
+    
+    /**
+     * Initialize chapter-based pagination mode.
+     * Loads all chapters as individual pages.
+     */
+    private fun initializeChapterBasedPagination() {
+        viewModelScope.launch {
+            AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Initializing chapter-based pagination for book=$bookId")
+            try {
+                val pages = generatePages()
+                _pages.value = pages
+                _totalPages.value = pages.size
+                _windowCount.value = pages.size  // In chapter mode, window count equals chapter count
+                windowCountLiveData.postValue(pages.size)
+                
+                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Chapter-based pagination complete: pageCount=${pages.size}")
+                
+                // Load saved position
+                val book = repository.getBookById(bookId)
+                val startPage = book?.currentChapterIndex ?: 0
+                val safePage = startPage.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
+                
+                _currentPage.value = safePage
+                _currentWindowIndex.value = safePage
+                _content.value = pages.getOrNull(safePage) ?: PageContent.EMPTY
+                
+                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Restored position: page=$safePage, contentLength=${_content.value.text.length}")
+            } catch (e: Exception) {
+                AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] Failed to initialize chapter-based pagination", e)
+                _pages.value = emptyList()
+                _totalPages.value = 0
+                _windowCount.value = 0
+                windowCountLiveData.postValue(0)
+                _content.value = PageContent.EMPTY
+            }
+        }
+    }
+    
+    /**
+     * Load the table of contents for the book.
+     */
+    private fun loadTableOfContents() {
+        viewModelScope.launch {
+            try {
+                val toc = withContext(Dispatchers.IO) {
+                    parser.getTableOfContents(bookFile)
+                }
+                _tableOfContents.value = toc
+                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Loaded TOC: ${toc.size} entries")
+            } catch (e: Exception) {
+                AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] Failed to load TOC", e)
+                _tableOfContents.value = emptyList()
+            }
+        }
+    }
+
     private fun initializeContinuousPagination() {
         viewModelScope.launch {
             // Begin window build - lock pagination mode during construction
@@ -148,7 +219,7 @@ class ReaderViewModel(
                     AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] Book has no chapters - applying fallback")
                     _totalPages.value = 0
                     _windowCount.value = 0
-                    windowCountLiveData.value = 0
+                    windowCountLiveData.postValue(0)
                     _currentPage.value = 0
                     _currentWindowIndex.value = 0
                     _content.value = PageContent(text = "No content available")
@@ -160,6 +231,8 @@ class ReaderViewModel(
                 // Use SlidingWindowPaginator for deterministic window computation
                 val computedWindowCount = slidingWindowPaginator.recomputeWindows(totalChapters)
                 _windowCount.value = computedWindowCount
+                // Keep LiveData in sync for observers using traditional LiveData pattern
+                windowCountLiveData.postValue(computedWindowCount)
                 
                 // [PAGINATION_DEBUG] Log window computation details
                 AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Window computation: totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow, computedWindowCount=$computedWindowCount")
@@ -169,7 +242,7 @@ class ReaderViewModel(
                     AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] FALLBACK: Zero windows computed for $totalChapters chapters - forcing windowCount=1")
                     _windowCount.value = 1
                     // Also update LiveData for observers using traditional LiveData pattern
-                    windowCountLiveData.value = 1
+                    windowCountLiveData.postValue(1)
                 }
                 
                 // Log window map for debugging
