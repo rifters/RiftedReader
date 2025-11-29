@@ -1,6 +1,6 @@
 package com.rifters.riftedreader.domain.pagination
 
-import android.util.Log
+import com.rifters.riftedreader.util.AppLogger
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * and mismatched window counts.
  *
  * Thread safety: This class uses atomic operations and is thread-safe.
+ * 
+ * All guard operations are logged to session_log for debugging race conditions.
  *
  * Usage:
  * ```kotlin
@@ -50,9 +52,9 @@ class PaginationModeGuard {
         if (isFirst) {
             buildStartTimeMs = System.currentTimeMillis()
             _isBuilding.set(true)
-            Log.d(TAG, "beginWindowBuild: BUILD STARTED at $buildStartTimeMs")
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] beginWindowBuild: BUILD STARTED at $buildStartTimeMs (refCount=1)")
         } else {
-            Log.d(TAG, "beginWindowBuild: nested call (count=$count)")
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] beginWindowBuild: NESTED call (refCount=$count)")
         }
         return isFirst
     }
@@ -70,9 +72,9 @@ class PaginationModeGuard {
         if (isLast) {
             _isBuilding.set(false)
             val durationMs = System.currentTimeMillis() - buildStartTimeMs
-            Log.d(TAG, "endWindowBuild: BUILD COMPLETE (durationMs=$durationMs)")
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] endWindowBuild: BUILD COMPLETE (durationMs=$durationMs)")
         } else {
-            Log.d(TAG, "endWindowBuild: nested call completed (remaining count=$count)")
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] endWindowBuild: nested call completed (remaining refCount=$count)")
         }
         return isLast
     }
@@ -88,9 +90,11 @@ class PaginationModeGuard {
     fun canChangePaginationMode(requestedMode: PaginationMode): Boolean {
         val building = _isBuilding.get()
         if (building) {
-            Log.d(TAG, "canChangePaginationMode: BLOCKED - window build in progress, requested=$requestedMode")
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] canChangePaginationMode: BLOCKED - " +
+                "window build in progress, requested=$requestedMode, refCount=${buildCount.get()}")
             return false
         }
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] canChangePaginationMode: ALLOWED - requested=$requestedMode")
         return true
     }
 
@@ -103,10 +107,11 @@ class PaginationModeGuard {
      */
     fun tryChangePaginationMode(requestedMode: PaginationMode, onChange: () -> Unit): Boolean {
         if (!canChangePaginationMode(requestedMode)) {
-            Log.w(TAG, "tryChangePaginationMode: REJECTED - cannot change to $requestedMode while building")
+            AppLogger.w(TAG, "[PAGINATION_DEBUG] tryChangePaginationMode: REJECTED - " +
+                "cannot change to $requestedMode while building")
             return false
         }
-        Log.d(TAG, "tryChangePaginationMode: ALLOWED - changing to $requestedMode")
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] tryChangePaginationMode: ALLOWED - changing to $requestedMode")
         onChange()
         return true
     }
@@ -136,6 +141,23 @@ class PaginationModeGuard {
         val count = buildCount.get()
         val elapsed = if (building) System.currentTimeMillis() - buildStartTimeMs else 0L
         return "PaginationModeGuard[isBuilding=$building, refCount=$count, elapsedMs=$elapsed]"
+    }
+    
+    /**
+     * Assert that the window count invariant holds.
+     * Logs error if invariant is violated.
+     *
+     * @param expectedWindowCount The expected window count
+     * @param actualWindowCount The actual window count
+     */
+    fun assertWindowCountInvariant(expectedWindowCount: Int, actualWindowCount: Int) {
+        if (expectedWindowCount != actualWindowCount) {
+            AppLogger.e(TAG, "[PAGINATION_DEBUG] WINDOW_COUNT_INVARIANT_VIOLATED: " +
+                "expected=$expectedWindowCount, actual=$actualWindowCount, " +
+                "isBuilding=${_isBuilding.get()}, refCount=${buildCount.get()}")
+        } else {
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] Window count invariant OK: count=$actualWindowCount")
+        }
     }
 
     companion object {

@@ -1,6 +1,6 @@
 package com.rifters.riftedreader.domain.pagination
 
-import android.util.Log
+import com.rifters.riftedreader.util.AppLogger
 import kotlin.math.ceil
 
 /**
@@ -10,6 +10,12 @@ import kotlin.math.ceil
  * This class serves as the single source-of-truth for window computation,
  * providing deterministic grouping that prevents race conditions from mixed
  * pagination code paths.
+ *
+ * **Sliding Window Pagination Rules:**
+ * - Each window contains exactly [DEFAULT_CHAPTERS_PER_WINDOW] (5) chapters
+ * - The last window may contain fewer chapters if totalChapters is not evenly divisible
+ * - Window count = ceil(totalChapters / chaptersPerWindow)
+ * - All window computations are logged to session_log for debugging
  *
  * Thread safety: This class is not thread-safe. External synchronization should
  * be used if accessed from multiple threads.
@@ -28,6 +34,7 @@ class SlidingWindowPaginator(
 
     init {
         require(chaptersPerWindow > 0) { "chaptersPerWindow must be positive, got: $chaptersPerWindow" }
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] SlidingWindowPaginator created with chaptersPerWindow=$chaptersPerWindow")
     }
 
     /**
@@ -41,13 +48,37 @@ class SlidingWindowPaginator(
      */
     fun recomputeWindows(totalChapters: Int): Int {
         require(totalChapters >= 0) { "totalChapters must be non-negative, got: $totalChapters" }
+        
+        val previousTotalChapters = this.totalChapters
+        val previousWindowCount = this._windowCount
+        
         this.totalChapters = totalChapters
         _windowCount = if (totalChapters == 0) {
             0
         } else {
             ceil(totalChapters.toDouble() / chaptersPerWindow).toInt()
         }
-        Log.d(TAG, "recomputeWindows: totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow -> windowCount=$_windowCount")
+        
+        // Enhanced logging for window computation
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] recomputeWindows: " +
+            "totalChapters=$previousTotalChapters->$totalChapters, " +
+            "chaptersPerWindow=$chaptersPerWindow, " +
+            "windowCount=$previousWindowCount->$_windowCount")
+        
+        // Validate the computation
+        val expectedWindowCount = if (totalChapters == 0) 0 else ceil(totalChapters.toDouble() / chaptersPerWindow).toInt()
+        if (_windowCount != expectedWindowCount) {
+            AppLogger.e(TAG, "[PAGINATION_DEBUG] WINDOW_COUNT_MISMATCH: computed=$_windowCount, expected=$expectedWindowCount")
+        }
+        
+        // Log the complete window map for debugging
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] Window map after recompute: ${debugWindowMap()}")
+        
+        // Log warning if zero windows computed for non-zero chapters (edge case)
+        if (_windowCount == 0 && totalChapters > 0) {
+            AppLogger.e(TAG, "[PAGINATION_DEBUG] WARNING: Zero windows computed for $totalChapters chapters!")
+        }
+        
         return _windowCount
     }
 
@@ -59,11 +90,25 @@ class SlidingWindowPaginator(
      */
     fun getWindowRange(windowIndex: Int): Pair<Int, Int>? {
         if (windowIndex < 0 || windowIndex >= _windowCount || totalChapters == 0) {
-            Log.d(TAG, "getWindowRange: invalid windowIndex=$windowIndex (windowCount=$_windowCount)")
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] getWindowRange: invalid windowIndex=$windowIndex " +
+                "(windowCount=$_windowCount, totalChapters=$totalChapters)")
             return null
         }
         val firstChapter = windowIndex * chaptersPerWindow
         val lastChapter = ((windowIndex + 1) * chaptersPerWindow - 1).coerceAtMost(totalChapters - 1)
+        val chaptersInWindow = lastChapter - firstChapter + 1
+        
+        // Log window range computation
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] getWindowRange: windowIndex=$windowIndex -> " +
+            "chapters=$firstChapter-$lastChapter ($chaptersInWindow chapters)")
+        
+        // Warn if window doesn't contain expected number of chapters (except last window)
+        val isLastWindow = windowIndex == _windowCount - 1
+        if (chaptersInWindow != chaptersPerWindow && !isLastWindow) {
+            AppLogger.w(TAG, "[PAGINATION_DEBUG] WARNING: Window $windowIndex has $chaptersInWindow chapters " +
+                "(expected $chaptersPerWindow)")
+        }
+        
         return Pair(firstChapter, lastChapter)
     }
 
@@ -75,7 +120,9 @@ class SlidingWindowPaginator(
      */
     fun getWindowForChapter(chapterIndex: Int): Int {
         require(chapterIndex >= 0) { "chapterIndex must be non-negative, got: $chapterIndex" }
-        return chapterIndex / chaptersPerWindow
+        val windowIndex = chapterIndex / chaptersPerWindow
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] getWindowForChapter: chapterIndex=$chapterIndex -> windowIndex=$windowIndex")
+        return windowIndex
     }
 
     /**
@@ -90,9 +137,10 @@ class SlidingWindowPaginator(
     fun setChaptersPerWindow(newSize: Int): Boolean {
         require(newSize > 0) { "chaptersPerWindow must be positive, got: $newSize" }
         if (chaptersPerWindow == newSize) {
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] setChaptersPerWindow: unchanged ($newSize)")
             return false
         }
-        Log.d(TAG, "setChaptersPerWindow: $chaptersPerWindow -> $newSize (recomputation may be needed)")
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] setChaptersPerWindow: $chaptersPerWindow -> $newSize (recomputation needed)")
         chaptersPerWindow = newSize
         return true
     }
@@ -103,6 +151,13 @@ class SlidingWindowPaginator(
      * @return The number of chapters per window
      */
     fun getChaptersPerWindow(): Int = chaptersPerWindow
+    
+    /**
+     * Get the total chapters currently set.
+     *
+     * @return The total number of chapters
+     */
+    fun getTotalChapters(): Int = totalChapters
 
     /**
      * Generate a debug string showing the complete window-to-chapter mapping.
@@ -116,13 +171,26 @@ class SlidingWindowPaginator(
         val sb = StringBuilder()
         sb.append("WindowMap[totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow, windowCount=$_windowCount]: ")
         for (i in 0 until _windowCount) {
-            val range = getWindowRange(i)
+            val range = getWindowRangeInternal(i)
             if (range != null) {
-                sb.append("W$i=[${range.first}-${range.second}]")
+                val chaptersInWindow = range.second - range.first + 1
+                sb.append("W$i=[${range.first}-${range.second}]($chaptersInWindow ch)")
                 if (i < _windowCount - 1) sb.append(", ")
             }
         }
         return sb.toString()
+    }
+    
+    /**
+     * Internal method to get window range without logging (used by debugWindowMap).
+     */
+    private fun getWindowRangeInternal(windowIndex: Int): Pair<Int, Int>? {
+        if (windowIndex < 0 || windowIndex >= _windowCount || totalChapters == 0) {
+            return null
+        }
+        val firstChapter = windowIndex * chaptersPerWindow
+        val lastChapter = ((windowIndex + 1) * chaptersPerWindow - 1).coerceAtMost(totalChapters - 1)
+        return Pair(firstChapter, lastChapter)
     }
 
     /**
@@ -134,9 +202,41 @@ class SlidingWindowPaginator(
         val expected = if (totalChapters == 0) 0 else ceil(totalChapters.toDouble() / chaptersPerWindow).toInt()
         val valid = _windowCount == expected
         if (!valid) {
-            Log.e(TAG, "ASSERTION FAILED: windowCount=$_windowCount != expected=$expected (totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow)")
+            AppLogger.e(TAG, "[PAGINATION_DEBUG] ASSERTION FAILED: windowCount=$_windowCount != expected=$expected " +
+                "(totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow)")
+        } else {
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] Window count assertion passed: windowCount=$_windowCount " +
+                "(totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow)")
         }
         return valid
+    }
+    
+    /**
+     * Get detailed debug information about the current state.
+     * This includes all window mappings and validation status.
+     *
+     * @return A detailed debug string for session log
+     */
+    fun getDetailedDebugInfo(): String {
+        val sb = StringBuilder()
+        sb.appendLine("=== SlidingWindowPaginator Debug Info ===")
+        sb.appendLine("Configuration:")
+        sb.appendLine("  chaptersPerWindow: $chaptersPerWindow")
+        sb.appendLine("  totalChapters: $totalChapters")
+        sb.appendLine("  windowCount: $_windowCount")
+        sb.appendLine("Validation:")
+        sb.appendLine("  windowCount valid: ${assertWindowCountValid()}")
+        sb.appendLine("Window Mappings:")
+        for (i in 0 until _windowCount) {
+            val range = getWindowRangeInternal(i)
+            if (range != null) {
+                val chaptersInWindow = range.second - range.first + 1
+                val isComplete = chaptersInWindow == chaptersPerWindow || i == _windowCount - 1
+                sb.appendLine("  Window $i: chapters ${range.first}-${range.second} ($chaptersInWindow chapters) ${if (isComplete) "✓" else "⚠ incomplete"}")
+            }
+        }
+        sb.appendLine("=========================================")
+        return sb.toString()
     }
 
     companion object {
@@ -144,5 +244,7 @@ class SlidingWindowPaginator(
         const val DEFAULT_CHAPTERS_PER_WINDOW = 5
         /** For chapter-based mode: one window per chapter */
         const val CHAPTER_BASED_CHAPTERS_PER_WINDOW = 1
+        /** Default number of windows to keep active for smooth scrolling */
+        const val DEFAULT_ACTIVE_WINDOWS = 5
     }
 }

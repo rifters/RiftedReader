@@ -17,6 +17,11 @@ import com.rifters.riftedreader.util.AppLogger
  * In continuous mode, each page represents a window containing multiple chapters.
  * In chapter-based mode, each page represents a single chapter.
  * 
+ * **Sliding Window Pagination:**
+ * - Each window contains exactly 5 chapters (DEFAULT_CHAPTERS_PER_WINDOW)
+ * - The adapter's itemCount equals the total window count
+ * - Window index = adapter position
+ * 
  * Uses FragmentManager to manage fragment lifecycle within RecyclerView items.
  * Fragment tag format: "f{position}" (e.g., "f0", "f1", "f2")
  * 
@@ -24,6 +29,7 @@ import com.rifters.riftedreader.util.AppLogger
  * - getItemCount: logs window count
  * - onBindViewHolder: logs HTML binding to WebView
  * - notifyDataSetChanged: logs adapter state after update
+ * - All logs are written to session_log_*.txt
  */
 class ReaderPagerAdapter(
     private val activity: FragmentActivity,
@@ -35,18 +41,36 @@ class ReaderPagerAdapter(
     
     // Track last known item count for debugging adapter updates
     private var lastKnownItemCount: Int = 0
+    
+    // Track active fragments for debugging
+    private val activeFragments = mutableSetOf<Int>()
 
     override fun getItemCount(): Int {
         val count = viewModel.windowCount.value
-        // [PAGINATION_DEBUG] Log window count only when it changes to avoid performance impact
+        
+        // [PAGINATION_DEBUG] Log window count changes with detailed context
         if (count != lastKnownItemCount) {
-            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] getItemCount changed: $lastKnownItemCount -> $count (windows)")
+            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] getItemCount CHANGED: " +
+                "$lastKnownItemCount -> $count windows, " +
+                "paginationMode=${viewModel.paginationMode}, " +
+                "chaptersPerWindow=${viewModel.chaptersPerWindow}")
             lastKnownItemCount = count
         }
         
-        // [FALLBACK] If zero windows, log warning for debugging
+        // [PAGINATION_DEBUG] Warn if zero windows (pagination may have failed)
         if (count == 0) {
-            AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] WARNING: Zero windows returned from getItemCount - book may not have loaded content")
+            AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] WARNING: getItemCount=0 " +
+                "- book content may not have loaded or pagination failed")
+        }
+        
+        // [PAGINATION_DEBUG] Validate window count matches expected calculation
+        val totalChapters = viewModel.tableOfContents.value.size
+        if (totalChapters > 0 && viewModel.isContinuousMode) {
+            val expectedWindows = kotlin.math.ceil(totalChapters.toDouble() / viewModel.chaptersPerWindow).toInt()
+            if (count != expectedWindows && count > 0) {
+                AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] WINDOW_COUNT_MISMATCH: " +
+                    "actual=$count, expected=$expectedWindows (totalChapters=$totalChapters, perWindow=${viewModel.chaptersPerWindow})")
+            }
         }
         
         return count
@@ -55,13 +79,24 @@ class ReaderPagerAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_reader_page, parent, false)
+        
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onCreateViewHolder: " +
+            "parentWidth=${parent.width}, parentHeight=${parent.height}")
+        
         return PageViewHolder(view as ViewGroup)
     }
 
     override fun onBindViewHolder(holder: PageViewHolder, position: Int) {
-        // [PAGINATION_DEBUG] Log binding with full context
         val totalWindows = viewModel.windowCount.value
-        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onBindViewHolder: position=$position, totalWindows=$totalWindows, containerWidth=${holder.containerView.width}")
+        val currentWindowIndex = viewModel.currentWindowIndex.value
+        
+        // [PAGINATION_DEBUG] Enhanced binding logging
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onBindViewHolder: " +
+            "position=$position (windowIndex), " +
+            "totalWindows=$totalWindows, " +
+            "currentWindowIndex=$currentWindowIndex, " +
+            "containerWidth=${holder.containerView.width}, " +
+            "containerHeight=${holder.containerView.height}")
         
         val fragmentTag = "f$position"
         
@@ -70,13 +105,15 @@ class ReaderPagerAdapter(
         
         if (existingFragment != null && existingFragment.isAdded) {
             // Fragment already exists and is added, no need to recreate
-            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment already exists for position=$position, reusing")
+            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment REUSED: " +
+                "position=$position, fragmentTag=$fragmentTag")
             return
         }
         
         // Create new fragment for this position
         val fragment = ReaderPageFragment.newInstance(position)
-        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Creating new fragment for position=$position (windowIndex=$position)")
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment CREATING: " +
+            "position=$position (windowIndex=$position), fragmentTag=$fragmentTag")
         
         // Capture holder position for validation in the posted transaction
         val holderPosition = position
@@ -88,13 +125,23 @@ class ReaderPagerAdapter(
                 if (holder.adapterPosition == holderPosition) {
                     fragmentManager.beginTransaction().apply {
                         // Remove any existing fragment if present but not properly cleaned up
-                        fragmentManager.findFragmentByTag(fragmentTag)?.let { remove(it) }
+                        fragmentManager.findFragmentByTag(fragmentTag)?.let { 
+                            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Removing stale fragment: " +
+                                "fragmentTag=$fragmentTag")
+                            remove(it) 
+                        }
                         add(holder.containerView.id, fragment, fragmentTag)
                     }.commitAllowingStateLoss()
                     
-                    AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment committed for position=$position, containerId=${holder.containerView.id}")
+                    // Track active fragment
+                    activeFragments.add(position)
+                    
+                    AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment COMMITTED: " +
+                        "position=$position, containerId=${holder.containerView.id}, " +
+                        "activeFragments=${activeFragments.size}")
                 } else {
-                    AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Holder position changed, skipping fragment creation for position=$position (was $holderPosition, now ${holder.adapterPosition})")
+                    AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment SKIPPED (position changed): " +
+                        "original=$holderPosition, current=${holder.adapterPosition}")
                 }
             }
         }
@@ -103,7 +150,8 @@ class ReaderPagerAdapter(
     override fun onViewRecycled(holder: PageViewHolder) {
         super.onViewRecycled(holder)
         val position = holder.adapterPosition
-        AppLogger.d("ReaderPagerAdapter", "onViewRecycled: position=$position")
+        
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onViewRecycled: position=$position")
         
         // Only remove fragment if position is valid
         if (position != RecyclerView.NO_POSITION) {
@@ -119,7 +167,12 @@ class ReaderPagerAdapter(
                             fragmentManager.beginTransaction()
                                 .remove(currentFragment)
                                 .commitAllowingStateLoss()
-                            AppLogger.d("ReaderPagerAdapter", "Removed fragment for position=$position")
+                            
+                            // Track removal
+                            activeFragments.remove(position)
+                            
+                            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment REMOVED: " +
+                                "position=$position, activeFragments=${activeFragments.size}")
                         }
                     }
                 }
@@ -148,25 +201,46 @@ class ReaderPagerAdapter(
         val itemCount = itemCount
         val windowCount = viewModel.windowCount.value
         val paginationMode = viewModel.paginationMode
+        val chaptersPerWindow = viewModel.chaptersPerWindow
         
         AppLogger.d("ReaderPagerAdapter", 
             "[PAGINATION_DEBUG] Adapter state after update (caller=$caller): " +
-            "itemCount=$itemCount, windowCount=$windowCount, paginationMode=$paginationMode"
+            "itemCount=$itemCount, " +
+            "windowCount=$windowCount, " +
+            "paginationMode=$paginationMode, " +
+            "chaptersPerWindow=$chaptersPerWindow, " +
+            "activeFragments=${activeFragments.size}"
         )
         
-        // [FALLBACK] Log warning if adapter has zero items but viewModel has windows
-        if (itemCount == 0 && windowCount > 0) {
+        // [PAGINATION_DEBUG] Log mismatch warning
+        if (itemCount != windowCount) {
             AppLogger.e("ReaderPagerAdapter", 
-                "[PAGINATION_DEBUG] ERROR: itemCount=0 but windowCount=$windowCount - adapter/viewModel mismatch!"
-            )
+                "[PAGINATION_DEBUG] ERROR: itemCount/windowCount MISMATCH: " +
+                "itemCount=$itemCount, windowCount=$windowCount")
         }
         
-        // Log if adapter successfully has content
+        // [PAGINATION_DEBUG] Log zero items warning
+        if (itemCount == 0 && windowCount > 0) {
+            AppLogger.e("ReaderPagerAdapter", 
+                "[PAGINATION_DEBUG] ERROR: itemCount=0 but windowCount=$windowCount - " +
+                "adapter/viewModel mismatch!")
+        }
+        
+        // Log success case
         if (itemCount > 0) {
             AppLogger.d("ReaderPagerAdapter", 
-                "[PAGINATION_DEBUG] Adapter has $itemCount items ready for display"
-            )
+                "[PAGINATION_DEBUG] Adapter has $itemCount windows ready for display " +
+                "(each with $chaptersPerWindow chapters)")
         }
+    }
+    
+    /**
+     * Get debug information about active fragments.
+     * 
+     * @return Debug info string
+     */
+    fun getActiveFragmentsDebugInfo(): String {
+        return "ActiveFragments[count=${activeFragments.size}, positions=$activeFragments]"
     }
     
     /**
@@ -174,7 +248,9 @@ class ReaderPagerAdapter(
      * Should only be called on the main thread.
      */
     fun cleanUp() {
-        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] cleanUp called - removing all fragments")
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] cleanUp: " +
+            "removing all fragments (activeFragments=${activeFragments.size})")
+        
         if (activity.isFinishing || activity.isDestroyed) return
         
         val transaction = fragmentManager.beginTransaction()
@@ -195,11 +271,18 @@ class ReaderPagerAdapter(
         if (hasFragmentsToRemove) {
             transaction.commitAllowingStateLoss()
         }
+        
+        activeFragments.clear()
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] cleanUp: completed")
     }
 
     init {
         // Enable stable IDs for better item animations
         setHasStableIds(true)
+        
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Adapter initialized: " +
+            "paginationMode=${viewModel.paginationMode}, " +
+            "chaptersPerWindow=${viewModel.chaptersPerWindow}")
     }
 
     class PageViewHolder(val containerView: ViewGroup) : RecyclerView.ViewHolder(containerView)
