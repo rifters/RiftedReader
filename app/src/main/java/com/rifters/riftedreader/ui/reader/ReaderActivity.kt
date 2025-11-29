@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
+import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View

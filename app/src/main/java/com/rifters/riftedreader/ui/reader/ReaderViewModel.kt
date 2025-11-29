@@ -15,6 +15,9 @@ import com.rifters.riftedreader.pagination.PaginationModeGuard
 import com.rifters.riftedreader.pagination.SlidingWindowPaginator
 import com.rifters.riftedreader.pagination.WindowSyncHelpers
 import com.rifters.riftedreader.util.AppLogger
+import android.util.Log
+import androidx.lifecycle.MutableLiveData
+import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -826,6 +829,43 @@ class ReaderViewModel(
     fun getWindowIndexForChapter(chapterIndex: Int): Int {
         return slidingWindowManager.windowForChapter(chapterIndex.coerceAtLeast(0))
     }
+    
+    /**
+     * Recompute the window structure using the deterministic SlidingWindowPaginator.
+     * This method ensures thread-safe updates to LiveData and adapter.
+     *
+     * @param totalChapters Total number of chapters in the book
+     * @param adapter The RecyclerView.Adapter to notify of changes
+     */
+    fun recomputeWindowStructure(totalChapters: Int, adapter: RecyclerView.Adapter<*>) {
+        paginationModeGuard.beginWindowBuild()
+        try {
+            slidingWindowPaginator.recomputeWindows(totalChapters)
+            Log.d("SlidingWindowPaginator", slidingWindowPaginator.debugWindowMap())
+            
+            // Debug invariant check (development builds only)
+            // This duplicates the calculation intentionally to verify SlidingWindowPaginator's correctness
+            val expectedWindowCount = if (totalChapters == 0) 0 else {
+                kotlin.math.ceil(totalChapters.toDouble() / chaptersPerWindow).toInt()
+            }
+            val actualWindowCount = slidingWindowPaginator.windowCount
+            if (actualWindowCount != expectedWindowCount) {
+                Log.e("SlidingWindowPaginator", 
+                    "INVARIANT VIOLATION: windowCount=$actualWindowCount != expected=$expectedWindowCount " +
+                    "(totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow)")
+            }
+            
+            WindowSyncHelpers.syncWindowCountToUi(slidingWindowPaginator, windowCountLiveData, adapter)
+        } finally {
+            paginationModeGuard.endWindowBuild()
+        }
+    }
+    
+    /**
+     * Get the SlidingWindowPaginator for external access.
+     * Primarily used for testing and debugging.
+     */
+    fun getSlidingWindowPaginator(): SlidingWindowPaginator = slidingWindowPaginator
 }
 
 private fun StringBuilder.isNotBlank(): Boolean = this.any { !it.isWhitespace() }
