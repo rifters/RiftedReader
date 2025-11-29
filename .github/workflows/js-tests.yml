@@ -12,6 +12,9 @@ on:
       - 'app/src/main/assets/**/*.js'
       - 'tests/js/**'
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
