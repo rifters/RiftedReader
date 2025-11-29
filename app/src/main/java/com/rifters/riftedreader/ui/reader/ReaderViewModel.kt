@@ -819,8 +819,15 @@ class ReaderViewModel(
     fun recomputeWindowStructure(totalChapters: Int, adapter: RecyclerView.Adapter<*>) {
         paginationModeGuard.beginWindowBuild()
         try {
+            val previousWindowCount = slidingWindowPaginator.getWindowCount()
             slidingWindowPaginator.recomputeWindows(totalChapters)
-            Log.d("SlidingWindowPaginator", slidingWindowPaginator.debugWindowMap())
+            val newWindowCount = slidingWindowPaginator.getWindowCount()
+            
+            AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] rebuildSlidingWindows: " +
+                "totalChapters=$totalChapters, " +
+                "windowCount=$previousWindowCount->$newWindowCount, " +
+                "chaptersPerWindow=$chaptersPerWindow")
+            AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Window map: ${slidingWindowPaginator.debugWindowMap()}")
             
             // Debug invariant check (development builds only)
             // This duplicates the calculation intentionally to verify SlidingWindowPaginator's correctness
@@ -829,13 +836,14 @@ class ReaderViewModel(
             }
             val actualWindowCount = slidingWindowPaginator.getWindowCount()
             if (actualWindowCount != expectedWindowCount) {
-                Log.e("SlidingWindowPaginator", 
-                    "INVARIANT VIOLATION: windowCount=$actualWindowCount != expected=$expectedWindowCount " +
+                AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] INVARIANT_VIOLATION: " +
+                    "windowCount=$actualWindowCount != expected=$expectedWindowCount " +
                     "(totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow)")
             }
             
             WindowSyncHelpers.syncWindowCountToUi(slidingWindowPaginator, windowCountLiveData) {
                 adapter.notifyDataSetChanged()
+                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Adapter notified after rebuildSlidingWindows")
             }
         } finally {
             paginationModeGuard.endWindowBuild()

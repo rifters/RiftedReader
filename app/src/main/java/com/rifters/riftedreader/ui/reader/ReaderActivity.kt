@@ -473,27 +473,53 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 
                 launch {
                     viewModel.windowCount.collect { windowCount ->
-                        // [PAGINATION_DEBUG] Log window count change with RecyclerView measurement
+                        // [PAGINATION_DEBUG] Enhanced logging for window count changes
                         val recyclerViewWidth = binding.pageRecyclerView.width
                         val recyclerViewMeasuredWidth = binding.pageRecyclerView.measuredWidth
-                        val isMeasured = recyclerViewWidth > 0
+                        val recyclerViewHeight = binding.pageRecyclerView.height
+                        val isMeasured = recyclerViewWidth > 0 && recyclerViewHeight > 0
+                        val adapterItemCountBefore = pagerAdapter.itemCount
+                        val totalChapters = viewModel.tableOfContents.value.size
                         
                         AppLogger.d("ReaderActivity", 
-                            "[PAGINATION_DEBUG] Window count changed: $windowCount, " +
-                            "RecyclerView width=$recyclerViewWidth, measuredWidth=$recyclerViewMeasuredWidth, " +
-                            "isMeasured=$isMeasured, paginationMode=${viewModel.paginationMode}"
-                        )
+                            "[PAGINATION_DEBUG] windowCount.collect triggered: " +
+                            "windowCount=$windowCount, " +
+                            "totalChapters=$totalChapters, " +
+                            "chaptersPerWindow=${viewModel.chaptersPerWindow}, " +
+                            "adapterItemCount=$adapterItemCountBefore, " +
+                            "paginationMode=${viewModel.paginationMode}")
+                        
+                        AppLogger.d("ReaderActivity", 
+                            "[PAGINATION_DEBUG] RecyclerView state: " +
+                            "width=$recyclerViewWidth, measuredWidth=$recyclerViewMeasuredWidth, " +
+                            "height=$recyclerViewHeight, isMeasured=$isMeasured")
+                        
+                        // Validate window count against expected calculation
+                        if (totalChapters > 0 && viewModel.isContinuousMode) {
+                            val expectedWindows = kotlin.math.ceil(totalChapters.toDouble() / viewModel.chaptersPerWindow).toInt()
+                            if (windowCount != expectedWindows && windowCount > 0) {
+                                AppLogger.e("ReaderActivity", 
+                                    "[PAGINATION_DEBUG] WINDOW_COUNT_MISMATCH: " +
+                                    "received=$windowCount, expected=$expectedWindows")
+                            }
+                        }
                         
                         // [FALLBACK] If zero windows, log warning but still notify adapter
-                        if (windowCount == 0) {
-                            AppLogger.w("ReaderActivity", 
-                                "[PAGINATION_DEBUG] WARNING: windowCount is 0 - book may have failed to load or pagination failed"
-                            )
+                        if (windowCount == 0 && totalChapters > 0) {
+                            AppLogger.e("ReaderActivity", 
+                                "[PAGINATION_DEBUG] ERROR: windowCount=0 but totalChapters=$totalChapters - " +
+                                "book may have failed to load or pagination failed")
                         }
                         
                         pagerAdapter.notifyDataSetChanged()
                         
                         // [PAGINATION_DEBUG] Log adapter state after notifyDataSetChanged
+                        val adapterItemCountAfter = pagerAdapter.itemCount
+                        AppLogger.d("ReaderActivity", 
+                            "[PAGINATION_DEBUG] Adapter updated: " +
+                            "itemCount=$adapterItemCountBefore->$adapterItemCountAfter, " +
+                            "windowCount=$windowCount")
+                        
                         pagerAdapter.logAdapterStateAfterUpdate("windowCount.collect")
                     }
                 }
