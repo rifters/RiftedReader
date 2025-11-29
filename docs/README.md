@@ -66,6 +66,7 @@ This directory contains all project documentation, organized by category for eas
 - **[STAGE_1-3_SUMMARY.md](implemented/STAGE_1-3_SUMMARY.md)** - Initial stages completion summary
 - **[SLIDING_WINDOW_PAGINATION_STATUS.md](implemented/SLIDING_WINDOW_PAGINATION_STATUS.md)** - Pagination implementation progress
 - **[STABLE_WINDOW_IMPLEMENTATION.md](implemented/STABLE_WINDOW_IMPLEMENTATION.md)** - Stable window model implementation
+- **[DETERMINISTIC_PAGINATION_GUARDS.md](implemented/DETERMINISTIC_PAGINATION_GUARDS.md)** - Deterministic pagination with race condition guards (PRs #180-182)
 
 ### [testing/](testing/)
 **Testing guides and verification** - How to test and verify features.
