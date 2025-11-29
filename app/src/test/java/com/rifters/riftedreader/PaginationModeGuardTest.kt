@@ -1,116 +1,170 @@
 package com.rifters.riftedreader
 
-import com.rifters.riftedreader.pagination.PaginationModeGuard
+import com.rifters.riftedreader.domain.pagination.PaginationMode
+import com.rifters.riftedreader.domain.pagination.PaginationModeGuard
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 
+/**
+ * Unit tests for PaginationModeGuard
+ */
 class PaginationModeGuardTest {
     
-    @Test
-    fun `beginWindowBuild returns true on first call`() {
-        val guard = PaginationModeGuard()
-        assertTrue(guard.beginWindowBuild())
+    private lateinit var guard: PaginationModeGuard
+    
+    @Before
+    fun setup() {
+        guard = PaginationModeGuard()
     }
     
     @Test
-    fun `beginWindowBuild returns false when build already in progress`() {
-        val guard = PaginationModeGuard()
-        assertTrue(guard.beginWindowBuild())
-        assertFalse(guard.beginWindowBuild())
+    fun `initial state is not building`() {
+        assertFalse(guard.isBuilding)
     }
     
     @Test
-    fun `endWindowBuild returns true when no mode change`() {
-        val guard = PaginationModeGuard()
+    fun `beginWindowBuild sets building state`() {
         guard.beginWindowBuild()
-        assertTrue(guard.endWindowBuild())
+        assertTrue(guard.isBuilding)
     }
     
     @Test
-    fun `endWindowBuild allows new build after completion`() {
-        val guard = PaginationModeGuard()
-        
-        // First build
-        assertTrue(guard.beginWindowBuild())
-        assertTrue(guard.endWindowBuild())
-        
-        // Second build should be allowed
-        assertTrue(guard.beginWindowBuild())
-        assertTrue(guard.endWindowBuild())
-    }
-    
-    @Test
-    fun `isBuildInProgress returns correct state`() {
-        val guard = PaginationModeGuard()
-        
-        assertFalse(guard.isBuildInProgress())
-        
+    fun `endWindowBuild clears building state`() {
         guard.beginWindowBuild()
-        assertTrue(guard.isBuildInProgress())
+        guard.endWindowBuild()
+        assertFalse(guard.isBuilding)
+    }
+    
+    @Test
+    fun `beginWindowBuild returns true for first call`() {
+        val isFirst = guard.beginWindowBuild()
+        assertTrue(isFirst)
+    }
+    
+    @Test
+    fun `beginWindowBuild returns false for nested calls`() {
+        guard.beginWindowBuild()
+        val isFirst = guard.beginWindowBuild()
+        assertFalse(isFirst)
+    }
+    
+    @Test
+    fun `endWindowBuild returns true for last call`() {
+        guard.beginWindowBuild()
+        val isLast = guard.endWindowBuild()
+        assertTrue(isLast)
+    }
+    
+    @Test
+    fun `endWindowBuild returns false for nested calls`() {
+        guard.beginWindowBuild()
+        guard.beginWindowBuild()
+        val isLast = guard.endWindowBuild()
+        assertFalse(isLast)
+        assertTrue(guard.isBuilding)
+    }
+    
+    @Test
+    fun `nested calls require matching end calls`() {
+        guard.beginWindowBuild()
+        guard.beginWindowBuild()
+        guard.beginWindowBuild()
         
         guard.endWindowBuild()
-        assertFalse(guard.isBuildInProgress())
-    }
-    
-    @Test
-    fun `endWindowBuild without beginWindowBuild returns true`() {
-        val guard = PaginationModeGuard()
-        // Should handle gracefully and return true
-        assertTrue(guard.endWindowBuild())
-    }
-    
-    @Test
-    fun `assertWindowCountInvariant does not throw on matching counts`() {
-        val guard = PaginationModeGuard()
-        // Should not throw
-        guard.assertWindowCountInvariant(24, 24)
-    }
-    
-    @Test
-    fun `assertWindowCountInvariant logs on mismatching counts`() {
-        val guard = PaginationModeGuard()
-        // This should log an error but not throw (for production safety)
-        guard.assertWindowCountInvariant(24, 97)
-        // If we got here without exception, the test passes
-    }
-    
-    @Test
-    fun `guard can be used in try-finally pattern`() {
-        val guard = PaginationModeGuard()
+        assertTrue(guard.isBuilding)
         
-        var workDone = false
+        guard.endWindowBuild()
+        assertTrue(guard.isBuilding)
         
-        if (guard.beginWindowBuild()) {
-            try {
-                workDone = true
-            } finally {
-                guard.endWindowBuild()
-            }
+        guard.endWindowBuild()
+        assertFalse(guard.isBuilding)
+    }
+    
+    @Test
+    fun `canChangePaginationMode returns true when not building`() {
+        assertTrue(guard.canChangePaginationMode(PaginationMode.CONTINUOUS))
+        assertTrue(guard.canChangePaginationMode(PaginationMode.CHAPTER_BASED))
+    }
+    
+    @Test
+    fun `canChangePaginationMode returns false when building`() {
+        guard.beginWindowBuild()
+        
+        assertFalse(guard.canChangePaginationMode(PaginationMode.CONTINUOUS))
+        assertFalse(guard.canChangePaginationMode(PaginationMode.CHAPTER_BASED))
+    }
+    
+    @Test
+    fun `tryChangePaginationMode executes callback when not building`() {
+        var callbackExecuted = false
+        
+        val success = guard.tryChangePaginationMode(PaginationMode.CONTINUOUS) {
+            callbackExecuted = true
         }
         
-        assertTrue(workDone)
-        assertFalse(guard.isBuildInProgress())
+        assertTrue(success)
+        assertTrue(callbackExecuted)
     }
     
     @Test
-    fun `guard protects against concurrent builds`() {
-        val guard = PaginationModeGuard()
+    fun `tryChangePaginationMode blocks callback when building`() {
+        guard.beginWindowBuild()
+        var callbackExecuted = false
         
-        var firstBuildStarted = false
-        var secondBuildStarted = false
-        
-        if (guard.beginWindowBuild()) {
-            firstBuildStarted = true
-            
-            // Try to start another build while first is in progress
-            if (guard.beginWindowBuild()) {
-                secondBuildStarted = true
-            }
-            
-            guard.endWindowBuild()
+        val success = guard.tryChangePaginationMode(PaginationMode.CONTINUOUS) {
+            callbackExecuted = true
         }
         
-        assertTrue(firstBuildStarted)
-        assertFalse(secondBuildStarted)
+        assertFalse(success)
+        assertFalse(callbackExecuted)
+    }
+    
+    @Test
+    fun `withWindowBuild executes block and manages state`() {
+        var blockExecuted = false
+        
+        guard.withWindowBuild {
+            assertTrue(guard.isBuilding)
+            blockExecuted = true
+        }
+        
+        assertTrue(blockExecuted)
+        assertFalse(guard.isBuilding)
+    }
+    
+    @Test
+    fun `withWindowBuild returns block result`() {
+        val result = guard.withWindowBuild {
+            42
+        }
+        assertEquals(42, result)
+    }
+    
+    @Test
+    fun `withWindowBuild clears state even on exception`() {
+        try {
+            guard.withWindowBuild {
+                throw RuntimeException("Test exception")
+            }
+        } catch (e: RuntimeException) {
+            // Expected
+        }
+        
+        assertFalse(guard.isBuilding)
+    }
+    
+    @Test
+    fun `debugState returns readable string`() {
+        val debug = guard.debugState()
+        assertTrue(debug.contains("PaginationModeGuard"))
+        assertTrue(debug.contains("isBuilding=false"))
+    }
+    
+    @Test
+    fun `debugState reflects building state`() {
+        guard.beginWindowBuild()
+        val debug = guard.debugState()
+        assertTrue(debug.contains("isBuilding=true"))
     }
 }

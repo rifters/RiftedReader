@@ -1,201 +1,164 @@
 package com.rifters.riftedreader
 
-import com.rifters.riftedreader.pagination.SlidingWindowPaginator
+import com.rifters.riftedreader.domain.pagination.SlidingWindowPaginator
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 
+/**
+ * Unit tests for SlidingWindowPaginator
+ */
 class SlidingWindowPaginatorTest {
     
-    @Test
-    fun `recomputeWindows with 120 chapters returns 24 windows with 5 chapters per window`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        val windowCount = paginator.recomputeWindows(120)
-        
-        assertEquals(24, windowCount)
-        assertEquals(24, paginator.getWindowCount())
-        assertEquals(120, paginator.getTotalChapters())
+    private lateinit var paginator: SlidingWindowPaginator
+    
+    @Before
+    fun setup() {
+        paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
     }
     
     @Test
-    fun `recomputeWindows with partial last window`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        
-        // 123 chapters = 24 full windows (120 chapters) + 1 partial window (3 chapters)
-        assertEquals(25, paginator.recomputeWindows(123))
-        
-        // 62 chapters = 12 full windows (60 chapters) + 1 partial window (2 chapters)
-        assertEquals(13, paginator.recomputeWindows(62))
+    fun `recomputeWindows calculates correct window count`() {
+        // 10 chapters with 5 per window = 2 windows
+        val windowCount = paginator.recomputeWindows(10)
+        assertEquals(2, windowCount)
+        assertEquals(2, paginator.windowCount)
+    }
+    
+    @Test
+    fun `recomputeWindows rounds up for partial windows`() {
+        // 12 chapters with 5 per window = 3 windows (ceil(12/5) = 3)
+        val windowCount = paginator.recomputeWindows(12)
+        assertEquals(3, windowCount)
+    }
+    
+    @Test
+    fun `recomputeWindows handles single chapter`() {
+        val windowCount = paginator.recomputeWindows(1)
+        assertEquals(1, windowCount)
+    }
+    
+    @Test
+    fun `recomputeWindows handles zero chapters`() {
+        val windowCount = paginator.recomputeWindows(0)
+        assertEquals(0, windowCount)
     }
     
     @Test
     fun `getWindowRange returns correct range for first window`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        paginator.recomputeWindows(120)
+        paginator.recomputeWindows(10)
         
         val range = paginator.getWindowRange(0)
-        assertEquals(0, range.first)
-        assertEquals(4, range.last)
+        
+        assertNotNull(range)
+        assertEquals(0, range!!.first)
+        assertEquals(4, range.second)
     }
     
     @Test
-    fun `getWindowRange returns correct range for middle window`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        paginator.recomputeWindows(120)
+    fun `getWindowRange returns correct range for second window`() {
+        paginator.recomputeWindows(10)
         
-        val range = paginator.getWindowRange(10)
-        assertEquals(50, range.first)
-        assertEquals(54, range.last)
-    }
-    
-    @Test
-    fun `getWindowRange returns correct range for last full window`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        paginator.recomputeWindows(120)
+        val range = paginator.getWindowRange(1)
         
-        val range = paginator.getWindowRange(23)
-        assertEquals(115, range.first)
-        assertEquals(119, range.last)
+        assertNotNull(range)
+        assertEquals(5, range!!.first)
+        assertEquals(9, range.second)
     }
     
     @Test
     fun `getWindowRange handles partial last window`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        paginator.recomputeWindows(62) // 12 full + 1 partial
+        paginator.recomputeWindows(12)
         
-        val range = paginator.getWindowRange(12)
-        assertEquals(60, range.first)
-        assertEquals(61, range.last) // Only 2 chapters in last window
+        val range = paginator.getWindowRange(2)
+        
+        assertNotNull(range)
+        assertEquals(10, range!!.first)
+        assertEquals(11, range.second) // Only 2 chapters in last window
     }
     
     @Test
-    fun `getWindowForChapter returns correct window`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        paginator.recomputeWindows(120)
+    fun `getWindowRange returns null for invalid index`() {
+        paginator.recomputeWindows(10)
         
-        // Chapters 0-4 should be in window 0
+        assertNull(paginator.getWindowRange(-1))
+        assertNull(paginator.getWindowRange(5))
+    }
+    
+    @Test
+    fun `getWindowForChapter returns correct window index`() {
+        paginator.recomputeWindows(20)
+        
         assertEquals(0, paginator.getWindowForChapter(0))
-        assertEquals(0, paginator.getWindowForChapter(2))
-        assertEquals(0, paginator.getWindowForChapter(4))
-        
-        // Chapters 5-9 should be in window 1
-        assertEquals(1, paginator.getWindowForChapter(5))
-        assertEquals(1, paginator.getWindowForChapter(7))
-        assertEquals(1, paginator.getWindowForChapter(9))
-        
-        // Last chapter should be in last window
-        assertEquals(23, paginator.getWindowForChapter(119))
-    }
-    
-    @Test
-    fun `getWindowForChapter handles boundaries correctly`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        paginator.recomputeWindows(120)
-        
-        // Boundary between window 0 and 1
         assertEquals(0, paginator.getWindowForChapter(4))
         assertEquals(1, paginator.getWindowForChapter(5))
-        
-        // Boundary between window 1 and 2
         assertEquals(1, paginator.getWindowForChapter(9))
         assertEquals(2, paginator.getWindowForChapter(10))
+        assertEquals(3, paginator.getWindowForChapter(19))
     }
     
     @Test
-    fun `setChaptersPerWindow updates chapters per window`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        assertEquals(5, paginator.getChaptersPerWindow())
+    fun `setChaptersPerWindow updates window size`() {
+        val changed = paginator.setChaptersPerWindow(3)
+        assertTrue(changed)
+        paginator.recomputeWindows(10)
         
-        paginator.setChaptersPerWindow(10)
-        assertEquals(10, paginator.getChaptersPerWindow())
-        
-        // Recompute with new setting
-        assertEquals(12, paginator.recomputeWindows(120))
+        assertEquals(4, paginator.windowCount) // ceil(10/3) = 4
+        assertEquals(0, paginator.getWindowForChapter(0))
+        assertEquals(1, paginator.getWindowForChapter(3))
     }
     
     @Test
-    fun `debugWindowMap returns formatted string`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        paginator.recomputeWindows(15) // 3 windows
+    fun `setChaptersPerWindow returns false when unchanged`() {
+        val changed = paginator.setChaptersPerWindow(5) // already 5
+        assertFalse(changed)
+    }
+    
+    @Test
+    fun `debugWindowMap returns readable string`() {
+        paginator.recomputeWindows(12)
         
         val debug = paginator.debugWindowMap()
-        assertTrue(debug.contains("totalChapters=15"))
+        
+        assertTrue(debug.contains("totalChapters=12"))
         assertTrue(debug.contains("chaptersPerWindow=5"))
         assertTrue(debug.contains("windowCount=3"))
-        assertTrue(debug.contains("Window 0: chapters 0-4"))
-        assertTrue(debug.contains("Window 1: chapters 5-9"))
-        assertTrue(debug.contains("Window 2: chapters 10-14"))
+        assertTrue(debug.contains("W0="))
+        assertTrue(debug.contains("W1="))
+        assertTrue(debug.contains("W2="))
     }
     
     @Test
-    fun `debugWindowMap before recompute returns no windows message`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        val debug = paginator.debugWindowMap()
-        assertTrue(debug.contains("No windows computed"))
+    fun `assertWindowCountValid returns true for valid state`() {
+        paginator.recomputeWindows(10)
+        assertTrue(paginator.assertWindowCountValid())
     }
     
     @Test
-    fun `recomputeWindows with zero chapters returns zero windows`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        assertEquals(0, paginator.recomputeWindows(0))
-        assertEquals(0, paginator.getWindowCount())
+    fun `getChaptersPerWindow returns current setting`() {
+        assertEquals(5, paginator.getChaptersPerWindow())
+        
+        paginator.setChaptersPerWindow(3)
+        assertEquals(3, paginator.getChaptersPerWindow())
     }
     
     @Test(expected = IllegalArgumentException::class)
-    fun `constructor throws on non-positive chaptersPerWindow`() {
+    fun `constructor throws on invalid window size`() {
         SlidingWindowPaginator(chaptersPerWindow = 0)
     }
     
     @Test(expected = IllegalArgumentException::class)
-    fun `constructor throws on negative chaptersPerWindow`() {
-        SlidingWindowPaginator(chaptersPerWindow = -1)
+    fun `setChaptersPerWindow throws on invalid size`() {
+        paginator.setChaptersPerWindow(0)
     }
     
     @Test(expected = IllegalArgumentException::class)
-    fun `getWindowRange throws on negative windowIndex`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        paginator.recomputeWindows(120)
-        paginator.getWindowRange(-1)
+    fun `recomputeWindows throws on negative chapters`() {
+        paginator.recomputeWindows(-1)
     }
     
     @Test(expected = IllegalArgumentException::class)
-    fun `getWindowRange throws on out of bounds windowIndex`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        paginator.recomputeWindows(120)
-        paginator.getWindowRange(24) // 24 windows, so valid indices are 0-23
-    }
-    
-    @Test(expected = IllegalArgumentException::class)
-    fun `getWindowRange throws when no chapters computed`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        paginator.getWindowRange(0)
-    }
-    
-    @Test(expected = IllegalArgumentException::class)
-    fun `getWindowForChapter throws on negative chapterIndex`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        paginator.recomputeWindows(120)
+    fun `getWindowForChapter throws on negative index`() {
         paginator.getWindowForChapter(-1)
-    }
-    
-    @Test(expected = IllegalArgumentException::class)
-    fun `getWindowForChapter throws on out of bounds chapterIndex`() {
-        val paginator = SlidingWindowPaginator(chaptersPerWindow = 5)
-        paginator.recomputeWindows(120)
-        paginator.getWindowForChapter(120) // 120 chapters, so valid indices are 0-119
-    }
-    
-    @Test
-    fun `works with different chaptersPerWindow values`() {
-        // chaptersPerWindow = 3
-        val paginator3 = SlidingWindowPaginator(chaptersPerWindow = 3)
-        assertEquals(40, paginator3.recomputeWindows(120))
-        assertEquals(0..2, paginator3.getWindowRange(0))
-        assertEquals(3..5, paginator3.getWindowRange(1))
-        
-        // chaptersPerWindow = 10
-        val paginator10 = SlidingWindowPaginator(chaptersPerWindow = 10)
-        assertEquals(12, paginator10.recomputeWindows(120))
-        assertEquals(0..9, paginator10.getWindowRange(0))
-        assertEquals(10..19, paginator10.getWindowRange(1))
     }
 }

@@ -1,107 +1,119 @@
 #!/bin/bash
-#
+
 # detect_viewpager_traces.sh
 # 
-# Scans the repository for ViewPager/ViewPager2 traces, in-page paginator references,
-# and pagination flags that may indicate leftover or conflicting pagination code.
-#
-# Run this script before merging to ensure no unwanted pagination traces remain.
+# Script to find references to ViewPager2/ViewPager, in-page paginator JS,
+# and pagination-related flags in the repository.
 #
 # Usage:
-#   ./detect_viewpager_traces.sh
+#   ./detect_viewpager_traces.sh [OPTIONS]
 #
+# Options:
+#   -v, --verbose    Show full context for each match
+#   -h, --help       Show this help message
+#
+# This script helps identify leftover ViewPager2/continuous pagination traces
+# that might cause race conditions or mixed pagination behavior.
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-NC='\033[0m' # No Color
-
-echo "=============================================="
-echo "  ViewPager/Pagination Trace Detector"
-echo "=============================================="
-echo ""
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$REPO_ROOT"
+VERBOSE=false
 
-FOUND_ISSUES=0
-
-# Function to search and report
-search_pattern() {
-    local pattern="$1"
-    local description="$2"
-    local exclude_pattern="${3:-}"
-    
-    echo -e "${YELLOW}Searching for: ${description}${NC}"
-    echo "Pattern: $pattern"
-    echo "---"
-    
-    if [ -n "$exclude_pattern" ]; then
-        RESULTS=$(grep -rn --include="*.kt" --include="*.java" --include="*.xml" "$pattern" app/src 2>/dev/null | grep -v "$exclude_pattern" || true)
-    else
-        RESULTS=$(grep -rn --include="*.kt" --include="*.java" --include="*.xml" "$pattern" app/src 2>/dev/null || true)
-    fi
-    
-    if [ -n "$RESULTS" ]; then
-        echo -e "${RED}Found traces:${NC}"
-        echo "$RESULTS"
-        echo ""
-        FOUND_ISSUES=$((FOUND_ISSUES + 1))
-    else
-        echo -e "${GREEN}No traces found.${NC}"
-        echo ""
-    fi
+usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  -v, --verbose    Show full context for each match (5 lines before/after)"
+    echo "  -h, --help       Show this help message"
+    echo ""
+    echo "This script searches for ViewPager2, pagination mode, and related traces."
 }
 
-# Search for ViewPager references
-search_pattern "ViewPager[^2]" "ViewPager (legacy) references"
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -v|--verbose)
+            VERBOSE=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
 
-# Search for ViewPager2 references
-search_pattern "ViewPager2" "ViewPager2 references"
-
-# Search for inpage paginator references
-search_pattern "inpage.paginator" "In-page paginator references"
-search_pattern "inpage_paginator" "In-page paginator file references"
-search_pattern "InPagePaginator" "InPagePaginator class references"
-
-# Search for pagination mode flags
-search_pattern "PAGINATION_MODE" "Pagination mode flags"
-search_pattern "paginationMode" "paginationMode property references"
-
-# Search for window count references that might be problematic
-# Note: 97 is a known problematic value that appears when chapter-based window count
-# is incorrectly used instead of sliding-window count. In a book with 97 chapters,
-# this value appears when the code falls back to treating each chapter as a window.
-search_pattern "windowCount\s*=\s*97" "Hardcoded windowCount=97 (known race condition indicator)"
-
-# Search for potential race condition patterns
-search_pattern "getItemCount" "ViewPager adapter getItemCount implementations"
-
-# Search for sliding window manager references
-search_pattern "SlidingWindowManager" "SlidingWindowManager references"
-
-# Search for continuous paginator references
-search_pattern "ContinuousPaginator" "ContinuousPaginator references"
-
-echo "=============================================="
-echo "  Summary"
-echo "=============================================="
-echo ""
-
-if [ $FOUND_ISSUES -gt 0 ]; then
-    echo -e "${YELLOW}Found $FOUND_ISSUES categories with potential traces.${NC}"
-    echo "Review the above results and determine if any need to be addressed."
-    echo ""
-    echo "Note: Some traces may be intentional (e.g., the ReaderPagerAdapter)."
-    echo "Focus on unexpected or duplicate pagination logic."
-else
-    echo -e "${GREEN}No concerning traces found.${NC}"
+CONTEXT_FLAG=""
+if [ "$VERBOSE" = true ]; then
+    CONTEXT_FLAG="-B5 -A5"
 fi
 
+echo "==========================================="
+echo "ViewPager2/Pagination Trace Detection"
+echo "==========================================="
 echo ""
-echo "=============================================="
-echo "  Script completed"
-echo "=============================================="
+
+echo "--- 1. ViewPager2/ViewPager References ---"
+echo "(Excluding imports and standard adapter patterns)"
+grep -rn --include="*.kt" --include="*.java" $CONTEXT_FLAG \
+    -e "ViewPager2" \
+    -e "ViewPager\b" \
+    "$REPO_ROOT/app/src/main" 2>/dev/null || echo "No ViewPager references found."
+echo ""
+
+echo "--- 2. Pagination Mode Flags ---"
+grep -rn --include="*.kt" --include="*.java" $CONTEXT_FLAG \
+    -e "PaginationMode\." \
+    -e "paginationMode" \
+    -e "CONTINUOUS" \
+    -e "CHAPTER_BASED" \
+    "$REPO_ROOT/app/src/main" 2>/dev/null || echo "No pagination mode flags found."
+echo ""
+
+echo "--- 3. In-Page Paginator JS References ---"
+grep -rn --include="*.kt" --include="*.java" --include="*.js" $CONTEXT_FLAG \
+    -e "inpage_paginator" \
+    -e "InPagePaginator" \
+    -e "configurePaginator" \
+    -e "initializePaginator" \
+    "$REPO_ROOT/app/src/main" 2>/dev/null || echo "No in-page paginator references found."
+echo ""
+
+echo "--- 4. Window-Related References ---"
+grep -rn --include="*.kt" --include="*.java" $CONTEXT_FLAG \
+    -e "windowCount" \
+    -e "windowIndex" \
+    -e "SlidingWindow" \
+    -e "WindowManager" \
+    "$REPO_ROOT/app/src/main" 2>/dev/null || echo "No window-related references found."
+echo ""
+
+echo "--- 5. ContinuousPaginator References ---"
+grep -rn --include="*.kt" --include="*.java" $CONTEXT_FLAG \
+    -e "ContinuousPaginator" \
+    -e "continuousPaginator" \
+    -e "isContinuousMode" \
+    -e "isContinuousInitialized" \
+    "$REPO_ROOT/app/src/main" 2>/dev/null || echo "No ContinuousPaginator references found."
+echo ""
+
+echo "--- 6. Potential Race Condition Patterns ---"
+echo "(Looking for window/page state updates that could race with UI)"
+grep -rn --include="*.kt" --include="*.java" $CONTEXT_FLAG \
+    -e "_windowCount\.value\s*=" \
+    -e "_currentWindowIndex\.value\s*=" \
+    -e "_totalPages\.value\s*=" \
+    -e "notifyDataSetChanged" \
+    "$REPO_ROOT/app/src/main/java/com/rifters/riftedreader/ui/reader" 2>/dev/null | \
+    grep -v "^Binary" || echo "No race condition patterns found in reader package."
+echo ""
+
+echo "==========================================="
+echo "Detection complete."
+echo "Review the above output for traces that may need attention."
+echo "==========================================="
