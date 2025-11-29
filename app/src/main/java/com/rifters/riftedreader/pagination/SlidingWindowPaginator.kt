@@ -1,6 +1,6 @@
 package com.rifters.riftedreader.pagination
 
-import android.util.Log
+import com.rifters.riftedreader.util.AppLogger
 
 /**
  * Deterministic sliding-window paginator for chapter-to-window grouping.
@@ -9,11 +9,17 @@ import android.util.Log
  * race conditions in RecyclerView pagination. Windows are computed once
  * and remain stable until explicitly recomputed.
  * 
+ * **Sliding Window Rules:**
+ * - Each window contains exactly [DEFAULT_CHAPTERS_PER_WINDOW] (5) chapters
+ * - Last window may have fewer chapters if totalChapters is not evenly divisible
+ * - Window count = ceil(totalChapters / chaptersPerWindow)
+ * - All computations are logged to session_log for debugging
+ * 
  * Example with chaptersPerWindow=5 and 120 total chapters:
- * - Window 0: chapters 0-4
- * - Window 1: chapters 5-9
+ * - Window 0: chapters 0-4 (5 chapters)
+ * - Window 1: chapters 5-9 (5 chapters)
  * - ...
- * - Window 23: chapters 115-119
+ * - Window 23: chapters 115-119 (5 chapters)
  * 
  * @param chaptersPerWindow Number of chapters per window (default: 5)
  */
@@ -28,6 +34,7 @@ class SlidingWindowPaginator(
     
     init {
         require(chaptersPerWindow > 0) { "chaptersPerWindow must be positive, got: $chaptersPerWindow" }
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] SlidingWindowPaginator (pagination pkg) created with chaptersPerWindow=$chaptersPerWindow")
     }
     
     // Cached window count after recompute
@@ -44,6 +51,9 @@ class SlidingWindowPaginator(
     fun recomputeWindows(totalChapters: Int): Int {
         require(totalChapters >= 0) { "totalChapters must be non-negative, got: $totalChapters" }
         
+        val previousWindowCount = cachedWindowCount
+        val previousTotalChapters = cachedTotalChapters
+        
         cachedTotalChapters = totalChapters
         cachedWindowCount = if (totalChapters <= 0) {
             0
@@ -51,7 +61,26 @@ class SlidingWindowPaginator(
             (totalChapters + chaptersPerWindow - 1) / chaptersPerWindow
         }
         
-        Log.d(TAG, "totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow, windowCount=$cachedWindowCount")
+        // Enhanced debug logging
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] recomputeWindows: " +
+            "totalChapters=$previousTotalChapters->$totalChapters, " +
+            "chaptersPerWindow=$chaptersPerWindow, " +
+            "windowCount=$previousWindowCount->$cachedWindowCount")
+        
+        // Validate the computation
+        val expectedWindowCount = if (totalChapters <= 0) 0 else 
+            kotlin.math.ceil(totalChapters.toDouble() / chaptersPerWindow).toInt()
+        if (cachedWindowCount != expectedWindowCount) {
+            AppLogger.e(TAG, "[PAGINATION_DEBUG] WINDOW_COUNT_MISMATCH: computed=$cachedWindowCount, expected=$expectedWindowCount")
+        }
+        
+        // Log the complete window map
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] Window map: ${debugWindowMap()}")
+        
+        // Warn on zero windows for non-zero chapters
+        if (cachedWindowCount == 0 && totalChapters > 0) {
+            AppLogger.e(TAG, "[PAGINATION_DEBUG] WARNING: Zero windows computed for $totalChapters chapters!")
+        }
         
         return cachedWindowCount
     }
@@ -72,6 +101,10 @@ class SlidingWindowPaginator(
         
         val firstChapter = windowIndex * chaptersPerWindow
         val lastChapter = minOf(firstChapter + chaptersPerWindow - 1, cachedTotalChapters - 1)
+        val chaptersInWindow = lastChapter - firstChapter + 1
+        
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] getWindowRange: windowIndex=$windowIndex -> " +
+            "chapters=$firstChapter-$lastChapter ($chaptersInWindow chapters)")
         
         return firstChapter..lastChapter
     }
@@ -90,7 +123,9 @@ class SlidingWindowPaginator(
             "chapterIndex $chapterIndex out of bounds, totalChapters is $cachedTotalChapters"
         }
         
-        return chapterIndex / chaptersPerWindow
+        val windowIndex = chapterIndex / chaptersPerWindow
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] getWindowForChapter: chapterIndex=$chapterIndex -> windowIndex=$windowIndex")
+        return windowIndex
     }
     
     /**
@@ -101,10 +136,12 @@ class SlidingWindowPaginator(
      */
     fun setChaptersPerWindow(newChaptersPerWindow: Int) {
         require(newChaptersPerWindow > 0) { "chaptersPerWindow must be positive, got: $newChaptersPerWindow" }
+        val oldValue = chaptersPerWindow
         this.chaptersPerWindow = newChaptersPerWindow
         // Reset cached values to force recomputation
         cachedWindowCount = 0
         cachedTotalChapters = 0
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] setChaptersPerWindow: $oldValue -> $newChaptersPerWindow (cache cleared)")
     }
     
     /**
@@ -140,14 +177,44 @@ class SlidingWindowPaginator(
         }
         
         val sb = StringBuilder()
-        sb.append("totalChapters=$cachedTotalChapters, chaptersPerWindow=$chaptersPerWindow, windowCount=$cachedWindowCount\n")
-        sb.append("Window mappings:\n")
+        sb.append("WindowMap[total=$cachedTotalChapters, perWindow=$chaptersPerWindow, count=$cachedWindowCount]: ")
         
         for (windowIndex in 0 until cachedWindowCount) {
-            val range = getWindowRange(windowIndex)
-            sb.append("  Window $windowIndex: chapters ${range.first}-${range.last}\n")
+            val firstChapter = windowIndex * chaptersPerWindow
+            val lastChapter = minOf(firstChapter + chaptersPerWindow - 1, cachedTotalChapters - 1)
+            val chaptersInWindow = lastChapter - firstChapter + 1
+            sb.append("W$windowIndex=[${firstChapter}-${lastChapter}]($chaptersInWindow)")
+            if (windowIndex < cachedWindowCount - 1) sb.append(", ")
         }
         
+        return sb.toString()
+    }
+    
+    /**
+     * Get detailed debug information for session log.
+     * 
+     * @return Detailed debug information
+     */
+    fun getDetailedDebugInfo(): String {
+        val sb = StringBuilder()
+        sb.appendLine("=== SlidingWindowPaginator (pagination pkg) Debug Info ===")
+        sb.appendLine("Configuration:")
+        sb.appendLine("  chaptersPerWindow: $chaptersPerWindow")
+        sb.appendLine("  cachedTotalChapters: $cachedTotalChapters")
+        sb.appendLine("  cachedWindowCount: $cachedWindowCount")
+        sb.appendLine("Window Mappings:")
+        if (cachedTotalChapters > 0 && cachedWindowCount > 0) {
+            for (windowIndex in 0 until cachedWindowCount) {
+                val firstChapter = windowIndex * chaptersPerWindow
+                val lastChapter = minOf(firstChapter + chaptersPerWindow - 1, cachedTotalChapters - 1)
+                val chaptersInWindow = lastChapter - firstChapter + 1
+                val isComplete = chaptersInWindow == chaptersPerWindow || windowIndex == cachedWindowCount - 1
+                sb.appendLine("  Window $windowIndex: chapters $firstChapter-$lastChapter ($chaptersInWindow) ${if (isComplete) "✓" else "⚠"}")
+            }
+        } else {
+            sb.appendLine("  (no windows computed)")
+        }
+        sb.appendLine("=========================================")
         return sb.toString()
     }
 }

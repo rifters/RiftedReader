@@ -1,14 +1,16 @@
 package com.rifters.riftedreader.pagination
 
-import android.util.Log
 import androidx.lifecycle.LiveData
 import com.rifters.riftedreader.domain.pagination.PaginationMode
+import com.rifters.riftedreader.util.AppLogger
 
 /**
  * Guard to prevent race conditions during window building/rebuilding in RecyclerView.
  * 
  * This guard ensures that pagination mode changes don't interfere with window building operations,
  * which could lead to inconsistent state (e.g., windowCount switching from 24 to 97 mid-operation).
+ * 
+ * All guard operations are logged to session_log for debugging race conditions.
  * 
  * Usage pattern:
  * ```kotlin
@@ -42,6 +44,10 @@ class PaginationModeGuard(
     @Volatile
     private var modeAtBuildStart: PaginationMode? = null
     
+    // Build counter for nested builds tracking
+    @Volatile
+    private var buildNestingLevel: Int = 0
+    
     /**
      * Begin a window building operation.
      * 
@@ -54,8 +60,11 @@ class PaginationModeGuard(
      */
     fun beginWindowBuild(): Boolean {
         synchronized(this) {
+            buildNestingLevel++
+            
             if (isBuilding) {
-                Log.w(TAG, "Window build already in progress, rejecting new build request")
+                AppLogger.w(TAG, "[PAGINATION_DEBUG] Window build NESTED (level=$buildNestingLevel) - " +
+                    "previous build in progress for ${System.currentTimeMillis() - buildStartTimeMs}ms")
                 return false
             }
             
@@ -63,7 +72,10 @@ class PaginationModeGuard(
             buildStartTimeMs = System.currentTimeMillis()
             modeAtBuildStart = paginationModeLiveData?.value
             
-            Log.d(TAG, "Window build started, mode=${modeAtBuildStart ?: "UNKNOWN"}")
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] Window build STARTED: " +
+                "mode=${modeAtBuildStart ?: "UNKNOWN"}, " +
+                "timestamp=$buildStartTimeMs, " +
+                "nestingLevel=$buildNestingLevel")
             return true
         }
     }
@@ -80,8 +92,10 @@ class PaginationModeGuard(
      */
     fun endWindowBuild(): Boolean {
         synchronized(this) {
+            buildNestingLevel--
+            
             if (!isBuilding) {
-                Log.w(TAG, "endWindowBuild called but no build in progress")
+                AppLogger.w(TAG, "[PAGINATION_DEBUG] endWindowBuild called but no build in progress (nestingLevel=$buildNestingLevel)")
                 return true
             }
             
@@ -90,11 +104,16 @@ class PaginationModeGuard(
             val modeStable = (currentMode == modeAtBuildStart) || (modeAtBuildStart == null)
             
             if (!modeStable) {
-                Log.w(TAG, "Pagination mode changed during build! " +
-                        "Started with ${modeAtBuildStart}, now ${currentMode}, " +
-                        "elapsed=${elapsed}ms - THIS MAY INDICATE A RACE CONDITION")
+                AppLogger.e(TAG, "[PAGINATION_DEBUG] RACE_CONDITION_DETECTED: " +
+                    "Mode changed during build! " +
+                    "started=${modeAtBuildStart}, " +
+                    "now=$currentMode, " +
+                    "elapsed=${elapsed}ms")
             } else {
-                Log.d(TAG, "Window build completed, mode=${currentMode ?: "UNKNOWN"}, elapsed=${elapsed}ms")
+                AppLogger.d(TAG, "[PAGINATION_DEBUG] Window build COMPLETED: " +
+                    "mode=${currentMode ?: "UNKNOWN"}, " +
+                    "elapsed=${elapsed}ms, " +
+                    "modeStable=true")
             }
             
             isBuilding = false
@@ -125,7 +144,7 @@ class PaginationModeGuard(
         val matches = currentMode == expectedMode
         
         if (!matches) {
-            Log.d(TAG, "Mode check: expected=$expectedMode, actual=$currentMode")
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] Mode check: expected=$expectedMode, actual=$currentMode")
         }
         
         return matches
@@ -140,14 +159,29 @@ class PaginationModeGuard(
      */
     fun assertWindowCountInvariant(expectedWindowCount: Int, actualWindowCount: Int) {
         if (expectedWindowCount != actualWindowCount) {
-            val message = "Window count invariant violated: " +
+            val message = "[PAGINATION_DEBUG] WINDOW_COUNT_INVARIANT_VIOLATED: " +
                     "expected=$expectedWindowCount, actual=$actualWindowCount, " +
                     "isBuilding=$isBuilding, mode=${paginationModeLiveData?.value}"
-            Log.e(TAG, message)
+            AppLogger.e(TAG, message)
             
             // Note: This logs the error for debugging but does not throw to avoid
             // crashing in production. The invariant violation indicates a potential
             // race condition that should be investigated during development.
+        } else {
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] Window count invariant OK: " +
+                "count=$actualWindowCount, mode=${paginationModeLiveData?.value}")
         }
+    }
+    
+    /**
+     * Get debug state information.
+     * 
+     * @return Debug state string for logging
+     */
+    fun getDebugState(): String {
+        return "PaginationModeGuard[isBuilding=$isBuilding, " +
+            "nestingLevel=$buildNestingLevel, " +
+            "mode=${paginationModeLiveData?.value}, " +
+            "buildDurationMs=${if (isBuilding) System.currentTimeMillis() - buildStartTimeMs else 0}]"
     }
 }
