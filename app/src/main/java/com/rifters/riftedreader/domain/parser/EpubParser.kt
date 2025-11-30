@@ -128,8 +128,8 @@ class EpubParser : BookParser {
         /** CSS for placeholder images */
         private const val PLACEHOLDER_CSS = "background-color: #e0e0e0; border: 1px dashed #999;"
         
-        /** Alt text template for missing images */
-        private const val MISSING_IMAGE_ALT_TEMPLATE = "[Image not found: %s]"
+        /** Alt text prefix for missing images */
+        private const val MISSING_IMAGE_ALT_PREFIX = "[Image not found: "
         
         /**
          * Build responsive CSS styling for an image with given dimensions.
@@ -825,7 +825,7 @@ class EpubParser : BookParser {
         // Set a minimum size placeholder to prevent layout collapse
         img.attr("width", PLACEHOLDER_WIDTH.toString())
         img.attr("height", PLACEHOLDER_HEIGHT.toString())
-        img.attr("alt", String.format(MISSING_IMAGE_ALT_TEMPLATE, truncateForDisplay(originalSrc)))
+        img.attr("alt", "$MISSING_IMAGE_ALT_PREFIX${truncateForDisplay(originalSrc)}]")
         
         // Add inline style for visual indication (gray placeholder)
         val existingStyle = img.attr("style")
