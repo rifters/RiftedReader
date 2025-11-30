@@ -97,11 +97,13 @@ class ChapterIndexProvider(
         _spineAll = chapters.toList()
 
         // Build visible chapters list
+        // NON_LINEAR chapters: include if setting enabled, regardless of isLinear flag
+        // (the isLinear flag refers to spine attribute, not the chapter type)
         _visibleChapters = _spineAll.filter { chapter ->
             when (chapter.type) {
                 ChapterType.NAV -> false // Always exclude navigation
                 ChapterType.COVER -> false // Exclude cover by default
-                ChapterType.NON_LINEAR -> includeNonLinear && chapter.isLinear
+                ChapterType.NON_LINEAR -> includeNonLinear // Include based on user setting
                 ChapterType.FRONT_MATTER -> true // Include front matter
                 ChapterType.CONTENT -> true // Always include content
             }

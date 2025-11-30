@@ -23,12 +23,19 @@
     
     // ========================================================================
     // INJECTION GUARD - Prevent duplicate initialization
+    // Using a unique, namespaced symbol for robustness against accidental modification
     // ========================================================================
-    if (window.inpagePaginatorInitialized === true) {
+    var GUARD_SYMBOL = '__riftedReaderPaginatorInitialized_v1__';
+    if (window[GUARD_SYMBOL] === true) {
         console.warn('inpage_paginator: [GUARD] Script already initialized - skipping duplicate injection. Use reconfigure() to update settings.');
         return;
     }
-    window.inpagePaginatorInitialized = true;
+    // Also check for the paginator object existence as a secondary guard
+    if (window.inpagePaginator && typeof window.inpagePaginator.isReady === 'function') {
+        console.warn('inpage_paginator: [GUARD] Paginator object already exists - skipping duplicate injection.');
+        return;
+    }
+    window[GUARD_SYMBOL] = true;
     
     // Configuration
     const COLUMN_GAP = 0; // No gap between columns for seamless pages

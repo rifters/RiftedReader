@@ -251,15 +251,14 @@ object WebViewPaginatorBridge {
     fun reconfigure(webView: WebView, options: ReconfigureOptions) {
         AppLogger.d("WebViewPaginatorBridge", "reconfigure: $options")
         
-        val jsonOptions = buildString {
-            append("{")
-            options.fontSize?.let { append("fontSize:$it,") }
-            options.lineHeight?.let { append("lineHeight:$it,") }
-            options.backgroundColor?.let { append("backgroundColor:'$it',") }
-            options.textColor?.let { append("textColor:'$it',") }
-            append("preservePosition:${options.preservePosition}")
-            append("}")
-        }
+        // Use Gson for safe JSON construction to prevent injection
+        val jsonOptions = gson.toJson(mapOf(
+            "fontSize" to options.fontSize,
+            "lineHeight" to options.lineHeight,
+            "backgroundColor" to options.backgroundColor,
+            "textColor" to options.textColor,
+            "preservePosition" to options.preservePosition
+        ).filterValues { it != null })
         
         mainHandler.post {
             webView.evaluateJavascript(

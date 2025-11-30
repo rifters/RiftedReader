@@ -96,6 +96,7 @@ class ChapterIndexProviderTest {
         val chapters = listOf(
             ChapterInfo(0, "chapter1.xhtml", ChapterType.CONTENT),
             ChapterInfo(1, "chapter2.xhtml", ChapterType.CONTENT),
+            // NON_LINEAR chapter with isLinear=true (edge case: included when flag enabled)
             ChapterInfo(2, "notes.xhtml", ChapterType.NON_LINEAR, isLinear = true)
         )
 

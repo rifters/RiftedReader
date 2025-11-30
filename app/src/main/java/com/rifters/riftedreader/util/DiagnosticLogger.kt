@@ -194,12 +194,20 @@ object DiagnosticLogger {
      * Log JS evaluation cancellation.
      *
      * @param reason Reason for cancellation
-     * @param expression The JS expression (truncated)
+     * @param expression The JS expression (sanitized and truncated for security)
      */
     fun logJsEvaluationCancelled(reason: String, expression: String) {
         if (!isEnabled) return
 
-        log(Category.WEBVIEW_BRIDGE, "JsEvalCancelled: reason=$reason, expr=${expression.take(50)}")
+        // Sanitize expression to avoid logging sensitive data:
+        // - Truncate to 30 chars
+        // - Replace potential sensitive content patterns
+        val sanitized = expression
+            .take(30)
+            .replace(Regex("[a-zA-Z0-9_]+\\s*[=:]\\s*['\"][^'\"]+['\"]"), "***")  // Hide assignments
+            .replace(Regex("token|password|secret|key|auth", RegexOption.IGNORE_CASE), "***")
+        
+        log(Category.WEBVIEW_BRIDGE, "JsEvalCancelled: reason=$reason, expr=$sanitized...")
     }
 
     /**
