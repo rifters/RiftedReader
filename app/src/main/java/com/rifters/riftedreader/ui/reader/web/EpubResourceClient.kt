@@ -86,6 +86,23 @@ class EpubResourceClient private constructor(
                 onResourceLoadError?.invoke(url, description)
             }
         }
+        
+        override fun onReceivedError(
+            view: WebView?,
+            request: android.webkit.WebResourceRequest?,
+            error: android.webkit.WebResourceError?
+        ) {
+            super.onReceivedError(view, request, error)
+            val url = request?.url?.toString() ?: "unknown"
+            val description = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                error?.description?.toString()
+            } else null
+            val errorCode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                error?.errorCode
+            } else null
+            AppLogger.e(TAG, "[ERROR] WebResourceError: code=$errorCode, desc=$description, url=$url", null)
+            onResourceLoadError?.invoke(url, description)
+        }
     }
 
     class Builder(private val context: android.content.Context) {

@@ -195,11 +195,10 @@ $chapterHtml
             });
             
             // Fallback: also check when paginator calls onPaginationReady
-            var originalOnReady = window.AndroidBridge && window.AndroidBridge.onPaginationReady;
             if (window.AndroidBridge) {
-                var wrappedOnReady = window.AndroidBridge.onPaginationReady;
+                var originalOnReady = window.AndroidBridge.onPaginationReady;
                 window.AndroidBridge.onPaginationReady = function(totalPages) {
-                    if (wrappedOnReady) wrappedOnReady.call(window.AndroidBridge, totalPages);
+                    if (originalOnReady) originalOnReady.call(window.AndroidBridge, totalPages);
                     setTimeout(injectPadding, 100);
                 };
             }
@@ -210,7 +209,7 @@ $chapterHtml
 <html lang="en">
 <head>
     <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
     <style>
         /* CRITICAL: html/body occupy full viewport with no scrolling */
         html, body {
