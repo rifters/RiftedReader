@@ -13,9 +13,29 @@
  * - TOC-based navigation with chapter jump callbacks
  * - Robust reflow and repagination
  * - Memory-efficient segment management
+ * 
+ * Injection Protection:
+ * - Global guard prevents duplicate script execution
+ * - reconfigure() allows updating settings without reinjection
  */
 (function() {
     'use strict';
+    
+    // ========================================================================
+    // INJECTION GUARD - Prevent duplicate initialization
+    // Using a unique, namespaced symbol for robustness against accidental modification
+    // ========================================================================
+    var GUARD_SYMBOL = '__riftedReaderPaginatorInitialized_v1__';
+    if (window[GUARD_SYMBOL] === true) {
+        console.warn('inpage_paginator: [GUARD] Script already initialized - skipping duplicate injection. Use reconfigure() to update settings.');
+        return;
+    }
+    // Also check for the paginator object existence as a secondary guard
+    if (window.inpagePaginator && typeof window.inpagePaginator.isReady === 'function') {
+        console.warn('inpage_paginator: [GUARD] Paginator object already exists - skipping duplicate injection.');
+        return;
+    }
+    window[GUARD_SYMBOL] = true;
     
     // Configuration
     const COLUMN_GAP = 0; // No gap between columns for seamless pages
@@ -55,7 +75,9 @@
     
     // Pending column retry timeout ID (for cancellation)
     let pendingColumnRetryTimeoutId = null;
-    let diagnosticsEnabled = false;
+    
+    // Injection tracking to prevent duplicate initialization
+    let injectionAttemptCount = 0;
     
     /**
      * Configure the paginator before initialization.
@@ -110,6 +132,93 @@
                     ', windowIndex=' + paginatorConfig.windowIndex + 
                     ', chapterIndex=' + paginatorConfig.chapterIndex +
                     ', rootSelector=' + paginatorConfig.rootSelector);
+    }
+    
+    /**
+     * Reconfigure display settings without full reinitialization.
+     * Use this for theme changes, font size, or line height updates.
+     * Avoids reinjecting the entire script.
+     * 
+     * @param {Object} opts - Reconfiguration options
+     * @param {number} [opts.fontSize] - New font size in pixels
+     * @param {number} [opts.lineHeight] - New line height multiplier
+     * @param {string} [opts.backgroundColor] - New background color (CSS value)
+     * @param {string} [opts.textColor] - New text color (CSS value)
+     * @param {boolean} [opts.preservePosition] - Whether to preserve reading position (default: true)
+     */
+    function reconfigure(opts) {
+        injectionAttemptCount++;
+        console.log('inpage_paginator: [RECONFIGURE] Attempt #' + injectionAttemptCount + ', opts=' + JSON.stringify(opts));
+        
+        if (!isInitialized || !contentWrapper) {
+            console.warn('inpage_paginator: reconfigure() called before initialization');
+            return;
+        }
+        
+        if (!opts || typeof opts !== 'object') {
+            console.warn('inpage_paginator: reconfigure() called with invalid options');
+            return;
+        }
+        
+        // Save current position if requested
+        var currentPageBeforeReconfig = getCurrentPage();
+        var preservePosition = opts.preservePosition !== false;
+        
+        // Apply font size change
+        if (typeof opts.fontSize === 'number' && opts.fontSize > 0) {
+            currentFontSize = opts.fontSize;
+            contentWrapper.style.fontSize = opts.fontSize + 'px';
+            console.log('inpage_paginator: [RECONFIGURE] Applied fontSize=' + opts.fontSize + 'px');
+        }
+        
+        // Apply line height change
+        if (typeof opts.lineHeight === 'number' && opts.lineHeight > 0) {
+            contentWrapper.style.lineHeight = opts.lineHeight;
+            console.log('inpage_paginator: [RECONFIGURE] Applied lineHeight=' + opts.lineHeight);
+        }
+        
+        // Apply background color
+        if (typeof opts.backgroundColor === 'string') {
+            document.body.style.backgroundColor = opts.backgroundColor;
+            if (columnContainer) {
+                columnContainer.style.backgroundColor = opts.backgroundColor;
+            }
+            console.log('inpage_paginator: [RECONFIGURE] Applied backgroundColor=' + opts.backgroundColor);
+        }
+        
+        // Apply text color
+        if (typeof opts.textColor === 'string') {
+            document.body.style.color = opts.textColor;
+            contentWrapper.style.color = opts.textColor;
+            console.log('inpage_paginator: [RECONFIGURE] Applied textColor=' + opts.textColor);
+        }
+        
+        // Reflow columns after style changes
+        reapplyColumns();
+        
+        // Restore position if requested
+        if (preservePosition) {
+            requestAnimationFrame(function() {
+                var pageCount = getPageCount();
+                if (pageCount > 0 && currentPageBeforeReconfig >= 0) {
+                    var targetPage = Math.min(currentPageBeforeReconfig, pageCount - 1);
+                    goToPage(targetPage, false);
+                    console.log('inpage_paginator: [RECONFIGURE] Restored position to page ' + targetPage + ' (was ' + currentPageBeforeReconfig + ')');
+                }
+            });
+        }
+        
+        // Notify Android of successful reconfigure
+        if (window.AndroidBridge && window.AndroidBridge.onReconfigureComplete) {
+            try {
+                window.AndroidBridge.onReconfigureComplete(JSON.stringify({
+                    fontSize: currentFontSize,
+                    pageCount: getPageCount()
+                }));
+            } catch (e) {
+                console.warn('inpage_paginator: [RECONFIGURE] Failed to notify Android', e);
+            }
+        }
     }
     
     // ========================================================================
@@ -1797,6 +1906,7 @@
     window.inpagePaginator = {
         // Configuration
         configure: configure,
+        reconfigure: reconfigure,
         
         // Window Communication API
         loadWindow: loadWindow,

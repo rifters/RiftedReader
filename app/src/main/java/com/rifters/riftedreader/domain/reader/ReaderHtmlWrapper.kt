@@ -50,6 +50,60 @@ object ReaderHtmlWrapper {
             """
         } else ""
         
+        // TTS initialization script - ensures #tts-root exists and emits ttsReady event
+        val ttsInitScript = """
+            <script>
+                // TTS DOM initialization guard - create container if missing
+                (function() {
+                    'use strict';
+                    
+                    function ensureTtsRoot() {
+                        if (!document.getElementById('tts-root')) {
+                            var ttsRoot = document.createElement('div');
+                            ttsRoot.id = 'tts-root';
+                            ttsRoot.style.cssText = 'position:absolute;top:-9999px;left:-9999px;overflow:hidden;width:1px;height:1px;';
+                            document.body.appendChild(ttsRoot);
+                            console.log('[TTS] Created #tts-root container');
+                        }
+                    }
+                    
+                    function emitTtsReady() {
+                        // Emit ttsReady event after paginator layout complete
+                        var event = new CustomEvent('ttsReady', { detail: { timestamp: Date.now() } });
+                        document.dispatchEvent(event);
+                        console.log('[TTS] Emitted ttsReady event');
+                        
+                        // Also notify Android bridge if available
+                        if (window.AndroidTtsBridge && window.AndroidTtsBridge.onTtsReady) {
+                            try {
+                                window.AndroidTtsBridge.onTtsReady();
+                            } catch (e) {
+                                console.warn('[TTS] Failed to notify Android bridge:', e);
+                            }
+                        }
+                    }
+                    
+                    // Wait for paginator ready before TTS init
+                    function waitForPaginatorThenInit() {
+                        if (window.inpagePaginator && window.inpagePaginator.isReady && window.inpagePaginator.isReady()) {
+                            ensureTtsRoot();
+                            emitTtsReady();
+                        } else {
+                            // Paginator not ready, wait and retry
+                            setTimeout(waitForPaginatorThenInit, 100);
+                        }
+                    }
+                    
+                    // Start waiting for paginator after DOM is ready
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', waitForPaginatorThenInit);
+                    } else {
+                        waitForPaginatorThenInit();
+                    }
+                })();
+            </script>
+        """
+        
         return """
             <!DOCTYPE html>
             <html>
@@ -70,6 +124,15 @@ object ReaderHtmlWrapper {
                         padding: 16px;
                         word-wrap: break-word;
                         overflow-wrap: break-word;
+                    }
+                    /* TTS root container - hidden but accessible */
+                    #tts-root {
+                        position: absolute;
+                        top: -9999px;
+                        left: -9999px;
+                        overflow: hidden;
+                        width: 1px;
+                        height: 1px;
                     }
                     /* Preserve formatting for all block elements */
                     p, div, section, article {
@@ -139,8 +202,11 @@ object ReaderHtmlWrapper {
                 <script src="file:///android_asset/inpage_paginator.js"></script>
             </head>
             <body>
+                <!-- TTS root container for TTS DOM operations -->
+                <div id="tts-root" aria-hidden="true"></div>
                 $contentHtml
                 $diagnosticsScript
+                $ttsInitScript
             </body>
             </html>
         """.trimIndent()

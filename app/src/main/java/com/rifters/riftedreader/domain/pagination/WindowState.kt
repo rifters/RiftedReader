@@ -252,3 +252,102 @@ data class WindowPosition(
         return progress <= (1.0 - threshold)
     }
 }
+
+/**
+ * Enhanced window readiness state for gating HTML assembly.
+ *
+ * This class tracks the requested chapter range vs loaded chapter range,
+ * enabling the UI to show a placeholder while chapters are loading.
+ *
+ * **Usage Flow:**
+ * 1. UI requests window X with chapters A through E
+ * 2. WindowReadiness tracks: requestedRange = A to E, loadedRange = empty
+ * 3. As chapters load: loadedRange updates A, then A to B, then A to C, etc.
+ * 4. When loadedRange equals requestedRange, isReady becomes true
+ * 5. UI receives notification and rebinds with full content
+ *
+ * @property windowIndex The window index
+ * @property requestedRange Chapters requested for this window
+ * @property loadedRange Chapters actually loaded so far
+ * @property ready Whether all requested chapters are loaded
+ */
+data class WindowReadiness(
+    val windowIndex: WindowIndex,
+    val requestedRange: IntRange,
+    val loadedRange: IntRange? = null,
+    val ready: Boolean = false
+) {
+    /**
+     * Check if a specific chapter is loaded.
+     */
+    fun isChapterLoaded(chapterIndex: Int): Boolean {
+        return loadedRange?.contains(chapterIndex) == true
+    }
+
+    /**
+     * Get the loading progress (0.0 to 1.0).
+     */
+    val loadingProgress: Float
+        get() {
+            if (requestedRange.isEmpty()) return 1.0f
+            if (loadedRange == null || loadedRange.isEmpty()) return 0.0f
+            val total = requestedRange.count()
+            val loaded = loadedRange.count()
+            return (loaded.toFloat() / total).coerceIn(0.0f, 1.0f)
+        }
+
+    /**
+     * Get the missing chapter indices that still need to be loaded.
+     */
+    val missingChapters: List<Int>
+        get() {
+            if (loadedRange == null) return requestedRange.toList()
+            return requestedRange.filter { it !in loadedRange }
+        }
+
+    companion object {
+        /**
+         * Create a new WindowReadiness for a window that needs loading.
+         */
+        fun forWindow(windowIndex: Int, chapterRange: IntRange): WindowReadiness {
+            return WindowReadiness(
+                windowIndex = windowIndex,
+                requestedRange = chapterRange,
+                loadedRange = null,
+                ready = chapterRange.isEmpty()
+            )
+        }
+
+        /**
+         * Create a ready WindowReadiness (all chapters loaded).
+         */
+        fun ready(windowIndex: Int, chapterRange: IntRange): WindowReadiness {
+            return WindowReadiness(
+                windowIndex = windowIndex,
+                requestedRange = chapterRange,
+                loadedRange = chapterRange,
+                ready = true
+            )
+        }
+    }
+}
+
+/**
+ * Callback interface for window readiness state changes.
+ */
+interface WindowReadinessCallback {
+    /**
+     * Called when a window's readiness state changes.
+     *
+     * @param windowIndex The window that changed
+     * @param readiness The new readiness state
+     */
+    fun onWindowReadinessChanged(windowIndex: Int, readiness: WindowReadiness)
+
+    /**
+     * Called when a window becomes fully ready.
+     *
+     * @param windowIndex The window that is now ready
+     */
+    fun onWindowReady(windowIndex: Int)
+}
