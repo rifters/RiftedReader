@@ -1,6 +1,5 @@
 package com.rifters.riftedreader.domain.reader
 
-import android.text.TextUtils
 import com.rifters.riftedreader.ui.reader.ReaderThemePalette
 
 /**
@@ -9,7 +8,8 @@ import com.rifters.riftedreader.ui.reader.ReaderThemePalette
 data class ReaderHtmlConfig(
     val textSizePx: Float,
     val lineHeightMultiplier: Float,
-    val palette: ReaderThemePalette
+    val palette: ReaderThemePalette,
+    val enableDiagnostics: Boolean = false
 )
 
 /**
@@ -38,12 +38,24 @@ object ReaderHtmlWrapper {
         val backgroundColor = colorToHex(config.palette.backgroundColor)
         val textColor = colorToHex(config.palette.textColor)
         
+        // Enable diagnostics in paginator if configured
+        val diagnosticsScript = if (config.enableDiagnostics) {
+            """
+            <script>
+                // Enable pagination diagnostics logging
+                if (window.inpagePaginator && window.inpagePaginator.enableDiagnostics) {
+                    window.inpagePaginator.enableDiagnostics(true);
+                }
+            </script>
+            """
+        } else ""
+        
         return """
             <!DOCTYPE html>
             <html>
             <head>
                 <meta charset="utf-8"/>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
                 <style>
                     html, body {
                         margin: 0;
@@ -91,11 +103,19 @@ object ReaderHtmlWrapper {
                     li {
                         margin: 0.3em 0;
                     }
+                    /* Image styling - prevent overflow and layout issues */
                     img {
                         max-width: 100% !important;
                         height: auto !important;
                         display: block;
                         margin: 1em auto;
+                    }
+                    /* Window-root specific image styling to prevent overflow-induced layout issues */
+                    #window-root img {
+                        max-width: 100% !important;
+                        height: auto !important;
+                        display: block;
+                        object-fit: contain;
                     }
                     pre, code {
                         font-family: monospace;
@@ -120,6 +140,7 @@ object ReaderHtmlWrapper {
             </head>
             <body>
                 $contentHtml
+                $diagnosticsScript
             </body>
             </html>
         """.trimIndent()

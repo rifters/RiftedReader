@@ -105,11 +105,13 @@ class ReaderPageFragment : Fragment() {
         resolvePageLocation()
         com.rifters.riftedreader.util.AppLogger.event("ReaderPageFragment", "onViewCreated for windowIndex $windowIndex", "ui/webview/lifecycle")
         
-        // Configure WebView for EPUB rendering
+        // Configure WebView for EPUB rendering with column-based layout support
         binding.pageWebView.apply {
             settings.javaScriptEnabled = true
-            settings.loadWithOverviewMode = true
-            settings.useWideViewPort = false
+            // CRITICAL: useWideViewPort=true enables proper column width computation
+            settings.useWideViewPort = true
+            // CRITICAL: loadWithOverviewMode=false prevents automatic zooming that breaks column layout
+            settings.loadWithOverviewMode = false
             settings.builtInZoomControls = false
             settings.displayZoomControls = false
             settings.domStorageEnabled = true
@@ -1049,13 +1051,14 @@ class ReaderPageFragment : Fragment() {
                     val config = com.rifters.riftedreader.domain.reader.ReaderHtmlConfig(
                         textSizePx = settings.textSizeSp,
                         lineHeightMultiplier = settings.lineHeightMultiplier,
-                        palette = palette
+                        palette = palette,
+                        enableDiagnostics = settings.paginationDiagnosticsEnabled
                     )
                     val wrappedHtml = com.rifters.riftedreader.domain.reader.ReaderHtmlWrapper.wrap(contentHtml, config)
                     
                     // [PAGINATION_DEBUG] Log wrapped HTML size
                     com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
-                        "[PAGINATION_DEBUG] Wrapped HTML prepared: windowIndex=$windowIndex, wrappedLength=${wrappedHtml.length}"
+                        "[PAGINATION_DEBUG] Wrapped HTML prepared: windowIndex=$windowIndex, wrappedLength=${wrappedHtml.length}, diagnostics=${settings.paginationDiagnosticsEnabled}"
                     )
                     
                     // Log the wrapped HTML for debugging
@@ -1070,7 +1073,8 @@ class ReaderPageFragment : Fragment() {
                                 "textSize" to settings.textSizeSp.toString(),
                                 "lineHeight" to settings.lineHeightMultiplier.toString(),
                                 "theme" to settings.theme.name,
-                                "paginationMode" to readerViewModel.paginationMode.name
+                                "paginationMode" to readerViewModel.paginationMode.name,
+                                "diagnosticsEnabled" to settings.paginationDiagnosticsEnabled.toString()
                             )
                         )
                     }
@@ -1080,19 +1084,9 @@ class ReaderPageFragment : Fragment() {
                     // Reset paginator initialization flag - will be set to true in onPaginationReady callback
                     isPaginatorInitialized = false
                     
-                    // [PAGINATION_DEBUG] Log before WebView load
-                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
-                        "[PAGINATION_DEBUG] Loading HTML into WebView: windowIndex=$windowIndex, isWebViewReady=false"
-                    )
+                    // MEASUREMENT DISCIPLINE: Use doOnLayout to defer HTML loading until WebView is measured
+                    ensureMeasuredAndLoadHtml(wrappedHtml)
                     
-                    // Use file:///android_asset/ as base URL to allow loading of inpage_paginator.js
-                    binding.pageWebView.loadDataWithBaseURL(
-                        "file:///android_asset/", 
-                        wrappedHtml, 
-                        "text/html", 
-                        "UTF-8", 
-                        null
-                    )
                 } catch (e: Exception) {
                     com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "[PAGINATION_DEBUG] Error loading window HTML for windowIndex=$windowIndex, using fallback", e)
                     // Fallback to old method if there's any error
@@ -1117,6 +1111,73 @@ class ReaderPageFragment : Fragment() {
             binding.pageTextView.visibility = View.VISIBLE
             binding.pageTextView.text = latestPageText
         }
+    }
+    
+    /**
+     * Ensure WebView is measured (width/height > 0) before loading HTML.
+     * Uses doOnLayout guard to defer loading until layout is complete.
+     * This prevents column width computation issues caused by loading into unmeasured WebViews.
+     */
+    private fun ensureMeasuredAndLoadHtml(wrappedHtml: String) {
+        if (_binding == null) return
+        
+        val webView = binding.pageWebView
+        val webViewWidth = webView.width
+        val webViewHeight = webView.height
+        
+        if (webViewWidth > 0 && webViewHeight > 0) {
+            // WebView is already measured, load immediately
+            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+                "[PAGINATION_DEBUG] WebView already measured: ${webViewWidth}x${webViewHeight}, loading HTML immediately"
+            )
+            loadHtmlIntoWebView(wrappedHtml)
+        } else {
+            // WebView not yet measured, defer loading until after layout
+            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+                "[PAGINATION_DEBUG] WebView not yet measured (${webViewWidth}x${webViewHeight}), deferring HTML load"
+            )
+            webView.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                override fun onGlobalLayout() {
+                    if (_binding == null) {
+                        webView.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                        return
+                    }
+                    
+                    val newWidth = webView.width
+                    val newHeight = webView.height
+                    
+                    if (newWidth > 0 && newHeight > 0) {
+                        webView.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+                            "[PAGINATION_DEBUG] WebView measured after layout: ${newWidth}x${newHeight}, loading HTML"
+                        )
+                        loadHtmlIntoWebView(wrappedHtml)
+                    }
+                }
+            })
+        }
+    }
+    
+    /**
+     * Load HTML content into WebView after measurement is confirmed.
+     */
+    private fun loadHtmlIntoWebView(wrappedHtml: String) {
+        if (_binding == null) return
+        
+        // [PAGINATION_DEBUG] Log before WebView load
+        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+            "[PAGINATION_DEBUG] Loading HTML into WebView: windowIndex=$windowIndex, isWebViewReady=false, " +
+            "webViewSize=${binding.pageWebView.width}x${binding.pageWebView.height}"
+        )
+        
+        // Use file:///android_asset/ as base URL to allow loading of inpage_paginator.js
+        binding.pageWebView.loadDataWithBaseURL(
+            "file:///android_asset/", 
+            wrappedHtml, 
+            "text/html", 
+            "UTF-8", 
+            null
+        )
     }
     
     /**
@@ -1781,6 +1842,38 @@ class ReaderPageFragment : Fragment() {
                 )
                 // Could trigger loading of the chapter here if needed
                 // For now, just log the event
+            }
+        }
+        
+        // Diagnostics callbacks
+        
+        @JavascriptInterface
+        fun onDiagnosticsLog(context: String, payload: String) {
+            activity?.runOnUiThread {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "[DIAG] $context: $payload"
+                )
+            }
+        }
+        
+        @JavascriptInterface
+        fun onPaginationStateLog(payload: String) {
+            activity?.runOnUiThread {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "[PAGINATION_STATE] $payload"
+                )
+            }
+        }
+        
+        @JavascriptInterface
+        fun onImagesFailedToLoad(payload: String) {
+            activity?.runOnUiThread {
+                com.rifters.riftedreader.util.AppLogger.w(
+                    "ReaderPageFragment",
+                    "[IMAGES_FAILED] windowIndex=$pageIndex, failed images: $payload"
+                )
             }
         }
     }

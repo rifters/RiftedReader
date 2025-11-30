@@ -435,6 +435,57 @@ object WebViewPaginatorBridge {
     }
     
     /**
+     * Reapply column styles after layout changes.
+     * This should be called after orientation changes, resize events, or font/line-height changes.
+     * This method does not suspend - it fires and forgets.
+     * 
+     * @param webView The WebView containing the paginated content
+     */
+    fun reapplyColumns(webView: WebView) {
+        AppLogger.d("WebViewPaginatorBridge", "reapplyColumns: requesting column recomputation")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.reapplyColumns) { window.reapplyColumns(); } else if (window.inpagePaginator && window.inpagePaginator.reapplyColumns) { window.inpagePaginator.reapplyColumns(); }",
+                null
+            )
+        }
+    }
+    
+    /**
+     * Enable or disable pagination diagnostics in the JS paginator.
+     * When enabled, detailed pagination state is logged after key events.
+     * This method does not suspend - it fires and forgets.
+     * 
+     * @param webView The WebView containing the paginated content
+     * @param enable Whether to enable diagnostics
+     */
+    fun enableDiagnostics(webView: WebView, enable: Boolean) {
+        AppLogger.d("WebViewPaginatorBridge", "enableDiagnostics: $enable")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.inpagePaginator && window.inpagePaginator.enableDiagnostics) { window.inpagePaginator.enableDiagnostics($enable); }",
+                null
+            )
+        }
+    }
+    
+    /**
+     * Get image diagnostics from the paginator.
+     * Useful for debugging broken images under sliding window mode.
+     * 
+     * @param webView The WebView containing the paginated content
+     * @return JSON string with image diagnostics array
+     */
+    suspend fun getImageDiagnostics(webView: WebView): String {
+        return try {
+            evaluateString(webView, "JSON.stringify(window.inpagePaginator.getImageDiagnostics ? window.inpagePaginator.getImageDiagnostics() : [])")
+        } catch (e: Exception) {
+            AppLogger.e("WebViewPaginatorBridge", "Error getting image diagnostics", e)
+            "[]"
+        }
+    }
+    
+    /**
      * Create an anchor around the viewport top to preserve reading position.
      * 
      * @param webView The WebView containing the paginated content
