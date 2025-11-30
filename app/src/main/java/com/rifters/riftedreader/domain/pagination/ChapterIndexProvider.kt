@@ -1,5 +1,6 @@
 package com.rifters.riftedreader.domain.pagination
 
+import com.rifters.riftedreader.data.preferences.ChapterVisibilitySettings
 import com.rifters.riftedreader.util.AppLogger
 
 /**
@@ -68,6 +69,9 @@ class ChapterIndexProvider(
     // Cached mappings for fast lookup
     private var _uiToSpineMap: Map<Int, Int> = emptyMap()
     private var _spineToUiMap: Map<Int, Int> = emptyMap()
+    
+    // Current visibility settings (for logging and debugging)
+    private var _currentVisibilitySettings: ChapterVisibilitySettings = ChapterVisibilitySettings.DEFAULT
 
     /** All spine items in reading order */
     val spineAll: List<ChapterInfo> get() = _spineAll
@@ -80,6 +84,9 @@ class ChapterIndexProvider(
 
     /** Count of visible chapters (for UI display) */
     val visibleChapterCount: Int get() = _visibleChapters.size
+    
+    /** Current visibility settings */
+    val currentVisibilitySettings: ChapterVisibilitySettings get() = _currentVisibilitySettings
 
     init {
         require(chaptersPerWindow > 0) { "chaptersPerWindow must be positive, got: $chaptersPerWindow" }
@@ -88,24 +95,48 @@ class ChapterIndexProvider(
     /**
      * Set the chapter list and build mapping indices.
      *
+     * This is a convenience method that uses default visibility settings except for
+     * the [includeNonLinear] parameter. For full control over visibility settings,
+     * use [setChaptersWithVisibility] instead.
+     *
      * Call this after parsing the EPUB OPF file.
      *
      * @param chapters List of all spine items with their classifications
-     * @param includeNonLinear Whether to include non-linear items in visible chapters
+     * @param includeNonLinear Whether to include non-linear items (notes, glossary, etc.) in visible chapters
      */
     fun setChapters(chapters: List<ChapterInfo>, includeNonLinear: Boolean = false) {
+        // Convert includeNonLinear parameter to ChapterVisibilitySettings
+        val settings = ChapterVisibilitySettings(
+            includeCover = false,
+            includeFrontMatter = true,
+            includeNonLinear = includeNonLinear
+        )
+        setChaptersWithVisibility(chapters, settings)
+    }
+    
+    /**
+     * Set the chapter list and build mapping indices using visibility settings.
+     *
+     * Call this after parsing the EPUB OPF file.
+     *
+     * @param chapters List of all spine items with their classifications
+     * @param visibilitySettings User-configurable visibility settings
+     */
+    fun setChaptersWithVisibility(
+        chapters: List<ChapterInfo>,
+        visibilitySettings: ChapterVisibilitySettings
+    ) {
         _spineAll = chapters.toList()
+        _currentVisibilitySettings = visibilitySettings
 
-        // Build visible chapters list
-        // NON_LINEAR chapters: include if setting enabled, regardless of isLinear flag
-        // (the isLinear flag refers to spine attribute, not the chapter type)
+        // Build visible chapters list based on user settings
         _visibleChapters = _spineAll.filter { chapter ->
             when (chapter.type) {
-                ChapterType.NAV -> false // Always exclude navigation
-                ChapterType.COVER -> false // Exclude cover by default
-                ChapterType.NON_LINEAR -> includeNonLinear // Include based on user setting
-                ChapterType.FRONT_MATTER -> true // Include front matter
-                ChapterType.CONTENT -> true // Always include content
+                ChapterType.NAV -> false // Always exclude navigation document
+                ChapterType.COVER -> visibilitySettings.includeCover
+                ChapterType.NON_LINEAR -> visibilitySettings.includeNonLinear
+                ChapterType.FRONT_MATTER -> visibilitySettings.includeFrontMatter
+                ChapterType.CONTENT -> true // Always include main content
             }
         }
 
@@ -125,6 +156,29 @@ class ChapterIndexProvider(
             "spineAll=${_spineAll.size}, visible=${_visibleChapters.size}, " +
             "cpw=$chaptersPerWindow")
         logChapterBreakdown()
+        logVisibilitySettings()
+    }
+    
+    /**
+     * Update visibility settings and rebuild the visible chapters list.
+     * 
+     * Use this to dynamically change which chapters are visible without reloading
+     * the entire spine.
+     *
+     * @param visibilitySettings New visibility settings to apply
+     */
+    fun updateVisibilitySettings(visibilitySettings: ChapterVisibilitySettings) {
+        if (_spineAll.isEmpty()) {
+            AppLogger.w(TAG, "[Pagination] Cannot update visibility - no chapters loaded")
+            return
+        }
+        
+        AppLogger.d(TAG, "[Pagination] Updating visibility settings: " +
+            "cover=${visibilitySettings.includeCover}, " +
+            "frontMatter=${visibilitySettings.includeFrontMatter}, " +
+            "nonLinear=${visibilitySettings.includeNonLinear}")
+        
+        setChaptersWithVisibility(_spineAll, visibilitySettings)
     }
 
     /**
@@ -238,12 +292,29 @@ class ChapterIndexProvider(
     fun getChapterTypeCounts(): Map<ChapterType, Int> {
         return _spineAll.groupBy { it.type }.mapValues { it.value.size }
     }
+    
+    /**
+     * Get counts of hidden chapters by type for diagnostic purposes.
+     *
+     * @return Map of chapter types to their hidden counts (not shown due to visibility settings)
+     */
+    fun getHiddenChapterCounts(): Map<ChapterType, Int> {
+        val allCounts = getChapterTypeCounts()
+        val visibleByType = _visibleChapters.groupBy { it.type }.mapValues { it.value.size }
+        
+        return ChapterType.values().associate { type ->
+            val total = allCounts[type] ?: 0
+            val visible = visibleByType[type] ?: 0
+            type to (total - visible)
+        }.filterValues { it > 0 }
+    }
 
     /**
      * Generate debug string for logging.
      */
     fun getDebugInfo(): String {
         val typeCounts = getChapterTypeCounts()
+        val hiddenCounts = getHiddenChapterCounts()
         val windowCount = getWindowCount()
         val spineWindowCount = getWindowCountForSpine()
 
@@ -254,9 +325,15 @@ class ChapterIndexProvider(
             appendLine("Chapters per window: $chaptersPerWindow")
             appendLine("Window count (visible): $windowCount")
             appendLine("Window count (spine): $spineWindowCount")
-            appendLine("Type breakdown:")
+            appendLine("Visibility settings:")
+            appendLine("  includeCover: ${_currentVisibilitySettings.includeCover}")
+            appendLine("  includeFrontMatter: ${_currentVisibilitySettings.includeFrontMatter}")
+            appendLine("  includeNonLinear: ${_currentVisibilitySettings.includeNonLinear}")
+            appendLine("Type breakdown (all/hidden):")
             ChapterType.values().forEach { type ->
-                appendLine("  $type: ${typeCounts[type] ?: 0}")
+                val total = typeCounts[type] ?: 0
+                val hidden = hiddenCounts[type] ?: 0
+                appendLine("  $type: $total (hidden: $hidden)")
             }
             appendLine("Window map: ${WindowCalculator.debugWindowMap(_visibleChapters.size, chaptersPerWindow)}")
             appendLine("===================================")
@@ -271,6 +348,21 @@ class ChapterIndexProvider(
             "NAV=${typeCounts[ChapterType.NAV] ?: 0}, " +
             "FRONT_MATTER=${typeCounts[ChapterType.FRONT_MATTER] ?: 0}, " +
             "NON_LINEAR=${typeCounts[ChapterType.NON_LINEAR] ?: 0}")
+    }
+    
+    private fun logVisibilitySettings() {
+        val hiddenCounts = getHiddenChapterCounts()
+        val totalHidden = hiddenCounts.values.sum()
+        
+        AppLogger.d(TAG, "[Pagination] Visibility settings: " +
+            "cover=${_currentVisibilitySettings.includeCover}, " +
+            "frontMatter=${_currentVisibilitySettings.includeFrontMatter}, " +
+            "nonLinear=${_currentVisibilitySettings.includeNonLinear}")
+        
+        if (totalHidden > 0) {
+            AppLogger.d(TAG, "[Pagination] Hidden chapters: $totalHidden total " +
+                "(${hiddenCounts.entries.joinToString { "${it.key}=${it.value}" }})")
+        }
     }
 
     companion object {

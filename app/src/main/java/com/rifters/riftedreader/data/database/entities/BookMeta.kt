@@ -47,5 +47,12 @@ data class BookMeta(
     // Organization
     val isFavorite: Boolean = false,
     val tags: List<String> = emptyList(),
-    val collections: List<String> = emptyList()
+    val collections: List<String> = emptyList(),
+    
+    // Chapter visibility settings (per-book override, null means use global defaults)
+    // When null, the global ChapterVisibilitySettings from ReaderPreferences is used.
+    // When set, these override the global settings for this specific book.
+    val chapterVisibilityIncludeCover: Boolean? = null,
+    val chapterVisibilityIncludeFrontMatter: Boolean? = null,
+    val chapterVisibilityIncludeNonLinear: Boolean? = null
 )

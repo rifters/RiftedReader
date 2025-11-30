@@ -40,4 +40,33 @@
         android:summary="@string/settings_reader_continuous_streaming_summary"
         android:defaultValue="true" />
 
+    <PreferenceCategory
+        android:key="reader_chapter_visibility_category"
+        android:title="@string/settings_reader_chapter_visibility_category">
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:key="reader_include_cover"
+            android:title="@string/settings_reader_include_cover_title"
+            android:summary="@string/settings_reader_include_cover_summary"
+            android:defaultValue="false" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:key="reader_include_front_matter"
+            android:title="@string/settings_reader_include_front_matter_title"
+            android:summary="@string/settings_reader_include_front_matter_summary"
+            android:defaultValue="true" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:key="reader_include_non_linear"
+            android:title="@string/settings_reader_include_non_linear_title"
+            android:summary="@string/settings_reader_include_non_linear_summary"
+            android:defaultValue="false" />
+
+        <Preference
+            android:key="reader_reset_visibility"
+            android:title="@string/settings_reader_reset_visibility_title"
+            android:summary="@string/settings_reader_reset_visibility_summary" />
+
+    </PreferenceCategory>
+
 </PreferenceScreen>

@@ -81,4 +81,23 @@ interface BookMetaDao {
     
     @Query("UPDATE books SET isFavorite = :isFavorite WHERE id = :bookId")
     suspend fun setFavorite(bookId: String, isFavorite: Boolean)
+    
+    @Query("""UPDATE books SET 
+        chapterVisibilityIncludeCover = :includeCover, 
+        chapterVisibilityIncludeFrontMatter = :includeFrontMatter,
+        chapterVisibilityIncludeNonLinear = :includeNonLinear
+        WHERE id = :bookId""")
+    suspend fun updateChapterVisibilitySettings(
+        bookId: String,
+        includeCover: Boolean?,
+        includeFrontMatter: Boolean?,
+        includeNonLinear: Boolean?
+    )
+    
+    @Query("""UPDATE books SET 
+        chapterVisibilityIncludeCover = NULL, 
+        chapterVisibilityIncludeFrontMatter = NULL,
+        chapterVisibilityIncludeNonLinear = NULL
+        WHERE id = :bookId""")
+    suspend fun resetChapterVisibilitySettings(bookId: String)
 }

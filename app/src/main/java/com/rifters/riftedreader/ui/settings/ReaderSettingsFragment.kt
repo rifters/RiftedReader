@@ -2,9 +2,11 @@ package com.rifters.riftedreader.ui.settings
 
 import android.os.Bundle
 import androidx.preference.ListPreference
+import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreferenceCompat
 import com.rifters.riftedreader.R
+import com.rifters.riftedreader.data.preferences.ChapterVisibilitySettings
 import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
 import com.rifters.riftedreader.data.preferences.ReaderTheme
@@ -52,6 +54,83 @@ class ReaderSettingsFragment : PreferenceFragmentCompat() {
             )
             readerPreferences.updateSettings { it.copy(continuousStreamingEnabled = isEnabled) }
         }
+        
+        // Bind chapter visibility settings
+        bindChapterVisibilitySettings(settings.chapterVisibility)
+    }
+    
+    private fun bindChapterVisibilitySettings(visibility: ChapterVisibilitySettings) {
+        // Include cover
+        bindSwitchPreference(
+            key = "reader_include_cover",
+            currentValue = visibility.includeCover
+        ) { includeCover ->
+            AppLogger.event(
+                "ReaderSettingsFragment",
+                "Include cover toggled to $includeCover",
+                "ui/settings/chapter_visibility"
+            )
+            readerPreferences.updateSettings { settings ->
+                settings.copy(
+                    chapterVisibility = settings.chapterVisibility.copy(includeCover = includeCover)
+                )
+            }
+        }
+        
+        // Include front matter
+        bindSwitchPreference(
+            key = "reader_include_front_matter",
+            currentValue = visibility.includeFrontMatter
+        ) { includeFrontMatter ->
+            AppLogger.event(
+                "ReaderSettingsFragment",
+                "Include front matter toggled to $includeFrontMatter",
+                "ui/settings/chapter_visibility"
+            )
+            readerPreferences.updateSettings { settings ->
+                settings.copy(
+                    chapterVisibility = settings.chapterVisibility.copy(includeFrontMatter = includeFrontMatter)
+                )
+            }
+        }
+        
+        // Include non-linear content
+        bindSwitchPreference(
+            key = "reader_include_non_linear",
+            currentValue = visibility.includeNonLinear
+        ) { includeNonLinear ->
+            AppLogger.event(
+                "ReaderSettingsFragment",
+                "Include non-linear toggled to $includeNonLinear",
+                "ui/settings/chapter_visibility"
+            )
+            readerPreferences.updateSettings { settings ->
+                settings.copy(
+                    chapterVisibility = settings.chapterVisibility.copy(includeNonLinear = includeNonLinear)
+                )
+            }
+        }
+        
+        // Reset to defaults
+        findPreference<Preference>("reader_reset_visibility")?.setOnPreferenceClickListener {
+            AppLogger.event(
+                "ReaderSettingsFragment",
+                "Resetting chapter visibility to defaults",
+                "ui/settings/chapter_visibility"
+            )
+            readerPreferences.updateSettings { settings ->
+                settings.copy(chapterVisibility = ChapterVisibilitySettings.DEFAULT)
+            }
+            // Update the UI to reflect the reset
+            updateVisibilityPreferencesUI(ChapterVisibilitySettings.DEFAULT)
+            true
+        }
+    }
+    
+    private fun updateVisibilityPreferencesUI(visibility: ChapterVisibilitySettings) {
+        findPreference<SwitchPreferenceCompat>("reader_include_cover")?.isChecked = visibility.includeCover
+        findPreference<SwitchPreferenceCompat>("reader_include_front_matter")?.isChecked = visibility.includeFrontMatter
+        findPreference<SwitchPreferenceCompat>("reader_include_non_linear")?.isChecked = visibility.includeNonLinear
     }
 
     private fun bindListPreference(key: String, currentValue: String, onChanged: (String) -> Unit) {

@@ -1,5 +1,6 @@
 package com.rifters.riftedreader.pagination
 
+import com.rifters.riftedreader.data.preferences.ChapterVisibilitySettings
 import com.rifters.riftedreader.domain.pagination.ChapterIndexProvider
 import com.rifters.riftedreader.domain.pagination.ChapterInfo
 import com.rifters.riftedreader.domain.pagination.ChapterType
@@ -15,6 +16,7 @@ import org.junit.Test
  * - UI index to spine index mapping
  * - Window computation with visible chapters
  * - Non-linear item handling
+ * - ChapterVisibilitySettings integration
  */
 class ChapterIndexProviderTest {
 
@@ -290,5 +292,219 @@ class ChapterIndexProviderTest {
 
         // This is the consistent window count that should be used everywhere
         // It differs from ceil(109/5) = 22 which caused the original mismatch
+    }
+    
+    // ==== ChapterVisibilitySettings tests ====
+    
+    @Test
+    fun `setChaptersWithVisibility with default settings matches setChapters default behavior`() {
+        val chapters = listOf(
+            ChapterInfo(0, "cover.xhtml", ChapterType.COVER),
+            ChapterInfo(1, "nav.xhtml", ChapterType.NAV),
+            ChapterInfo(2, "title.xhtml", ChapterType.FRONT_MATTER),
+            ChapterInfo(3, "chapter1.xhtml", ChapterType.CONTENT),
+            ChapterInfo(4, "notes.xhtml", ChapterType.NON_LINEAR)
+        )
+        
+        val defaultSettings = ChapterVisibilitySettings.DEFAULT
+        provider.setChaptersWithVisibility(chapters, defaultSettings)
+        
+        // Default: includeCover=false, includeFrontMatter=true, includeNonLinear=false
+        // Visible: FRONT_MATTER + CONTENT = 2
+        assertEquals(5, provider.spineCount)
+        assertEquals(2, provider.visibleChapterCount)
+        
+        // Verify visibility settings are stored
+        assertEquals(defaultSettings, provider.currentVisibilitySettings)
+    }
+    
+    @Test
+    fun `setChaptersWithVisibility with includeCover true shows cover`() {
+        val chapters = listOf(
+            ChapterInfo(0, "cover.xhtml", ChapterType.COVER),
+            ChapterInfo(1, "chapter1.xhtml", ChapterType.CONTENT),
+            ChapterInfo(2, "chapter2.xhtml", ChapterType.CONTENT)
+        )
+        
+        val settings = ChapterVisibilitySettings(
+            includeCover = true,
+            includeFrontMatter = true,
+            includeNonLinear = false
+        )
+        provider.setChaptersWithVisibility(chapters, settings)
+        
+        assertEquals(3, provider.spineCount)
+        assertEquals(3, provider.visibleChapterCount)
+        assertTrue(provider.isSpineIndexVisible(0)) // Cover is now visible
+    }
+    
+    @Test
+    fun `setChaptersWithVisibility with includeFrontMatter false hides front matter`() {
+        val chapters = listOf(
+            ChapterInfo(0, "title.xhtml", ChapterType.FRONT_MATTER),
+            ChapterInfo(1, "copyright.xhtml", ChapterType.FRONT_MATTER),
+            ChapterInfo(2, "chapter1.xhtml", ChapterType.CONTENT)
+        )
+        
+        val settings = ChapterVisibilitySettings(
+            includeCover = false,
+            includeFrontMatter = false,
+            includeNonLinear = false
+        )
+        provider.setChaptersWithVisibility(chapters, settings)
+        
+        assertEquals(3, provider.spineCount)
+        assertEquals(1, provider.visibleChapterCount) // Only CONTENT
+        assertFalse(provider.isSpineIndexVisible(0)) // Title page hidden
+        assertFalse(provider.isSpineIndexVisible(1)) // Copyright hidden
+        assertTrue(provider.isSpineIndexVisible(2))  // Chapter visible
+    }
+    
+    @Test
+    fun `setChaptersWithVisibility with includeNonLinear true shows non-linear content`() {
+        val chapters = listOf(
+            ChapterInfo(0, "chapter1.xhtml", ChapterType.CONTENT),
+            ChapterInfo(1, "notes.xhtml", ChapterType.NON_LINEAR),
+            ChapterInfo(2, "glossary.xhtml", ChapterType.NON_LINEAR)
+        )
+        
+        val settings = ChapterVisibilitySettings(
+            includeCover = false,
+            includeFrontMatter = true,
+            includeNonLinear = true
+        )
+        provider.setChaptersWithVisibility(chapters, settings)
+        
+        assertEquals(3, provider.spineCount)
+        assertEquals(3, provider.visibleChapterCount) // All visible
+        assertTrue(provider.isSpineIndexVisible(1)) // Notes visible
+        assertTrue(provider.isSpineIndexVisible(2)) // Glossary visible
+    }
+    
+    @Test
+    fun `setChaptersWithVisibility with all options enabled shows everything except NAV`() {
+        val chapters = listOf(
+            ChapterInfo(0, "cover.xhtml", ChapterType.COVER),
+            ChapterInfo(1, "nav.xhtml", ChapterType.NAV),
+            ChapterInfo(2, "title.xhtml", ChapterType.FRONT_MATTER),
+            ChapterInfo(3, "chapter1.xhtml", ChapterType.CONTENT),
+            ChapterInfo(4, "notes.xhtml", ChapterType.NON_LINEAR)
+        )
+        
+        val settings = ChapterVisibilitySettings(
+            includeCover = true,
+            includeFrontMatter = true,
+            includeNonLinear = true
+        )
+        provider.setChaptersWithVisibility(chapters, settings)
+        
+        assertEquals(5, provider.spineCount)
+        assertEquals(4, provider.visibleChapterCount) // All except NAV
+        assertTrue(provider.isSpineIndexVisible(0))  // Cover visible
+        assertFalse(provider.isSpineIndexVisible(1)) // NAV always hidden
+        assertTrue(provider.isSpineIndexVisible(2))  // Front matter visible
+        assertTrue(provider.isSpineIndexVisible(3))  // Content visible
+        assertTrue(provider.isSpineIndexVisible(4))  // Non-linear visible
+    }
+    
+    @Test
+    fun `updateVisibilitySettings changes visible chapters dynamically`() {
+        val chapters = listOf(
+            ChapterInfo(0, "cover.xhtml", ChapterType.COVER),
+            ChapterInfo(1, "chapter1.xhtml", ChapterType.CONTENT),
+            ChapterInfo(2, "notes.xhtml", ChapterType.NON_LINEAR)
+        )
+        
+        // Start with defaults
+        provider.setChaptersWithVisibility(chapters, ChapterVisibilitySettings.DEFAULT)
+        assertEquals(1, provider.visibleChapterCount) // Only CONTENT
+        
+        // Update to include cover
+        provider.updateVisibilitySettings(
+            ChapterVisibilitySettings(includeCover = true, includeFrontMatter = true, includeNonLinear = false)
+        )
+        assertEquals(2, provider.visibleChapterCount) // COVER + CONTENT
+        assertTrue(provider.isSpineIndexVisible(0))
+        
+        // Update to include non-linear
+        provider.updateVisibilitySettings(
+            ChapterVisibilitySettings(includeCover = true, includeFrontMatter = true, includeNonLinear = true)
+        )
+        assertEquals(3, provider.visibleChapterCount) // All
+    }
+    
+    @Test
+    fun `getHiddenChapterCounts returns correct hidden counts`() {
+        val chapters = listOf(
+            ChapterInfo(0, "cover.xhtml", ChapterType.COVER),
+            ChapterInfo(1, "nav.xhtml", ChapterType.NAV),
+            ChapterInfo(2, "title.xhtml", ChapterType.FRONT_MATTER),
+            ChapterInfo(3, "chapter1.xhtml", ChapterType.CONTENT),
+            ChapterInfo(4, "notes.xhtml", ChapterType.NON_LINEAR),
+            ChapterInfo(5, "glossary.xhtml", ChapterType.NON_LINEAR)
+        )
+        
+        // With default settings (cover=false, frontMatter=true, nonLinear=false)
+        provider.setChaptersWithVisibility(chapters, ChapterVisibilitySettings.DEFAULT)
+        
+        val hiddenCounts = provider.getHiddenChapterCounts()
+        
+        assertEquals(1, hiddenCounts[ChapterType.COVER])     // Cover hidden
+        assertEquals(1, hiddenCounts[ChapterType.NAV])       // NAV always hidden
+        assertEquals(2, hiddenCounts[ChapterType.NON_LINEAR]) // Both non-linear hidden
+        assertNull(hiddenCounts[ChapterType.FRONT_MATTER])   // Front matter visible (not in hidden counts)
+        assertNull(hiddenCounts[ChapterType.CONTENT])        // Content visible (not in hidden counts)
+    }
+    
+    @Test
+    fun `visibility settings affect window count correctly`() {
+        val chapters = mutableListOf<ChapterInfo>()
+        chapters.add(ChapterInfo(0, "cover.xhtml", ChapterType.COVER))
+        // Add 10 content chapters
+        for (i in 1..10) {
+            chapters.add(ChapterInfo(i, "chapter$i.xhtml", ChapterType.CONTENT))
+        }
+        // Add 2 non-linear chapters
+        chapters.add(ChapterInfo(11, "notes.xhtml", ChapterType.NON_LINEAR))
+        chapters.add(ChapterInfo(12, "glossary.xhtml", ChapterType.NON_LINEAR))
+        
+        // Default: 10 content visible -> 2 windows (ceil(10/5))
+        provider.setChaptersWithVisibility(chapters, ChapterVisibilitySettings.DEFAULT)
+        assertEquals(10, provider.visibleChapterCount)
+        assertEquals(2, provider.getWindowCount())
+        
+        // Include cover: 11 visible -> 3 windows (ceil(11/5))
+        provider.updateVisibilitySettings(
+            ChapterVisibilitySettings(includeCover = true, includeFrontMatter = true, includeNonLinear = false)
+        )
+        assertEquals(11, provider.visibleChapterCount)
+        assertEquals(3, provider.getWindowCount())
+        
+        // Include everything: 13 visible -> 3 windows (ceil(13/5))
+        provider.updateVisibilitySettings(
+            ChapterVisibilitySettings(includeCover = true, includeFrontMatter = true, includeNonLinear = true)
+        )
+        assertEquals(13, provider.visibleChapterCount)
+        assertEquals(3, provider.getWindowCount())
+    }
+    
+    @Test
+    fun `currentVisibilitySettings returns the active settings`() {
+        val chapters = listOf(
+            ChapterInfo(0, "chapter1.xhtml", ChapterType.CONTENT)
+        )
+        
+        val customSettings = ChapterVisibilitySettings(
+            includeCover = true,
+            includeFrontMatter = false,
+            includeNonLinear = true
+        )
+        
+        provider.setChaptersWithVisibility(chapters, customSettings)
+        
+        assertEquals(customSettings, provider.currentVisibilitySettings)
+        assertEquals(true, provider.currentVisibilitySettings.includeCover)
+        assertEquals(false, provider.currentVisibilitySettings.includeFrontMatter)
+        assertEquals(true, provider.currentVisibilitySettings.includeNonLinear)
     }
 }

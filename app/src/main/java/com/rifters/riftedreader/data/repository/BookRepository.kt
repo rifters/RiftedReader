@@ -2,6 +2,7 @@ package com.rifters.riftedreader.data.repository
 
 import com.rifters.riftedreader.data.database.dao.BookMetaDao
 import com.rifters.riftedreader.data.database.entities.BookMeta
+import com.rifters.riftedreader.data.preferences.ChapterVisibilitySettings
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -101,5 +102,55 @@ class BookRepository(private val bookMetaDao: BookMetaDao) {
      */
     suspend fun getBooksWithBookmarksSortedByPosition(): List<BookMeta> {
         return bookMetaDao.getBooksWithBookmarksSortedByPosition()
+    }
+    
+    /**
+     * Update chapter visibility settings for a specific book.
+     * 
+     * @param bookId The book ID
+     * @param includeCover Whether to include cover in reading sequence (null = use global default)
+     * @param includeFrontMatter Whether to include front matter (null = use global default)
+     * @param includeNonLinear Whether to include non-linear content (null = use global default)
+     */
+    suspend fun updateChapterVisibilitySettings(
+        bookId: String,
+        includeCover: Boolean?,
+        includeFrontMatter: Boolean?,
+        includeNonLinear: Boolean?
+    ) {
+        bookMetaDao.updateChapterVisibilitySettings(
+            bookId,
+            includeCover,
+            includeFrontMatter,
+            includeNonLinear
+        )
+    }
+    
+    /**
+     * Reset chapter visibility settings for a book to use global defaults.
+     * 
+     * @param bookId The book ID
+     */
+    suspend fun resetChapterVisibilitySettings(bookId: String) {
+        bookMetaDao.resetChapterVisibilitySettings(bookId)
+    }
+    
+    /**
+     * Get the effective chapter visibility settings for a book.
+     * Returns per-book settings if set, otherwise returns global defaults.
+     * 
+     * @param book The book metadata
+     * @param globalSettings The global visibility settings from preferences
+     * @return The effective visibility settings to use for this book
+     */
+    fun getEffectiveChapterVisibility(
+        book: BookMeta,
+        globalSettings: ChapterVisibilitySettings
+    ): ChapterVisibilitySettings {
+        return ChapterVisibilitySettings(
+            includeCover = book.chapterVisibilityIncludeCover ?: globalSettings.includeCover,
+            includeFrontMatter = book.chapterVisibilityIncludeFrontMatter ?: globalSettings.includeFrontMatter,
+            includeNonLinear = book.chapterVisibilityIncludeNonLinear ?: globalSettings.includeNonLinear
+        )
     }
 }
