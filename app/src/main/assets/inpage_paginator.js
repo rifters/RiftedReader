@@ -48,7 +48,11 @@
     const MAX_COLUMN_RETRIES = 5; // Maximum retries for column width computation
     const VERTICAL_FALLBACK_CHECK_DELAY_MS = 100; // Delay before checking for vertical fallback
     
-    // Content padding applied to #paginator-content after readiness
+    // Content padding applied to #paginator-content after readiness.
+    // This value should match the desired body padding that was removed from CSS.
+    // See WindowHtmlBuilder.kt and ReaderHtmlWrapper.kt where body padding is set to 0.
+    // The padding is applied via applyContentPadding() after columns are established
+    // to prevent the padding from interfering with column width calculations.
     const CONTENT_PADDING_PX = 16;
     
     // Paginator configuration - set via configure() before init()
@@ -671,10 +675,16 @@
             const pageCount = getPageCount();
             console.log('inpage_paginator: [STATE] Initialization complete after layout - pageCount=' + pageCount + ', viewportWidth=' + viewportWidth + ', columnsApplied=' + columnsAppliedSuccessfully);
             
-            // CRITICAL: Set pagination ready flag ONLY if columns are applied successfully
-            // If vertical fallback occurred, still set ready but log warning
+            // CRITICAL: Set pagination ready flag
+            // Even if vertical fallback occurred, we set ready so Android can proceed
+            // The columnsAppliedSuccessfully flag is logged for diagnostics
             isPaginationReady = true;
-            console.log('inpage_paginator: [STATE] isPaginationReady set to true');
+            
+            if (!columnsAppliedSuccessfully) {
+                console.warn('inpage_paginator: [STATE] isPaginationReady set to true with VERTICAL_FALLBACK - columns may not be applied correctly');
+            } else {
+                console.log('inpage_paginator: [STATE] isPaginationReady set to true with columns applied successfully');
+            }
             
             // Log pagination state for diagnostics
             logPaginationState('[INIT] onPaginationReady');

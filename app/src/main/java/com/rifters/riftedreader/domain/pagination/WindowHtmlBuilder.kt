@@ -25,9 +25,6 @@ object WindowHtmlBuilder {
     
     private const val TAG = "WindowHtmlBuilder"
     
-    /** Script URL using WebViewAssetLoader domain for consistent URL handling */
-    private val PAGINATOR_SCRIPT_URL = "https://${EpubImageAssetHelper.ASSET_HOST}/assets/inpage_paginator.js"
-    
     /**
      * Configuration for building window HTML.
      */
@@ -210,7 +207,7 @@ object WindowHtmlBuilder {
                         height: 1px;
                     }
                 </style>
-                <script src="$PAGINATOR_SCRIPT_URL"></script>
+                <script src="${EpubImageAssetHelper.PAGINATOR_SCRIPT_URL}"></script>
             </head>
             <body>
                 <!-- TTS root container for TTS DOM operations -->

@@ -36,6 +36,12 @@ object EpubImageAssetHelper {
     /** Full base URL for EPUB images */
     const val EPUB_IMAGES_BASE_URL = "https://$ASSET_HOST$EPUB_IMAGES_PATH"
     
+    /** Path prefix for app assets (served via WebViewAssetLoader.AssetsPathHandler) */
+    const val ASSETS_PATH = "/assets/"
+    
+    /** Full URL for the inpage paginator script */
+    const val PAGINATOR_SCRIPT_URL = "https://$ASSET_HOST${ASSETS_PATH}inpage_paginator.js"
+    
     // ================================================================================
     // Asset URL Parsing
     // ================================================================================

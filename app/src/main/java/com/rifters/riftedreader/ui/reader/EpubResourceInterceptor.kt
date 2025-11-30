@@ -79,6 +79,8 @@ class EpubResourceInterceptor(
             }
             
             // Try to load with backoff for race conditions
+            // Note: shouldInterceptRequest() is called on a background thread by WebView,
+            // so Thread.sleep() is safe here and doesn't block the UI thread.
             var attemptIndex = 0
             while ((!imageFile.exists() || !imageFile.isFile) && attemptIndex < BACKOFF_DELAYS_MS.size) {
                 val waitMs = BACKOFF_DELAYS_MS[attemptIndex]
