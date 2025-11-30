@@ -79,6 +79,12 @@ The tests use:
 - **Jest fake timers** - For controlling `requestAnimationFrame` and async behavior
 - **Mock AndroidBridge** - Captures all callbacks for verification
 
-## CI Integration
+## Running Locally
 
-These tests run automatically via GitHub Actions on push and pull requests. See `.github/workflows/js-tests.yml` for the CI configuration.
+These tests are designed to run locally during development. To run them:
+
+```bash
+cd tests/js
+npm ci
+npm test
+```
