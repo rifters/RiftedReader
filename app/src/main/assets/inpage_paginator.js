@@ -53,6 +53,10 @@
     // Diagnostics (toggleable via enableDiagnostics())
     let diagnosticsEnabled = false;
     
+    // Pending column retry timeout ID (for cancellation)
+    let pendingColumnRetryTimeoutId = null;
+    let diagnosticsEnabled = false;
+    
     /**
      * Configure the paginator before initialization.
      * This method must be called before init() to set the pagination mode and context.
@@ -433,6 +437,11 @@
     function updateColumnStyles(wrapper, retryCount) {
         if (retryCount === undefined) {
             retryCount = 0;
+            // Cancel any pending retry timeout when starting fresh
+            if (pendingColumnRetryTimeoutId !== null) {
+                clearTimeout(pendingColumnRetryTimeoutId);
+                pendingColumnRetryTimeoutId = null;
+            }
         }
         
         // Compute client width with fallbacks
@@ -442,7 +451,8 @@
         if (clientWidth < MIN_CLIENT_WIDTH && retryCount < MAX_COLUMN_RETRIES) {
             console.warn('inpage_paginator: [STYLES] clientWidth=' + clientWidth + ' < ' + MIN_CLIENT_WIDTH + 
                         ', retrying in ' + COLUMN_RETRY_DELAY_MS + 'ms (attempt ' + (retryCount + 1) + '/' + MAX_COLUMN_RETRIES + ')');
-            setTimeout(function() {
+            pendingColumnRetryTimeoutId = setTimeout(function() {
+                pendingColumnRetryTimeoutId = null;
                 updateColumnStyles(wrapper, retryCount + 1);
             }, COLUMN_RETRY_DELAY_MS);
             return;
@@ -1080,8 +1090,7 @@
                 trimSegmentsFromStart();
             });
             
-            // Reapply columns and reflow to recalculate layout
-            reapplyColumns();
+            // Reflow to recalculate layout (includes column style update)
             const reflowResult = reflow(true);
             
             // Log pagination state after append
@@ -1147,10 +1156,7 @@
                 trimSegmentsFromEnd();
             });
             
-            // Reapply columns before reflow
-            reapplyColumns();
-            
-            // Reflow without preserving position initially
+            // Reflow without preserving position initially (includes column style update)
             const reflowResult = reflow(false);
             
             // Calculate how many pages the new segment added

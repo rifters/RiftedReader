@@ -1138,8 +1138,13 @@ class ReaderPageFragment : Fragment() {
             )
             webView.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
                 override fun onGlobalLayout() {
-                    if (_binding == null) {
-                        webView.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                    // Guard against fragment being destroyed or view being detached
+                    if (_binding == null || !isAdded || view == null) {
+                        try {
+                            webView.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                        } catch (e: IllegalStateException) {
+                            // ViewTreeObserver is not alive, ignore
+                        }
                         return
                     }
                     
@@ -1147,7 +1152,11 @@ class ReaderPageFragment : Fragment() {
                     val newHeight = webView.height
                     
                     if (newWidth > 0 && newHeight > 0) {
-                        webView.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                        try {
+                            webView.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                        } catch (e: IllegalStateException) {
+                            // ViewTreeObserver is not alive, ignore
+                        }
                         com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
                             "[PAGINATION_DEBUG] WebView measured after layout: ${newWidth}x${newHeight}, loading HTML"
                         )
