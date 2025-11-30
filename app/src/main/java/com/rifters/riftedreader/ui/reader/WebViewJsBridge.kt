@@ -134,6 +134,7 @@ class WebViewJsBridge {
     /**
      * Called from Fragment.onDestroyView().
      * Cancels all pending JS tasks and clears state.
+     * Invokes all pending callbacks with null to prevent coroutines from hanging indefinitely.
      */
     fun onDestroyView() {
         isDestroyed.set(true)
@@ -141,9 +142,13 @@ class WebViewJsBridge {
         isReady.set(false)
         webViewRef = null
 
-        // Cancel all pending tasks
-        val cancelledCount = pendingQueue.size
-        pendingQueue.clear()
+        // Cancel all pending tasks and invoke their callbacks with null
+        var cancelledCount = 0
+        while (true) {
+            val call = pendingQueue.poll() ?: break
+            cancelledCount++
+            call.callback?.invoke(null)
+        }
         cancelledCounter.addAndGet(cancelledCount)
 
         AppLogger.d(TAG, "[WebViewBridge] onDestroyView: cancelled $cancelledCount pending tasks, " +
