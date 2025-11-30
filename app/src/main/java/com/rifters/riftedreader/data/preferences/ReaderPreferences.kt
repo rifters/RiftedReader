@@ -12,6 +12,25 @@ import kotlinx.coroutines.flow.asStateFlow
 private const val DEFAULT_TEXT_SIZE_SP = 16f
 private const val DEFAULT_LINE_HEIGHT_MULTIPLIER = 1.3f
 
+/**
+ * Settings that control which chapters are visible in pagination and progress displays.
+ * These settings filter the spine items to determine what the user sees during reading.
+ *
+ * @property includeCover Whether to include cover XHTML in reading sequence
+ * @property includeFrontMatter Whether to include front matter (title, copyright, dedication)
+ * @property includeNonLinear Whether to include items marked linear="no" (notes, glossary, etc.)
+ */
+data class ChapterVisibilitySettings(
+    val includeCover: Boolean = false,
+    val includeFrontMatter: Boolean = true,
+    val includeNonLinear: Boolean = false
+) {
+    companion object {
+        /** Default visibility settings: exclude cover and non-linear, include front matter */
+        val DEFAULT = ChapterVisibilitySettings()
+    }
+}
+
 data class ReaderSettings(
     val textSizeSp: Float = DEFAULT_TEXT_SIZE_SP,
     val lineHeightMultiplier: Float = DEFAULT_LINE_HEIGHT_MULTIPLIER,
@@ -19,7 +38,8 @@ data class ReaderSettings(
     val mode: ReaderMode = ReaderMode.PAGE,
     val paginationMode: PaginationMode = PaginationMode.CONTINUOUS,
     val continuousStreamingEnabled: Boolean = true,
-    val paginationDiagnosticsEnabled: Boolean = false
+    val paginationDiagnosticsEnabled: Boolean = false,
+    val chapterVisibility: ChapterVisibilitySettings = ChapterVisibilitySettings.DEFAULT
 )
 
 enum class ReaderTheme {
@@ -62,7 +82,17 @@ class ReaderPreferences(context: Context) {
             .getOrDefault(PaginationMode.CONTINUOUS)
         val streamingEnabled = prefs.getBoolean(KEY_CONTINUOUS_STREAMING, true)
         val diagnosticsEnabled = prefs.getBoolean(KEY_PAGINATION_DIAGNOSTICS, false)
-        return ReaderSettings(size, lineHeight, theme, mode, paginationMode, streamingEnabled, diagnosticsEnabled)
+        
+        // Read chapter visibility settings
+        val includeCover = prefs.getBoolean(KEY_INCLUDE_COVER, false)
+        val includeFrontMatter = prefs.getBoolean(KEY_INCLUDE_FRONT_MATTER, true)
+        val includeNonLinear = prefs.getBoolean(KEY_INCLUDE_NON_LINEAR, false)
+        val chapterVisibility = ChapterVisibilitySettings(includeCover, includeFrontMatter, includeNonLinear)
+        
+        return ReaderSettings(
+            size, lineHeight, theme, mode, paginationMode, 
+            streamingEnabled, diagnosticsEnabled, chapterVisibility
+        )
     }
 
     private fun saveSettings(settings: ReaderSettings) {
@@ -74,6 +104,11 @@ class ReaderPreferences(context: Context) {
             putString(KEY_PAGINATION_MODE, settings.paginationMode.name)
             putBoolean(KEY_CONTINUOUS_STREAMING, settings.continuousStreamingEnabled)
             putBoolean(KEY_PAGINATION_DIAGNOSTICS, settings.paginationDiagnosticsEnabled)
+            
+            // Save chapter visibility settings
+            putBoolean(KEY_INCLUDE_COVER, settings.chapterVisibility.includeCover)
+            putBoolean(KEY_INCLUDE_FRONT_MATTER, settings.chapterVisibility.includeFrontMatter)
+            putBoolean(KEY_INCLUDE_NON_LINEAR, settings.chapterVisibility.includeNonLinear)
         }
     }
 
@@ -122,6 +157,11 @@ class ReaderPreferences(context: Context) {
         private const val KEY_CONTINUOUS_STREAMING = "continuous_streaming_enabled"
         private const val KEY_PAGINATION_DIAGNOSTICS = "pagination_diagnostics_enabled"
         private const val KEY_TAP_ACTIONS = "reader_tap_actions"
+        
+        // Chapter visibility settings keys
+        private const val KEY_INCLUDE_COVER = "chapter_visibility_include_cover"
+        private const val KEY_INCLUDE_FRONT_MATTER = "chapter_visibility_include_front_matter"
+        private const val KEY_INCLUDE_NON_LINEAR = "chapter_visibility_include_non_linear"
 
         private const val ENTRY_SEPARATOR = "|"
         private const val VALUE_SEPARATOR = ":"

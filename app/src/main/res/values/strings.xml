@@ -253,6 +253,19 @@ Page %4$d/%5$d (%6$d%%)</string>
     <string name="settings_reader_mode">Reading mode</string>
     <string name="settings_reader_continuous_streaming_title">Continuous pagination streaming (beta)</string>
     <string name="settings_reader_continuous_streaming_summary">Keep nearby chapters streaming in the background. Disable if you notice repeated fallback jumps or prefer the classic chapter-by-chapter loading.</string>
+    
+    <!-- Chapter visibility settings -->
+    <string name="settings_reader_chapter_visibility_category">Chapter visibility</string>
+    <string name="settings_reader_chapter_visibility_description">Control which chapters are included in pagination and progress tracking</string>
+    <string name="settings_reader_include_cover_title">Include cover page</string>
+    <string name="settings_reader_include_cover_summary">Show the cover XHTML as the first page in the reading sequence</string>
+    <string name="settings_reader_include_front_matter_title">Include front matter</string>
+    <string name="settings_reader_include_front_matter_summary">Show title pages, copyright, dedications, and other front matter</string>
+    <string name="settings_reader_include_non_linear_title">Include supplemental content</string>
+    <string name="settings_reader_include_non_linear_summary">Show footnotes, endnotes, glossaries, and appendices in the reading sequence</string>
+    <string name="settings_reader_reset_visibility_title">Reset to defaults</string>
+    <string name="settings_reader_reset_visibility_summary">Restore default chapter visibility settings</string>
+    
     <string name="settings_tts_speed">Default speed</string>
     <string name="settings_tts_pitch">Default pitch</string>
     <string name="settings_tts_highlight">Highlight sentences during playback</string>
