@@ -18,11 +18,17 @@ data class ReaderHtmlConfig(
  * 
  * This wrapper can handle both single-chapter HTML and sliding-window HTML
  * (multiple chapters combined in <section> blocks).
+ * 
+ * ROBUSTNESS DESIGN:
+ * - html/body occupy full viewport with overflow:hidden to prevent vertical scroll
+ * - Body has no padding (margin:0, padding:0)
+ * - Padding is applied post-init by paginator via paginationReady event
+ * - Tap highlight is disabled to prevent purple circles
+ * - CSS break-inside: avoid on images and code blocks prevents column breaks
  */
 object ReaderHtmlWrapper {
     
-    /** Script URL using WebViewAssetLoader domain for consistent URL handling */
-    private val PAGINATOR_SCRIPT_URL = "https://${EpubImageAssetHelper.ASSET_HOST}/assets/inpage_paginator.js"
+    // Use centralized PAGINATOR_SCRIPT_URL from EpubImageAssetHelper
     
     /**
      * Convert a color integer to a hex color string.
@@ -189,6 +195,9 @@ object ReaderHtmlWrapper {
                         height: auto !important;
                         display: block;
                         margin: 1em auto;
+                        /* Prevent images from breaking columns */
+                        break-inside: avoid;
+                        -webkit-column-break-inside: avoid;
                     }
                     /* Window-root specific image styling to prevent overflow-induced layout issues */
                     #window-root img {
@@ -202,6 +211,9 @@ object ReaderHtmlWrapper {
                         background-color: rgba(128, 128, 128, 0.1);
                         padding: 0.2em 0.4em;
                         border-radius: 3px;
+                        /* Prevent code blocks from breaking columns */
+                        break-inside: avoid;
+                        -webkit-column-break-inside: avoid;
                     }
                     pre {
                         padding: 1em;
@@ -216,7 +228,7 @@ object ReaderHtmlWrapper {
                         background-color: rgba(255, 213, 79, 0.4) !important;
                     }
                 </style>
-                <script src="$PAGINATOR_SCRIPT_URL"></script>
+                <script src="${EpubImageAssetHelper.PAGINATOR_SCRIPT_URL}"></script>
             </head>
             <body>
                 <!-- TTS root container for TTS DOM operations -->
