@@ -206,9 +206,11 @@ object EpubImageAssetHelper {
         // Split and check each segment
         val segments = path.split("/")
         for (segment in segments) {
-            // Reject empty segments (double slashes)
+            // Allow empty segments from leading/trailing/multiple slashes
+            // These don't pose security risks and are normalized by File operations.
+            // Example: "//book//image.jpg" -> "book/image.jpg" when File resolves it
             if (segment.isEmpty()) {
-                continue // Allow leading/trailing/multiple slashes
+                continue
             }
             
             // Reject traversal attempts

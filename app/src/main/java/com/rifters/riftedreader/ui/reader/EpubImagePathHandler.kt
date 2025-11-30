@@ -34,8 +34,10 @@ class EpubImagePathHandler(
         // Total wait time: 50 + 100 + 200 + 400 + 800 = 1550ms (~1.55s)
         private val BACKOFF_DELAYS_MS = longArrayOf(50L, 100L, 200L, 400L, 800L)
         
-        // 1x1 transparent PNG (base64-decoded bytes)
-        // This is a minimal valid PNG with transparency
+        // 1x1 transparent PNG (minimal valid PNG with transparency)
+        // Base64: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==
+        // Generated from a 1x1 RGBA PNG with full transparency
+        // Using raw bytes for efficiency (avoids Base64 decode overhead on each fallback)
         private val TRANSPARENT_PNG_BYTES: ByteArray = byteArrayOf(
             0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,  // PNG signature
             0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,           // IHDR chunk
@@ -146,14 +148,22 @@ class EpubImagePathHandler(
     
     /**
      * Create a fallback response with a 1x1 transparent PNG.
-     * This prevents broken image icons while still signaling that the image failed to load.
+     * 
+     * Design decision: Returns HTTP 200 with valid image data instead of 404/204 because:
+     * 1. WebView displays broken image icons for non-200 responses, degrading UX
+     * 2. The transparent PNG is invisible, so layout remains stable (especially for intrinsic sizing)
+     * 3. The [ASSET_FALLBACK] logs clearly identify which images failed for debugging
+     * 4. The X-RiftedReader-Fallback header allows programmatic detection if needed
+     * 
+     * Alternative approaches (404, error image) were rejected because they cause visible
+     * layout shifts or broken image indicators that disrupt the reading experience.
      */
     private fun createFallbackResponse(): WebResourceResponse {
         val inputStream = ByteArrayInputStream(TRANSPARENT_PNG_BYTES)
         val response = WebResourceResponse("image/png", null, inputStream)
         
-        // Set status to 200 so WebView doesn't show error
-        // but add a custom header to indicate fallback was used (for debugging)
+        // Return valid 200 response with transparent image
+        // Custom header indicates fallback was used (for debugging/monitoring)
         response.responseHeaders = mapOf(
             "Cache-Control" to "no-cache",
             "X-RiftedReader-Fallback" to "true"
