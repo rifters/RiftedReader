@@ -87,11 +87,21 @@ class ReaderPreferences(context: Context) {
         val includeCover = prefs.getBoolean(KEY_INCLUDE_COVER, false)
         val includeFrontMatter = prefs.getBoolean(KEY_INCLUDE_FRONT_MATTER, true)
         val includeNonLinear = prefs.getBoolean(KEY_INCLUDE_NON_LINEAR, false)
-        val chapterVisibility = ChapterVisibilitySettings(includeCover, includeFrontMatter, includeNonLinear)
+        val chapterVisibility = ChapterVisibilitySettings(
+            includeCover = includeCover,
+            includeFrontMatter = includeFrontMatter,
+            includeNonLinear = includeNonLinear
+        )
         
         return ReaderSettings(
-            size, lineHeight, theme, mode, paginationMode, 
-            streamingEnabled, diagnosticsEnabled, chapterVisibility
+            textSizeSp = size,
+            lineHeightMultiplier = lineHeight,
+            theme = theme,
+            mode = mode,
+            paginationMode = paginationMode,
+            continuousStreamingEnabled = streamingEnabled,
+            paginationDiagnosticsEnabled = diagnosticsEnabled,
+            chapterVisibility = chapterVisibility
         )
     }
 

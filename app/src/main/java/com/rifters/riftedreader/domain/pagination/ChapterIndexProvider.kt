@@ -93,15 +93,19 @@ class ChapterIndexProvider(
     }
 
     /**
-     * Set the chapter list and build mapping indices using legacy boolean parameter.
+     * Set the chapter list and build mapping indices.
+     *
+     * This is a convenience method that uses default visibility settings except for
+     * the [includeNonLinear] parameter. For full control over visibility settings,
+     * use [setChaptersWithVisibility] instead.
      *
      * Call this after parsing the EPUB OPF file.
      *
      * @param chapters List of all spine items with their classifications
-     * @param includeNonLinear Whether to include non-linear items in visible chapters
+     * @param includeNonLinear Whether to include non-linear items (notes, glossary, etc.) in visible chapters
      */
     fun setChapters(chapters: List<ChapterInfo>, includeNonLinear: Boolean = false) {
-        // Convert legacy parameter to ChapterVisibilitySettings
+        // Convert includeNonLinear parameter to ChapterVisibilitySettings
         val settings = ChapterVisibilitySettings(
             includeCover = false,
             includeFrontMatter = true,
