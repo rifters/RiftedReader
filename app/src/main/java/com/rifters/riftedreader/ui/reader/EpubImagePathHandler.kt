@@ -34,8 +34,8 @@ class EpubImagePathHandler(
         // Total wait time: 50 + 100 + 200 + 400 + 800 = 1550ms (~1.55s)
         private val BACKOFF_DELAYS_MS = longArrayOf(50L, 100L, 200L, 400L, 800L)
         
-        // Use shared transparent PNG constant from EpubImageAssetHelper
-        // (Previously defined locally - now centralized for consistency)
+        // Transparent PNG fallback - using centralized constant from EpubImageAssetHelper
+        // (Previously duplicated locally - now using centralized constant for consistency)
     }
 
     override fun handle(path: String): WebResourceResponse? {
