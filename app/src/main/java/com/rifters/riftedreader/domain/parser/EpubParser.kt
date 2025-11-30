@@ -13,7 +13,19 @@ import org.jsoup.nodes.Element
 import org.jsoup.select.Elements
 import java.io.File
 import java.io.FileOutputStream
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+
+/**
+ * Extension function to iterate over ZipFile entries as a Sequence.
+ * Provides a more Kotlin-idiomatic way to iterate ZIP entries.
+ */
+private fun ZipFile.entriesSequence(): Sequence<ZipEntry> = sequence {
+    val entries = entries()
+    while (entries.hasMoreElements()) {
+        yield(entries.nextElement())
+    }
+}
 
 /**
  * Data class for image processing diagnostics.
@@ -44,7 +56,15 @@ data class ImageDiagnostics(
     /** Processing result status */
     val status: ImageStatus,
     /** Error message if status is ERROR */
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    /** Image size in bytes (if successfully read from archive) */
+    val imageBytes: Int? = null,
+    /** Cache file path (if cached to disk) */
+    val cacheFile: String? = null,
+    /** Whether this is a cover image */
+    val isCoverImage: Boolean = false,
+    /** Whether secondary lookup was used to find the image */
+    val usedSecondaryLookup: Boolean = false
 ) {
     enum class ImageStatus {
         /** Successfully processed and cached/embedded */
@@ -71,6 +91,15 @@ data class ImageDiagnostics(
             if (dimensionsInjected) {
                 append(", DIMS_INJECTED")
             }
+            if (isCoverImage) {
+                append(", COVER")
+            }
+            if (usedSecondaryLookup) {
+                append(", SECONDARY_LOOKUP")
+            }
+            if (imageBytes != null) {
+                append(", bytes=$imageBytes")
+            }
             if (errorMessage != null) {
                 append(", error='$errorMessage'")
             }
@@ -95,6 +124,19 @@ class EpubParser : BookParser {
         /** Placeholder dimensions for missing images to maintain layout stability */
         private const val PLACEHOLDER_WIDTH = 100
         private const val PLACEHOLDER_HEIGHT = 100
+        
+        /** CSS for placeholder images */
+        private const val PLACEHOLDER_CSS = "background-color: #e0e0e0; border: 1px dashed #999;"
+        
+        /** Alt text template for missing images */
+        private const val MISSING_IMAGE_ALT_TEMPLATE = "[Image not found: %s]"
+        
+        /**
+         * Build responsive CSS styling for an image with given dimensions.
+         * Uses Kotlin string interpolation for clarity.
+         */
+        private fun buildResponsiveCss(width: Int, height: Int): String =
+            "aspect-ratio:$width/$height; max-width:100%; height:auto;"
         
         /**
          * Helper function to truncate text for display in logs/diagnostics.
@@ -263,10 +305,12 @@ class EpubParser : BookParser {
      * This method implements a parser-level, deterministic image handling step that:
      * 1. Extracts original image attributes (src, width, height, alt)
      * 2. Resolves the image path within the EPUB archive
-     * 3. Decodes the image to determine actual dimensions
-     * 4. Injects explicit width/height attributes for layout stabilization
-     * 5. Caches the image and updates the src attribute
-     * 6. Returns comprehensive diagnostics
+     * 3. Attempts secondary lookup if primary path fails (normalized basename)
+     * 4. Decodes the image to determine actual dimensions
+     * 5. Injects explicit width/height attributes AND responsive CSS for layout stabilization
+     * 6. Adds data-epub-* diagnostic attributes for debugging
+     * 7. Caches the image and updates the src attribute
+     * 8. Returns comprehensive diagnostics
      * 
      * Pattern inspired by LibreraReader's approach in Fb2Extractor.java and EpubExtractor.java
      * where images are processed during content extraction to ensure stable rendering.
@@ -295,7 +339,7 @@ class EpubParser : BookParser {
         
         if (originalSrc.isBlank()) {
             AppLogger.w("EpubParser", "Image element has no src/href attribute on page $page")
-            return ImageDiagnostics(
+            val diagnostic = ImageDiagnostics(
                 originalSrc = "",
                 resolvedPath = "",
                 finalSrc = "",
@@ -307,12 +351,18 @@ class EpubParser : BookParser {
                 status = ImageDiagnostics.ImageStatus.ERROR,
                 errorMessage = "No src/href attribute found"
             )
+            logImageMutation(page, diagnostic)
+            return diagnostic
         }
+        
+        // Always set data-epub-src for diagnostics
+        img.attr("data-epub-src", originalSrc)
         
         // Capture original dimensions if present
         val originalWidth = img.attr("width").takeIf { it.isNotBlank() }
         val originalHeight = img.attr("height").takeIf { it.isNotBlank() }
-        val hasOriginalDimensions = originalWidth != null && originalHeight != null
+        // Inject dimensions if EITHER is missing (not just if both are absent)
+        val needsDimensionInjection = originalWidth == null || originalHeight == null
         
         DiagnosticLogger.d(
             DiagnosticLogger.Category.PARSER,
@@ -323,10 +373,12 @@ class EpubParser : BookParser {
         try {
             // Step 2: Resolve relative path
             val imagePath = resolveRelativePath(contentDir, originalSrc)
+            img.attr("data-epub-resolved", imagePath)
             
             // Skip data URIs (already embedded)
             if (originalSrc.startsWith("data:")) {
-                return ImageDiagnostics(
+                img.attr("data-epub-final", truncateForDisplay(originalSrc))
+                val diagnostic = ImageDiagnostics(
                     originalSrc = truncateForDisplay(originalSrc),
                     resolvedPath = "data-uri",
                     finalSrc = truncateForDisplay(originalSrc),
@@ -338,6 +390,8 @@ class EpubParser : BookParser {
                     status = ImageDiagnostics.ImageStatus.SUCCESS,
                     errorMessage = null
                 )
+                logImageMutation(page, diagnostic)
+                return diagnostic
             }
             
             // Step 3: Check if this is a cover image (special handling)
@@ -345,17 +399,39 @@ class EpubParser : BookParser {
                              originalSrc.lowercase().contains("cover")
             val coverPath = cachedCoverPath
             
+            if (isCoverImage) {
+                img.attr("data-epub-cover", "true")
+            }
+            
             if (isCoverImage && coverPath != null && File(coverPath).exists()) {
-                return processAsCoverImage(img, coverPath, originalSrc, imagePath, originalWidth, originalHeight)
+                return processAsCoverImage(img, coverPath, originalSrc, imagePath, originalWidth, originalHeight, page)
             }
             
             // Step 4: Load image from EPUB and process
-            val imageEntry = zip.getEntry(imagePath)
+            // Primary lookup
+            var imageEntry = zip.getEntry(imagePath)
+            var usedSecondaryLookup = false
+            var finalResolvedPath = imagePath
+            
+            // Secondary lookup: try to find image by normalized basename
             if (imageEntry == null) {
-                AppLogger.w("EpubParser", "Image not found in EPUB ZIP: $imagePath (originalSrc: $originalSrc)")
+                AppLogger.d("EpubParser", "Primary lookup failed for: $imagePath, trying secondary lookup...")
+                val secondaryResult = retryFindImageEntry(zip, originalSrc)
+                if (secondaryResult != null) {
+                    imageEntry = secondaryResult.first
+                    finalResolvedPath = secondaryResult.second
+                    usedSecondaryLookup = true
+                    img.attr("data-epub-resolved", finalResolvedPath)
+                    AppLogger.d("EpubParser", "Secondary lookup succeeded: $finalResolvedPath")
+                }
+            }
+            
+            if (imageEntry == null) {
+                AppLogger.w("EpubParser", "Image not found in EPUB ZIP: $imagePath (originalSrc: $originalSrc) - both primary and secondary lookup failed")
                 // Set a placeholder style for missing images to maintain layout
-                applyMissingImagePlaceholder(img)
-                return ImageDiagnostics(
+                applyMissingImagePlaceholder(img, originalSrc)
+                img.attr("data-epub-missing", "true")
+                val diagnostic = ImageDiagnostics(
                     originalSrc = originalSrc,
                     resolvedPath = imagePath,
                     finalSrc = img.attr("src"),
@@ -365,45 +441,76 @@ class EpubParser : BookParser {
                     actualHeight = null,
                     dimensionsInjected = false,
                     status = ImageDiagnostics.ImageStatus.NOT_FOUND,
-                    errorMessage = "Image not found in EPUB archive"
+                    errorMessage = "Image not found in EPUB archive after secondary lookup"
                 )
+                logImageMutation(page, diagnostic)
+                return diagnostic
             }
             
             val imageBytes = zip.getInputStream(imageEntry).readBytes()
+            val imageBytesSize = imageBytes.size
+            img.attr("data-epub-bytes", imageBytesSize.toString())
             
             // Step 5: Decode image to get actual dimensions for layout stabilization
             val (actualWidth, actualHeight) = decodeImageDimensions(imageBytes)
             
             if (actualWidth == null || actualHeight == null) {
-                AppLogger.w("EpubParser", "Failed to decode image dimensions: $imagePath")
-                // Still cache the image but can't inject dimensions
-                val finalSrc = cacheImageAndGetUrl(imageBytes, imagePath, bookFile, page, img)
-                return ImageDiagnostics(
+                AppLogger.w("EpubParser", "Failed to decode image dimensions: $finalResolvedPath")
+                // Keep original src for decode failures, add error attribute
+                img.attr("data-epub-error", "decode_failed")
+                img.attr("data-epub-final", originalSrc)
+                val diagnostic = ImageDiagnostics(
                     originalSrc = originalSrc,
-                    resolvedPath = imagePath,
-                    finalSrc = finalSrc,
+                    resolvedPath = finalResolvedPath,
+                    finalSrc = originalSrc,
                     originalWidth = originalWidth,
                     originalHeight = originalHeight,
                     actualWidth = null,
                     actualHeight = null,
                     dimensionsInjected = false,
                     status = ImageDiagnostics.ImageStatus.DECODE_FAILED,
-                    errorMessage = "Could not decode image dimensions"
+                    errorMessage = "Could not decode image dimensions",
+                    imageBytes = imageBytesSize,
+                    usedSecondaryLookup = usedSecondaryLookup
                 )
+                logImageMutation(page, diagnostic)
+                return diagnostic
             }
             
+            // Set intrinsic dimensions attribute
+            img.attr("data-epub-intrinsic", "${actualWidth}x${actualHeight}")
+            
             // Step 6: Inject dimensions for layout stabilization
-            // Only inject if the image doesn't already have explicit dimensions
-            // This prevents WebView layout shifts when images load asynchronously
-            val dimensionsInjected = if (!hasOriginalDimensions) {
+            // Inject if EITHER dimension is missing to prevent distortions from partial data
+            // Also inject responsive CSS (aspect-ratio, max-width, height:auto)
+            val dimensionsInjected = if (needsDimensionInjection) {
                 injectImageDimensions(img, actualWidth, actualHeight)
                 true
             } else {
+                // Still add responsive CSS even if both dimensions were present
+                injectResponsiveCss(img, actualWidth, actualHeight)
                 false
             }
             
             // Step 7: Cache image and update src
-            val finalSrc = cacheImageAndGetUrl(imageBytes, imagePath, bookFile, page, img)
+            val cacheResult = cacheImageAndGetUrl(
+                imageBytes = imageBytes,
+                imagePath = finalResolvedPath,
+                bookFile = bookFile,
+                page = page,
+                img = img,
+                originalSrc = originalSrc,
+                isCoverImage = isCoverImage,
+                actualWidth = actualWidth,
+                actualHeight = actualHeight
+            )
+            val finalSrc = cacheResult.assetUrl
+            val cacheFilePath = cacheResult.cacheFile
+            
+            img.attr("data-epub-final", finalSrc)
+            if (cacheFilePath != null) {
+                img.attr("data-epub-cache", cacheFilePath)
+            }
             
             DiagnosticLogger.d(
                 DiagnosticLogger.Category.PARSER,
@@ -411,9 +518,9 @@ class EpubParser : BookParser {
                 "dimensionsInjected=$dimensionsInjected"
             )
             
-            return ImageDiagnostics(
+            val diagnostic = ImageDiagnostics(
                 originalSrc = originalSrc,
-                resolvedPath = imagePath,
+                resolvedPath = finalResolvedPath,
                 finalSrc = finalSrc,
                 originalWidth = originalWidth,
                 originalHeight = originalHeight,
@@ -421,12 +528,19 @@ class EpubParser : BookParser {
                 actualHeight = actualHeight,
                 dimensionsInjected = dimensionsInjected,
                 status = ImageDiagnostics.ImageStatus.SUCCESS,
-                errorMessage = null
+                errorMessage = null,
+                imageBytes = imageBytesSize,
+                cacheFile = cacheFilePath,
+                isCoverImage = isCoverImage,
+                usedSecondaryLookup = usedSecondaryLookup
             )
+            logImageMutation(page, diagnostic)
+            return diagnostic
             
         } catch (e: Exception) {
             AppLogger.e("EpubParser", "Error processing image: $originalSrc", e)
-            return ImageDiagnostics(
+            img.attr("data-epub-error", e.message ?: "unknown_error")
+            val diagnostic = ImageDiagnostics(
                 originalSrc = originalSrc,
                 resolvedPath = "",
                 finalSrc = originalSrc,
@@ -438,6 +552,8 @@ class EpubParser : BookParser {
                 status = ImageDiagnostics.ImageStatus.ERROR,
                 errorMessage = e.message
             )
+            logImageMutation(page, diagnostic)
+            return diagnostic
         }
     }
     
@@ -450,12 +566,21 @@ class EpubParser : BookParser {
         originalSrc: String,
         resolvedPath: String,
         originalWidth: String?,
-        originalHeight: String?
+        originalHeight: String?,
+        page: Int
     ): ImageDiagnostics {
         try {
             AppLogger.d("EpubParser", "Using cached cover image (base64) from: $coverPath")
             val coverFile = File(coverPath)
             val coverBytes = coverFile.readBytes()
+            val coverBytesSize = coverBytes.size
+            
+            // Set diagnostic attributes
+            img.attr("data-epub-src", originalSrc)
+            img.attr("data-epub-resolved", resolvedPath)
+            img.attr("data-epub-cover", "true")
+            img.attr("data-epub-bytes", coverBytesSize.toString())
+            img.attr("data-epub-cache", coverPath)
             
             // Decode dimensions from cover file
             val (actualWidth, actualHeight) = decodeImageDimensions(coverBytes)
@@ -463,12 +588,21 @@ class EpubParser : BookParser {
             val base64Cover = Base64.encodeToString(coverBytes, Base64.NO_WRAP)
             val dataUri = "data:image/jpeg;base64,$base64Cover"
             
-            // Inject dimensions if not present and successfully decoded
-            val hasOriginalDimensions = originalWidth != null && originalHeight != null
-            val dimensionsInjected = if (!hasOriginalDimensions && 
+            // Set intrinsic dimensions attribute if decoded successfully
+            if (actualWidth != null && actualHeight != null) {
+                img.attr("data-epub-intrinsic", "${actualWidth}x${actualHeight}")
+            }
+            
+            // Inject dimensions if EITHER is missing (not just if both are absent)
+            val needsDimensionInjection = originalWidth == null || originalHeight == null
+            val dimensionsInjected = if (needsDimensionInjection && 
                                         actualWidth != null && actualHeight != null) {
                 injectImageDimensions(img, actualWidth, actualHeight)
                 true
+            } else if (actualWidth != null && actualHeight != null) {
+                // Still add responsive CSS even if both dimensions were present
+                injectResponsiveCss(img, actualWidth, actualHeight)
+                false
             } else {
                 false
             }
@@ -481,21 +615,30 @@ class EpubParser : BookParser {
                 img.attr("xlink:href", dataUri)
             }
             
-            return ImageDiagnostics(
+            val finalSrcDisplay = "data:image/jpeg;base64,[cached-cover]"
+            img.attr("data-epub-final", finalSrcDisplay)
+            
+            val diagnostic = ImageDiagnostics(
                 originalSrc = originalSrc,
                 resolvedPath = resolvedPath,
-                finalSrc = "data:image/jpeg;base64,[cached-cover]",
+                finalSrc = finalSrcDisplay,
                 originalWidth = originalWidth,
                 originalHeight = originalHeight,
                 actualWidth = actualWidth,
                 actualHeight = actualHeight,
                 dimensionsInjected = dimensionsInjected,
                 status = ImageDiagnostics.ImageStatus.SUCCESS,
-                errorMessage = null
+                errorMessage = null,
+                imageBytes = coverBytesSize,
+                cacheFile = coverPath,
+                isCoverImage = true
             )
+            logImageMutation(page, diagnostic)
+            return diagnostic
         } catch (e: Exception) {
             AppLogger.e("EpubParser", "Error using cached cover, returning error diagnostic", e)
-            return ImageDiagnostics(
+            img.attr("data-epub-error", e.message ?: "cover_load_failed")
+            val diagnostic = ImageDiagnostics(
                 originalSrc = originalSrc,
                 resolvedPath = resolvedPath,
                 finalSrc = originalSrc,
@@ -505,8 +648,11 @@ class EpubParser : BookParser {
                 actualHeight = null,
                 dimensionsInjected = false,
                 status = ImageDiagnostics.ImageStatus.ERROR,
-                errorMessage = "Failed to load cached cover: ${e.message}"
+                errorMessage = "Failed to load cached cover: ${e.message}",
+                isCoverImage = true
             )
+            logImageMutation(page, diagnostic)
+            return diagnostic
         }
     }
     
@@ -536,7 +682,84 @@ class EpubParser : BookParser {
     }
     
     /**
+     * Secondary lookup for images by normalized basename.
+     * When the primary path lookup fails, this function searches all ZIP entries
+     * for a file matching the basename (filename without path) of the original src.
+     * 
+     * This handles cases where images exist in different folders than expected
+     * due to manifest/spine parity issues or non-standard EPUB structure.
+     * 
+     * Pattern inspired by how KOReader and LibreraReader handle path resolution
+     * for non-standard EPUB archives.
+     * 
+     * @param zip The ZipFile to search
+     * @param originalSrc The original src attribute from the image element
+     * @return Pair of (ZipEntry, resolvedPath) if found, null otherwise
+     */
+    private fun retryFindImageEntry(zip: ZipFile, originalSrc: String): Pair<ZipEntry, String>? {
+        // Extract and normalize the basename (filename without path)
+        val basename = originalSrc
+            .substringAfterLast('/')
+            .substringAfterLast('\\')
+            .lowercase()
+        
+        if (basename.isBlank()) {
+            AppLogger.d("EpubParser", "[SECONDARY_LOOKUP] Empty basename for: $originalSrc")
+            return null
+        }
+        
+        AppLogger.d("EpubParser", "[SECONDARY_LOOKUP] Searching for basename: $basename")
+        
+        // Search all ZIP entries for matching basename
+        for (entry in zip.entriesSequence()) {
+            if (entry.isDirectory) continue
+            
+            val entryBasename = entry.name
+                .substringAfterLast('/')
+                .substringAfterLast('\\')
+                .lowercase()
+            
+            if (entryBasename == basename) {
+                AppLogger.d("EpubParser", "[SECONDARY_LOOKUP] Found match: ${entry.name} for basename: $basename")
+                return Pair(entry, entry.name)
+            }
+        }
+        
+        AppLogger.d("EpubParser", "[SECONDARY_LOOKUP] No match found for basename: $basename")
+        return null
+    }
+    
+    /**
+     * Log an [IMAGE_MUTATION] entry for diagnostics.
+     * Emits a structured log line with key image processing details.
+     * 
+     * @param page The current page/chapter index
+     * @param diagnostic The ImageDiagnostics for this image
+     */
+    private fun logImageMutation(page: Int, diagnostic: ImageDiagnostics) {
+        val intrinsicSize = if (diagnostic.actualWidth != null && diagnostic.actualHeight != null) {
+            "${diagnostic.actualWidth}x${diagnostic.actualHeight}"
+        } else {
+            "unknown"
+        }
+        
+        AppLogger.d(
+            TAG,
+            "[IMAGE_MUTATION] page=$page, status=${diagnostic.status}, " +
+            "src=${truncateForDisplay(diagnostic.originalSrc)}, " +
+            "resolved=${truncateForDisplay(diagnostic.resolvedPath)}, " +
+            "final=${truncateForDisplay(diagnostic.finalSrc)}, " +
+            "injected=${diagnostic.dimensionsInjected}, " +
+            "intrinsic=$intrinsicSize" +
+            (if (diagnostic.isCoverImage) ", cover=true" else "") +
+            (if (diagnostic.usedSecondaryLookup) ", secondaryLookup=true" else "") +
+            (diagnostic.errorMessage?.let { ", error=$it" } ?: "")
+        )
+    }
+    
+    /**
      * Inject width and height attributes into an image element for layout stabilization.
+     * Also injects responsive CSS (aspect-ratio, max-width, height:auto).
      * 
      * This is the key step for deterministic layout - by setting explicit dimensions
      * before the WebView loads the HTML, we prevent layout shifts when images load.
@@ -557,6 +780,9 @@ class EpubParser : BookParser {
         img.attr("data-original-dimensions", "${width}x${height}")
         img.attr("data-dimensions-injected", "true")
         
+        // Inject responsive CSS with aspect-ratio to maintain proportions
+        injectResponsiveCss(img, width, height)
+        
         DiagnosticLogger.d(
             DiagnosticLogger.Category.PARSER,
             "Injected dimensions: ${width}x${height} for ${truncateForDisplay(img.attr("src") ?: "")}"
@@ -564,43 +790,94 @@ class EpubParser : BookParser {
     }
     
     /**
-     * Apply placeholder styling for missing images to maintain layout stability.
+     * Inject responsive CSS styling for an image element.
+     * Adds aspect-ratio, max-width:100%, height:auto while preserving existing styles.
+     * 
+     * @param img The image element to modify
+     * @param width The actual image width
+     * @param height The actual image height
      */
-    private fun applyMissingImagePlaceholder(img: Element) {
-        // Set a minimum size placeholder to prevent layout collapse
-        img.attr("width", PLACEHOLDER_WIDTH.toString())
-        img.attr("height", PLACEHOLDER_HEIGHT.toString())
-        img.attr("alt", "[Image not found]")
-        img.attr("data-missing", "true")
-        
-        // Add inline style for visual indication (gray placeholder)
+    private fun injectResponsiveCss(img: Element, width: Int, height: Int) {
+        val responsiveStyle = buildResponsiveCss(width, height)
         val existingStyle = img.attr("style")
-        val placeholderStyle = "background-color: #e0e0e0; border: 1px dashed #999;"
         val combinedStyle = if (existingStyle.isBlank()) {
-            placeholderStyle
+            responsiveStyle
         } else {
             // Ensure proper CSS concatenation by adding semicolon separator
             val trimmedStyle = existingStyle.trimEnd()
             if (trimmedStyle.endsWith(";")) {
-                "$trimmedStyle $placeholderStyle"
+                "$trimmedStyle $responsiveStyle"
             } else {
-                "$trimmedStyle; $placeholderStyle"
+                "$trimmedStyle; $responsiveStyle"
             }
         }
         img.attr("style", combinedStyle)
     }
     
     /**
+     * Apply placeholder styling for missing images to maintain layout stability.
+     * Only called after secondary lookup fails - used for truly missing images.
+     * 
+     * @param img The image element to modify
+     * @param originalSrc The original src attribute for alt text
+     */
+    private fun applyMissingImagePlaceholder(img: Element, originalSrc: String) {
+        // Set a minimum size placeholder to prevent layout collapse
+        img.attr("width", PLACEHOLDER_WIDTH.toString())
+        img.attr("height", PLACEHOLDER_HEIGHT.toString())
+        img.attr("alt", String.format(MISSING_IMAGE_ALT_TEMPLATE, truncateForDisplay(originalSrc)))
+        
+        // Add inline style for visual indication (gray placeholder)
+        val existingStyle = img.attr("style")
+        val combinedStyle = if (existingStyle.isBlank()) {
+            PLACEHOLDER_CSS
+        } else {
+            // Ensure proper CSS concatenation by adding semicolon separator
+            val trimmedStyle = existingStyle.trimEnd()
+            if (trimmedStyle.endsWith(";")) {
+                "$trimmedStyle $PLACEHOLDER_CSS"
+            } else {
+                "$trimmedStyle; $PLACEHOLDER_CSS"
+            }
+        }
+        img.attr("style", combinedStyle)
+    }
+    
+    /**
+     * Result from cacheImageAndGetUrl containing the asset URL and optional cache file path.
+     */
+    private data class CacheResult(
+        val assetUrl: String,
+        val cacheFile: String?
+    )
+    
+    /**
      * Cache image to disk and return the asset URL for WebView.
      * Falls back to base64 data URI if caching fails.
+     * 
+     * @param imageBytes The raw image data
+     * @param imagePath The resolved path within the EPUB
+     * @param bookFile The book file for cache path generation
+     * @param page The current page/chapter index
+     * @param img The image element to update
+     * @param originalSrc The original src attribute for diagnostics
+     * @param isCoverImage Whether this is a cover image
+     * @param actualWidth Decoded image width (for registry)
+     * @param actualHeight Decoded image height (for registry)
+     * @return CacheResult with asset URL and cache file path
      */
+    @Suppress("UNUSED_PARAMETER") // Parameters reserved for recordMapping after asset handler PR merges
     private fun cacheImageAndGetUrl(
         imageBytes: ByteArray,
         imagePath: String,
         bookFile: File,
         page: Int,
-        img: Element
-    ): String {
+        img: Element,
+        originalSrc: String,
+        isCoverImage: Boolean,
+        actualWidth: Int,
+        actualHeight: Int
+    ): CacheResult {
         val sanitizedFileName = imagePath.replace('/', '_').replace('\\', '_')
         val chapterCacheDir = getChapterImageCacheDir(bookFile, page)
         val cachedImageFile = File(chapterCacheDir, sanitizedFileName)
@@ -620,7 +897,9 @@ class EpubParser : BookParser {
                 img.attr("xlink:href", assetUrl)
             }
             
-            assetUrl
+            // TODO(#208): Enable EpubImageAssetHelper.recordMapping after asset handler PR merges
+            
+            CacheResult(assetUrl, cachedImageFile.absolutePath)
         } catch (e: Exception) {
             AppLogger.w("EpubParser", "Failed to cache image, falling back to base64: ${e.message}")
             
@@ -643,7 +922,9 @@ class EpubParser : BookParser {
                 img.attr("xlink:href", dataUri)
             }
             
-            truncateForDisplay(dataUri)
+            // TODO(#208): Enable EpubImageAssetHelper.recordMapping for base64 fallback after asset handler PR merges
+            
+            CacheResult(truncateForDisplay(dataUri), null)
         }
     }
     
