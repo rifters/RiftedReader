@@ -58,18 +58,25 @@ class ContinuousPaginatorWindowHtmlProvider(
                     "triggering on-demand load for chapter $firstChapterInWindow")
                 
                 // Navigate to the first chapter in the window to trigger loading
-                paginator.navigateToChapter(firstChapterInWindow, 0)
-                
-                // Verify navigation was successful by checking loaded chapters after navigation
-                val updatedWindowInfo = paginator.getWindowInfo()
-                val nowLoadedChapters = updatedWindowInfo.loadedChapterIndices
-                
-                if (nowLoadedChapters.contains(firstChapterInWindow)) {
-                    AppLogger.d(TAG, "[PAGINATION_DEBUG] On-demand load successful for window $windowIndex " +
-                        "(chapters ${chapterIndices.first()}-${chapterIndices.last()}), now loaded: $nowLoadedChapters")
-                } else {
-                    AppLogger.w(TAG, "[PAGINATION_DEBUG] On-demand load may have failed for window $windowIndex - " +
-                        "chapter $firstChapterInWindow still not in loaded chapters: $nowLoadedChapters")
+                // Wrap in try-catch to handle potential navigation failures gracefully
+                try {
+                    paginator.navigateToChapter(firstChapterInWindow, 0)
+                    
+                    // Verify navigation was successful by checking loaded chapters after navigation
+                    val updatedWindowInfo = paginator.getWindowInfo()
+                    val nowLoadedChapters = updatedWindowInfo.loadedChapterIndices
+                    
+                    if (nowLoadedChapters.contains(firstChapterInWindow)) {
+                        AppLogger.d(TAG, "[PAGINATION_DEBUG] On-demand load successful for window $windowIndex " +
+                            "(chapters ${chapterIndices.first()}-${chapterIndices.last()}), now loaded: $nowLoadedChapters")
+                    } else {
+                        AppLogger.w(TAG, "[PAGINATION_DEBUG] On-demand load may have failed for window $windowIndex - " +
+                            "chapter $firstChapterInWindow still not in loaded chapters: $nowLoadedChapters")
+                    }
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "[PAGINATION_DEBUG] Navigation failed for on-demand load of window $windowIndex " +
+                        "(chapter $firstChapterInWindow): ${e.message}", e)
+                    // Continue anyway - we'll try to get whatever content we can
                 }
             }
             
