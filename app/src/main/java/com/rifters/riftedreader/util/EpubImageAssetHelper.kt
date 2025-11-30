@@ -2,7 +2,6 @@ package com.rifters.riftedreader.util
 
 import android.net.Uri
 import java.io.File
-import java.net.URLEncoder
 
 /**
  * Helper utility for managing EPUB image paths with WebViewAssetLoader.
@@ -53,9 +52,9 @@ object EpubImageAssetHelper {
             }
             
             // URL-encode each path segment to handle special characters
+            // Uri.encode handles path encoding correctly and avoids URLEncoder's space-to-+ conversion
             val encodedPath = relativePath.split("/").joinToString("/") { segment ->
-                URLEncoder.encode(segment, "UTF-8")
-                    .replace("+", "%20") // URLEncoder encodes spaces as +, but we want %20 for URLs
+                Uri.encode(segment)
             }
             
             val assetUrl = "$EPUB_IMAGES_BASE_URL$encodedPath"

@@ -1317,7 +1317,7 @@ class ReaderPageFragment : Fragment() {
                         background-color: rgba(255, 213, 79, 0.4) !important;
                     }
                 </style>
-                <script src="https://appassets.androidplatform.net/assets/inpage_paginator.js"></script>
+                <script src="https://${EpubImageAssetHelper.ASSET_HOST}/assets/inpage_paginator.js"></script>
             </head>
             <body>
                 $content

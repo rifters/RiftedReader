@@ -34,7 +34,18 @@ class EpubImagePathHandler(
             AppLogger.d(TAG, "Handling request for path: $path -> ${imageFile.absolutePath}")
 
             // Security check: ensure the resolved path is within the cache root
-            if (!imageFile.canonicalPath.startsWith(imageCacheRoot.canonicalPath)) {
+            // canonicalPath can throw IOException if path is invalid
+            val canonicalImagePath: String
+            val canonicalCacheRoot: String
+            try {
+                canonicalImagePath = imageFile.canonicalPath
+                canonicalCacheRoot = imageCacheRoot.canonicalPath
+            } catch (e: java.io.IOException) {
+                AppLogger.w(TAG, "Security: Invalid path, cannot resolve canonical path: $path")
+                return null
+            }
+            
+            if (!canonicalImagePath.startsWith(canonicalCacheRoot)) {
                 AppLogger.w(TAG, "Security: Attempted path traversal attack: $path")
                 return null
             }
@@ -53,9 +64,9 @@ class EpubImagePathHandler(
             val response = WebResourceResponse(mimeType, null, inputStream)
 
             // Add caching headers for better performance
+            // No CORS header needed since images are loaded within the same virtual domain
             response.responseHeaders = mapOf(
-                "Cache-Control" to "max-age=3600",
-                "Access-Control-Allow-Origin" to "*"
+                "Cache-Control" to "max-age=3600"
             )
 
             AppLogger.d(TAG, "Serving image: ${imageFile.name} (${imageFile.length()} bytes, $mimeType)")
