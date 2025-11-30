@@ -1329,6 +1329,9 @@ class ReaderPageFragment : Fragment() {
     /**
      * Prepare TTS chunks by marking up content in WebView
      * This enables tap-to-position and highlighting functionality
+     * 
+     * ISSUE 2 FIX: Added waitForElement guard with retry logic to ensure #tts-root exists
+     * before attempting to append to DOM nodes. Max 5 attempts with 50ms delay.
      */
     private fun prepareTtsChunks() {
         // Bug Fix 3: Check binding is not null before accessing WebView
@@ -1337,71 +1340,100 @@ class ReaderPageFragment : Fragment() {
             return
         }
         
+        // ISSUE 2 FIX: JavaScript with waitForElement guard and retry logic
         binding.pageWebView.evaluateJavascript(
             """
             (function() {
-                try {
-                    // Add TTS chunk style if not already present
-                    var styleId = 'tts-chunk-style';
-                    if (!document.getElementById(styleId)) {
-                        var style = document.createElement('style');
-                        style.id = styleId;
-                        style.innerHTML = '[data-tts-chunk]{cursor:pointer;transition:background-color 0.2s ease-in-out;} .tts-highlight{background-color: rgba(255, 213, 79, 0.4) !important;}';
-                        document.head.appendChild(style);
+                // ISSUE 2 FIX: Wait for element with retry logic
+                // Max 5 attempts with 50ms delay before executing TTS chunk preparation
+                var MAX_ATTEMPTS = 5;
+                var RETRY_DELAY_MS = 50;
+                var attempt = 0;
+                
+                function waitForBodyAndExecute() {
+                    attempt++;
+                    
+                    // Check if document.body exists - this is the target container for TTS operations
+                    if (!document.body) {
+                        if (attempt < MAX_ATTEMPTS) {
+                            console.log('[TTS] prepareTtsChunks: document.body not ready, retrying (attempt ' + attempt + '/' + MAX_ATTEMPTS + ')');
+                            setTimeout(waitForBodyAndExecute, RETRY_DELAY_MS);
+                            return;
+                        } else {
+                            console.error('[TTS] prepareTtsChunks: document.body still null after ' + MAX_ATTEMPTS + ' attempts, aborting');
+                            return;
+                        }
                     }
                     
-                    // Clear any existing TTS markup
-                    var existing = document.querySelectorAll('[data-tts-chunk]');
-                    existing.forEach(function(node) {
-                        node.classList.remove('tts-highlight');
-                        node.removeAttribute('data-tts-chunk');
-                    });
-                    
-                    // Mark up text blocks for TTS
-                    var selectors = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre, article, section';
-                    var nodes = document.querySelectorAll(selectors);
-                    var chunks = [];
-                    var index = 0;
-                    var currentPos = 0;
-                    
-                    nodes.forEach(function(node) {
-                        if (!node) { return; }
-                        var text = node.innerText || '';
-                        text = text.replace(/\s+/g, ' ').trim();
-                        if (!text) { return; }
+                    // Body is ready, proceed with TTS chunk preparation
+                    try {
+                        // Add TTS chunk style if not already present
+                        var styleId = 'tts-chunk-style';
+                        if (!document.getElementById(styleId)) {
+                            var style = document.createElement('style');
+                            style.id = styleId;
+                            style.innerHTML = '[data-tts-chunk]{cursor:pointer;transition:background-color 0.2s ease-in-out;} .tts-highlight{background-color: rgba(255, 213, 79, 0.4) !important;}';
+                            document.head.appendChild(style);
+                        }
                         
-                        node.setAttribute('data-tts-chunk', index);
-                        chunks.push({ 
-                            index: index, 
-                            text: text,
-                            startPosition: currentPos
+                        // Clear any existing TTS markup
+                        var existing = document.querySelectorAll('[data-tts-chunk]');
+                        existing.forEach(function(node) {
+                            node.classList.remove('tts-highlight');
+                            node.removeAttribute('data-tts-chunk');
                         });
                         
-                        currentPos += text.length + 1; // +1 for space between chunks
-                        index++;
-                    });
-                    
-                    // Attach click handler for tap-to-position
-                    if (!window.__ttsTapHandlerAttached) {
-                        document.addEventListener('click', function(event) {
-                            var target = event.target.closest('[data-tts-chunk]');
-                            if (!target) { return; }
-                            var idx = parseInt(target.getAttribute('data-tts-chunk'));
-                            if (isNaN(idx)) { return; }
-                            if (window.AndroidTtsBridge && AndroidTtsBridge.onChunkTapped) {
-                                AndroidTtsBridge.onChunkTapped(idx);
-                            }
-                        }, false);
-                        window.__ttsTapHandlerAttached = true;
+                        // Mark up text blocks for TTS
+                        var selectors = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre, article, section';
+                        var nodes = document.querySelectorAll(selectors);
+                        var chunks = [];
+                        var index = 0;
+                        var currentPos = 0;
+                        
+                        nodes.forEach(function(node) {
+                            if (!node) { return; }
+                            var text = node.innerText || '';
+                            text = text.replace(/\s+/g, ' ').trim();
+                            if (!text) { return; }
+                            
+                            node.setAttribute('data-tts-chunk', index);
+                            chunks.push({ 
+                                index: index, 
+                                text: text,
+                                startPosition: currentPos
+                            });
+                            
+                            currentPos += text.length + 1; // +1 for space between chunks
+                            index++;
+                        });
+                        
+                        // Attach click handler for tap-to-position
+                        if (!window.__ttsTapHandlerAttached) {
+                            document.addEventListener('click', function(event) {
+                                var target = event.target.closest('[data-tts-chunk]');
+                                if (!target) { return; }
+                                var idx = parseInt(target.getAttribute('data-tts-chunk'));
+                                if (isNaN(idx)) { return; }
+                                if (window.AndroidTtsBridge && AndroidTtsBridge.onChunkTapped) {
+                                    AndroidTtsBridge.onChunkTapped(idx);
+                                }
+                            }, false);
+                            window.__ttsTapHandlerAttached = true;
+                        }
+                        
+                        // Send chunks back to Android
+                        if (window.AndroidTtsBridge && AndroidTtsBridge.onChunksPrepared) {
+                            AndroidTtsBridge.onChunksPrepared(JSON.stringify(chunks));
+                        }
+                        
+                        console.log('[TTS] prepareTtsChunks: completed with ' + chunks.length + ' chunks (attempt ' + attempt + ')');
+                    } catch(e) {
+                        console.error('[TTS] prepareTtsChunks error:', e);
                     }
-                    
-                    // Send chunks back to Android
-                    if (window.AndroidTtsBridge && AndroidTtsBridge.onChunksPrepared) {
-                        AndroidTtsBridge.onChunksPrepared(JSON.stringify(chunks));
-                    }
-                } catch(e) {
-                    console.error('prepareTtsChunks error:', e);
                 }
+                
+                // Start the wait-and-execute loop
+                waitForBodyAndExecute();
             })();
             """.trimIndent(),
             null

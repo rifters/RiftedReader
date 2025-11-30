@@ -51,6 +51,10 @@ object WebViewPaginatorBridge {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val gson = Gson()
     
+    // ISSUE 4 FIX: Track last known page count to return when paginator is not ready
+    // This prevents returning 1 when paginator is not ready, causing page count flips like 118->109
+    private var lastKnownPageCount: Int = -1
+    
     /**
      * Check if the paginator is initialized and ready for operations.
      * This should be called before any other paginator methods.
@@ -161,23 +165,35 @@ object WebViewPaginatorBridge {
     
     /**
      * Get the current page count from the paginator.
-     * Returns 1 if paginator is not ready.
+     * 
+     * ISSUE 4 FIX: When paginator is not ready, returns lastKnownPageCount if > 0, 
+     * otherwise returns -1 (not 1). This prevents ContinuousPaginator from 
+     * recomputing global pages with stale values, causing page count flips.
      * 
      * @param webView The WebView containing the paginated content
-     * @return The number of pages
+     * @return The number of pages, or lastKnownPageCount if not ready, or -1 if unknown
      */
     suspend fun getPageCount(webView: WebView): Int {
         return try {
             if (!isReady(webView)) {
-                AppLogger.d("WebViewPaginatorBridge", "getPageCount: paginator not ready, returning 1")
-                return 1
+                // ISSUE 4 FIX: Return lastKnownPageCount if > 0, otherwise return -1
+                val fallbackCount = if (lastKnownPageCount > 0) lastKnownPageCount else -1
+                AppLogger.d("WebViewPaginatorBridge", "getPageCount: paginator not ready, returning fallback=$fallbackCount (lastKnown=$lastKnownPageCount)")
+                return fallbackCount
             }
             val count = evaluateInt(webView, "window.inpagePaginator.getPageCount()")
             AppLogger.d("WebViewPaginatorBridge", "getPageCount: $count pages")
+            
+            // ISSUE 4 FIX: Update lastKnownPageCount when a valid page count is retrieved
+            if (count > 0) {
+                lastKnownPageCount = count
+            }
+            
             count
         } catch (e: Exception) {
             AppLogger.e("WebViewPaginatorBridge", "Error getting page count", e)
-            1 // Return safe default
+            // Return lastKnownPageCount if > 0, otherwise return -1
+            if (lastKnownPageCount > 0) lastKnownPageCount else -1
         }
     }
     

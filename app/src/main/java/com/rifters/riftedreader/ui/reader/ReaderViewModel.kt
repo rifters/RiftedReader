@@ -101,6 +101,9 @@ class ReaderViewModel(
     private var continuousPaginator: ContinuousPaginator? = null
     private var isContinuousInitialized = false
     
+    // Cache for pre-wrapped HTML to enable fast access for windows 0-4 during initial load
+    private val preWrappedHtmlCache = mutableMapOf<Int, String>()
+    
     // TTS highlight state
     private val _highlight = MutableStateFlow<TtsHighlight?>(null)
     val highlight: StateFlow<TtsHighlight?> = _highlight.asStateFlow()
@@ -277,6 +280,10 @@ class ReaderViewModel(
                 )
                 
                 isContinuousInitialized = true
+                
+                // Pre-generate wrapped HTML for initial windows (0-4 or fewer if book has fewer windows)
+                // This ensures downstream windows are prepared during initial load
+                preWrapInitialWindows(totalChapters)
 
                 // Try to restore position using chapter + in-page index first
                 val initialGlobalPage = paginator.navigateToChapter(safeStartChapter, startInPage)
@@ -298,6 +305,63 @@ class ReaderViewModel(
                 paginationModeGuard.endWindowBuild()
             }
         }
+    }
+    
+    /**
+     * Pre-generate wrapped HTML for initial windows (0-4 or fewer if book has fewer windows).
+     * This ensures downstream windows are prepared during initial load, not just window 0.
+     * 
+     * ISSUE 1 FIX: Window HTML generation only runs for windowIndex=0 during initial load.
+     * This method pre-wraps windows 0-4 (or fewer if book has fewer windows) to ensure
+     * the adapter has content ready for adjacent windows when user starts swiping.
+     * 
+     * @param totalChapters Total number of chapters in the book
+     */
+    private suspend fun preWrapInitialWindows(totalChapters: Int) {
+        val paginator = continuousPaginator ?: return
+        if (totalChapters <= 0) return
+        
+        val totalWindows = slidingWindowPaginator.getWindowCount()
+        // Pre-wrap up to 5 windows (0-4) or fewer if book has fewer windows
+        val windowsToPreWrap = kotlin.math.min(5, totalWindows)
+        
+        AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] preWrapInitialWindows: totalChapters=$totalChapters, totalWindows=$totalWindows, preWrapping=$windowsToPreWrap windows")
+        
+        // Create provider once and reuse it for all windows (more efficient than creating per window)
+        val windowHtmlProvider = com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider(
+            paginator,
+            slidingWindowManager
+        )
+        
+        for (windowIndex in 0 until windowsToPreWrap) {
+            try {
+                val html = windowHtmlProvider.getWindowHtml(bookId, windowIndex)
+                if (html != null) {
+                    // Store in cache for fast access later
+                    preWrappedHtmlCache[windowIndex] = html
+                    
+                    AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Pre-wrapped HTML for window $windowIndex: htmlLength=${html.length}")
+                    
+                    // Log the wrapped HTML for debugging
+                    com.rifters.riftedreader.util.HtmlDebugLogger.logWrappedHtml(
+                        bookId = bookId,
+                        chapterIndex = windowIndex, // Use windowIndex as identifier
+                        wrappedHtml = html,
+                        metadata = mapOf(
+                            "windowIndex" to windowIndex.toString(),
+                            "type" to "pre-wrapped",
+                            "totalWindows" to totalWindows.toString()
+                        )
+                    )
+                } else {
+                    AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] Failed to pre-wrap HTML for window $windowIndex")
+                }
+            } catch (e: Exception) {
+                AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] Error pre-wrapping window $windowIndex", e)
+            }
+        }
+        
+        AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] preWrapInitialWindows complete: cached ${preWrappedHtmlCache.size} windows")
     }
 
     private suspend fun generatePages(): List<PageContent> {
@@ -697,15 +761,24 @@ class ReaderViewModel(
             
             AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Getting window HTML: windowIndex=$windowIndex, chapters=$firstChapterInWindow-$lastChapterInWindow (totalChapters=$totalChapters, windowSize=$windowSize)")
             
-            val provider = com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider(
-                paginator,
-                slidingWindowManager
-            )
-            
-            val html = provider.getWindowHtml(bookId, windowIndex)
-            if (html == null) {
-                AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] Window HTML provider returned null for window $windowIndex")
-                return null
+            // Check pre-wrapped cache first for faster access (fix for code review comment)
+            val cachedHtml = preWrappedHtmlCache[windowIndex]
+            val html = if (cachedHtml != null) {
+                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Using cached pre-wrapped HTML for window $windowIndex")
+                cachedHtml
+            } else {
+                // Generate HTML if not in cache
+                val provider = com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider(
+                    paginator,
+                    slidingWindowManager
+                )
+                
+                val generatedHtml = provider.getWindowHtml(bookId, windowIndex)
+                if (generatedHtml == null) {
+                    AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] Window HTML provider returned null for window $windowIndex")
+                    return null
+                }
+                generatedHtml
             }
             
             // [PAGINATION_DEBUG] Log HTML size for debugging
