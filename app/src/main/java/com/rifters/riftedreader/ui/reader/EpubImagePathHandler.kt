@@ -45,7 +45,14 @@ class EpubImagePathHandler(
                 return null
             }
             
-            if (!canonicalImagePath.startsWith(canonicalCacheRoot)) {
+            // Ensure path is within cache root with proper directory boundary check
+            // Without File.separator, "/cache-attacker/file" would match "/cache" prefix
+            val cacheRootWithSeparator = if (canonicalCacheRoot.endsWith(File.separator)) {
+                canonicalCacheRoot
+            } else {
+                canonicalCacheRoot + File.separator
+            }
+            if (!canonicalImagePath.startsWith(cacheRootWithSeparator) && canonicalImagePath != canonicalCacheRoot) {
                 AppLogger.w(TAG, "Security: Attempted path traversal attack: $path")
                 return null
             }
