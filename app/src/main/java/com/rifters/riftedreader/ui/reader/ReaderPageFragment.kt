@@ -125,6 +125,12 @@ class ReaderPageFragment : Fragment() {
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(requireContext()))
             .build()
         
+        // Log asset loader initialization for diagnostics
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "[ASSET_LOADER_INIT] root=${imageCacheRoot.absolutePath} domain=${EpubImageAssetHelper.ASSET_HOST} prefix=${EpubImageAssetHelper.EPUB_IMAGES_PATH}"
+        )
+        
         // Configure WebView for EPUB rendering with column-based layout support
         binding.pageWebView.apply {
             settings.javaScriptEnabled = true
