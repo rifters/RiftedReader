@@ -371,6 +371,13 @@ class TestBookMetaDao(private val books: List<BookMeta>) : BookMetaDao {
     override suspend fun getBooksWithBookmarksSortedByPosition(): List<BookMeta> = books.filter { it.currentPreviewText != null }.sortedWith(
         compareBy({ it.currentChapterIndex }, { it.currentInPageIndex })
     )
+    override suspend fun updateChapterVisibilitySettings(
+        bookId: String,
+        includeCover: Boolean?,
+        includeFrontMatter: Boolean?,
+        includeNonLinear: Boolean?
+    ) {}
+    override suspend fun resetChapterVisibilitySettings(bookId: String) {}
 }
 
 class TestCollectionDao(private val collectionsWithBooksData: List<CollectionWithBooks>) : CollectionDao {
