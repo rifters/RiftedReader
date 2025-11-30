@@ -120,6 +120,9 @@ class ContinuousPaginatorWindowHtmlProvider(
             if (html != null) {
                 AppLogger.d(TAG, "[PAGINATION_DEBUG] Built wrapped HTML for window $windowIndex " +
                     "(chapters ${chapterIndices.first()}-${chapterIndices.last()}), htmlLength=${html.length}")
+            } else {
+                AppLogger.w(TAG, "[PAGINATION_DEBUG] buildWindowHtml returned null for window $windowIndex " +
+                    "(chapters ${chapterIndices.first()}-${chapterIndices.last()})")
             }
             
             html
