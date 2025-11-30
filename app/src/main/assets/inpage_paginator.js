@@ -1136,7 +1136,8 @@
             if (seg && seg.parentNode) {
                 const chapterIndexAttr = seg.getAttribute('data-chapter-index');
                 // Guard against null attribute - skip segment if no chapter index
-                if (chapterIndexAttr === null || chapterIndexAttr === undefined) {
+                // Use == null which covers both null and undefined in JavaScript
+                if (chapterIndexAttr == null) {
                     console.warn('inpage_paginator: Segment missing data-chapter-index, skipping eviction');
                     continue;
                 }
@@ -1183,7 +1184,8 @@
             if (seg && seg.parentNode) {
                 const chapterIndexAttr = seg.getAttribute('data-chapter-index');
                 // Guard against null attribute - skip segment if no chapter index
-                if (chapterIndexAttr === null || chapterIndexAttr === undefined) {
+                // Use == null which covers both null and undefined in JavaScript
+                if (chapterIndexAttr == null) {
                     console.warn('inpage_paginator: Segment missing data-chapter-index, skipping eviction');
                     continue;
                 }

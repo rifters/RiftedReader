@@ -327,13 +327,14 @@ class ReaderViewModel(
         
         AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] preWrapInitialWindows: totalChapters=$totalChapters, totalWindows=$totalWindows, preWrapping=$windowsToPreWrap windows")
         
+        // Create provider once and reuse it for all windows (more efficient than creating per window)
+        val windowHtmlProvider = com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider(
+            paginator,
+            slidingWindowManager
+        )
+        
         for (windowIndex in 0 until windowsToPreWrap) {
             try {
-                val windowHtmlProvider = com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider(
-                    paginator,
-                    slidingWindowManager
-                )
-                
                 val html = windowHtmlProvider.getWindowHtml(bookId, windowIndex)
                 if (html != null) {
                     // Store in cache for fast access later
@@ -760,15 +761,24 @@ class ReaderViewModel(
             
             AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Getting window HTML: windowIndex=$windowIndex, chapters=$firstChapterInWindow-$lastChapterInWindow (totalChapters=$totalChapters, windowSize=$windowSize)")
             
-            val provider = com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider(
-                paginator,
-                slidingWindowManager
-            )
-            
-            val html = provider.getWindowHtml(bookId, windowIndex)
-            if (html == null) {
-                AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] Window HTML provider returned null for window $windowIndex")
-                return null
+            // Check pre-wrapped cache first for faster access (fix for code review comment)
+            val cachedHtml = preWrappedHtmlCache[windowIndex]
+            val html = if (cachedHtml != null) {
+                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Using cached pre-wrapped HTML for window $windowIndex")
+                cachedHtml
+            } else {
+                // Generate HTML if not in cache
+                val provider = com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider(
+                    paginator,
+                    slidingWindowManager
+                )
+                
+                val generatedHtml = provider.getWindowHtml(bookId, windowIndex)
+                if (generatedHtml == null) {
+                    AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] Window HTML provider returned null for window $windowIndex")
+                    return null
+                }
+                generatedHtml
             }
             
             // [PAGINATION_DEBUG] Log HTML size for debugging
