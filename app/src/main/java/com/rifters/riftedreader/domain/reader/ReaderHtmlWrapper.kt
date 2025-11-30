@@ -199,7 +199,7 @@ object ReaderHtmlWrapper {
                         background-color: rgba(255, 213, 79, 0.4) !important;
                     }
                 </style>
-                <script src="file:///android_asset/inpage_paginator.js"></script>
+                <script src="https://appassets.androidplatform.net/assets/inpage_paginator.js"></script>
             </head>
             <body>
                 <!-- TTS root container for TTS DOM operations -->

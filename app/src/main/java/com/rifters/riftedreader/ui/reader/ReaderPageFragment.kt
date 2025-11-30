@@ -11,6 +11,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
@@ -22,12 +24,15 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.webkit.WebViewAssetLoader
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.databinding.FragmentReaderPageBinding
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.PageContent
+import com.rifters.riftedreader.util.EpubImageAssetHelper
 import kotlinx.coroutines.launch
 import org.json.JSONArray
+import java.io.File
 import kotlin.math.abs
 
 class ReaderPageFragment : Fragment() {
@@ -72,6 +77,9 @@ class ReaderPageFragment : Fragment() {
     // Track previous settings to detect what changed
     private var previousSettings: com.rifters.riftedreader.data.preferences.ReaderSettings? = null
     
+    // WebViewAssetLoader for serving cached EPUB images via virtual HTTPS domain
+    private var assetLoader: WebViewAssetLoader? = null
+    
     // TTS chunk mapping for WebView highlighting
     private data class TtsChunk(val index: Int, val text: String, val startPosition: Int, val endPosition: Int)
     private var ttsChunks: List<TtsChunk> = emptyList()
@@ -105,6 +113,18 @@ class ReaderPageFragment : Fragment() {
         resolvePageLocation()
         com.rifters.riftedreader.util.AppLogger.event("ReaderPageFragment", "onViewCreated for windowIndex $windowIndex", "ui/webview/lifecycle")
         
+        // Set up WebViewAssetLoader for serving cached EPUB images
+        // This allows images to load via virtual HTTPS domain instead of blocked file:// URLs
+        val imageCacheRoot = readerViewModel.getImageCacheRoot()
+        assetLoader = WebViewAssetLoader.Builder()
+            .setDomain(EpubImageAssetHelper.ASSET_HOST)
+            .addPathHandler(
+                EpubImageAssetHelper.EPUB_IMAGES_PATH,
+                EpubImagePathHandler(imageCacheRoot)
+            )
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(requireContext()))
+            .build()
+        
         // Configure WebView for EPUB rendering with column-based layout support
         binding.pageWebView.apply {
             settings.javaScriptEnabled = true
@@ -126,6 +146,24 @@ class ReaderPageFragment : Fragment() {
             addJavascriptInterface(PaginationBridge(), "AndroidBridge")
             
             webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(
+                    view: WebView?,
+                    request: WebResourceRequest?
+                ): WebResourceResponse? {
+                    // Let WebViewAssetLoader handle requests to the virtual HTTPS domain
+                    if (request != null && view != null) {
+                        val response = assetLoader?.shouldInterceptRequest(request.url)
+                        if (response != null) {
+                            com.rifters.riftedreader.util.AppLogger.d(
+                                "ReaderPageFragment",
+                                "[ASSET_LOADER] Intercepted request: ${request.url}"
+                            )
+                            return response
+                        }
+                    }
+                    return super.shouldInterceptRequest(view, request)
+                }
+                
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     // [PAGINATION_DEBUG] Enhanced logging for onPageFinished
@@ -1093,8 +1131,9 @@ class ReaderPageFragment : Fragment() {
                     val wrappedHtml = wrapHtmlForWebView(html, settings.textSizeSp, settings.lineHeightMultiplier, palette)
                     isWebViewReady = false
                     isPaginatorInitialized = false
+                    val baseUrl = "https://${EpubImageAssetHelper.ASSET_HOST}/"
                     binding.pageWebView.loadDataWithBaseURL(
-                        "file:///android_asset/", 
+                        baseUrl, 
                         wrappedHtml, 
                         "text/html", 
                         "UTF-8", 
@@ -1179,9 +1218,12 @@ class ReaderPageFragment : Fragment() {
             "webViewSize=${binding.pageWebView.width}x${binding.pageWebView.height}"
         )
         
-        // Use file:///android_asset/ as base URL to allow loading of inpage_paginator.js
+        // Use the asset loader's domain as base URL for consistent URL resolution
+        // Images will use https://appassets.androidplatform.net/epub-images/... URLs
+        // Script loading from file:///android_asset/ still works as it's an absolute path
+        val baseUrl = "https://${EpubImageAssetHelper.ASSET_HOST}/"
         binding.pageWebView.loadDataWithBaseURL(
-            "file:///android_asset/", 
+            baseUrl, 
             wrappedHtml, 
             "text/html", 
             "UTF-8", 
@@ -1275,7 +1317,7 @@ class ReaderPageFragment : Fragment() {
                         background-color: rgba(255, 213, 79, 0.4) !important;
                     }
                 </style>
-                <script src="file:///android_asset/inpage_paginator.js"></script>
+                <script src="https://appassets.androidplatform.net/assets/inpage_paginator.js"></script>
             </head>
             <body>
                 $content
