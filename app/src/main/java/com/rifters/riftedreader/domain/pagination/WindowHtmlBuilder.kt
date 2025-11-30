@@ -1,46 +1,81 @@
-package com.rifters.riftedreader.domain.reader
+package com.rifters.riftedreader.domain.pagination
 
-import com.rifters.riftedreader.ui.reader.ReaderThemePalette
+import android.text.TextUtils
+import com.rifters.riftedreader.domain.parser.BookParser
+import com.rifters.riftedreader.domain.parser.PageContent
+import com.rifters.riftedreader.util.AppLogger
 import com.rifters.riftedreader.util.EpubImageAssetHelper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
- * Configuration for wrapping HTML content for WebView display.
- */
-data class ReaderHtmlConfig(
-    val textSizePx: Float,
-    val lineHeightMultiplier: Float,
-    val palette: ReaderThemePalette,
-    val enableDiagnostics: Boolean = false
-)
-
-/**
- * Wraps HTML content with proper styling and scripts for WebView display.
+ * Builds pre-wrapped HTML for paginated windows with proper CSS for column-based pagination.
  * 
- * This wrapper can handle both single-chapter HTML and sliding-window HTML
- * (multiple chapters combined in <section> blocks).
+ * This class generates complete HTML documents that include:
+ * - Required head CSS (html/body 100%, overflow hidden, no body padding)
+ * - Pre-wrapped chapter sections with data-chapter-index attributes
+ * - Paginator script injection
+ * - Theme-aware styling
+ * 
+ * The generated HTML is designed to work directly with inpage_paginator.js for
+ * CSS column-based horizontal pagination without vertical fallback.
  */
-object ReaderHtmlWrapper {
+object WindowHtmlBuilder {
+    
+    private const val TAG = "WindowHtmlBuilder"
     
     /** Script URL using WebViewAssetLoader domain for consistent URL handling */
     private val PAGINATOR_SCRIPT_URL = "https://${EpubImageAssetHelper.ASSET_HOST}/assets/inpage_paginator.js"
     
     /**
-     * Convert a color integer to a hex color string.
+     * Configuration for building window HTML.
      */
-    private fun colorToHex(color: Int): String {
-        return String.format("#%06X", 0xFFFFFF and color)
-    }
+    data class WindowHtmlConfig(
+        val windowIndex: Int,
+        val textSizePx: Float,
+        val lineHeightMultiplier: Float,
+        val backgroundColor: String,
+        val textColor: String,
+        val enableDiagnostics: Boolean = false
+    )
     
     /**
-     * Wrap arbitrary HTML content for display in a WebView.
+     * Build pre-wrapped HTML for a window containing multiple chapters.
      * 
-     * @param contentHtml The HTML content to wrap (can be single chapter or multi-chapter window)
-     * @param config Configuration for styling and display
+     * The generated HTML includes:
+     * - Full DOCTYPE and HTML structure
+     * - CSS optimized for column-based pagination (no body padding, 100% height, overflow hidden)
+     * - Chapter sections with data-chapter-index for pre-wrapped content detection
+     * - Paginator script injection
+     * 
+     * @param chapterContents Map of chapter index to HTML content
+     * @param config Window HTML configuration
      * @return Complete HTML document ready for WebView.loadDataWithBaseURL()
      */
-    fun wrap(contentHtml: String, config: ReaderHtmlConfig): String {
-        val backgroundColor = colorToHex(config.palette.backgroundColor)
-        val textColor = colorToHex(config.palette.textColor)
+    fun buildWindowHtml(
+        chapterContents: Map<Int, String>,
+        config: WindowHtmlConfig
+    ): String {
+        AppLogger.d(TAG, "Building window HTML: windowIndex=${config.windowIndex}, chapters=${chapterContents.keys}")
+        
+        // Build chapter sections
+        val sectionsHtml = StringBuilder()
+        sectionsHtml.append("<div id=\"window-root\" data-window-index=\"${config.windowIndex}\">\n")
+        
+        for ((chapterIndex, chapterHtml) in chapterContents.entries.sortedBy { it.key }) {
+            if (chapterHtml.isBlank()) {
+                AppLogger.w(TAG, "Empty content for chapter $chapterIndex, skipping")
+                continue
+            }
+            
+            sectionsHtml.append("  <section id=\"chapter-$chapterIndex\" data-chapter-index=\"$chapterIndex\">\n")
+            sectionsHtml.append("    ")
+            sectionsHtml.append(chapterHtml)
+            sectionsHtml.append("\n  </section>\n")
+        }
+        
+        sectionsHtml.append("</div>\n")
         
         // Enable diagnostics in paginator if configured
         val diagnosticsScript = if (config.enableDiagnostics) {
@@ -53,73 +88,6 @@ object ReaderHtmlWrapper {
             </script>
             """
         } else ""
-        
-        // TTS initialization script - ensures #tts-root exists and emits ttsReady event
-        // ISSUE 2 FIX: Create #tts-root immediately on DOMContentLoaded, NOT after paginator readiness
-        // This prevents race condition where prepareTtsChunks runs before #tts-root exists
-        val ttsInitScript = """
-            <script>
-                // TTS DOM initialization guard - create container if missing
-                (function() {
-                    'use strict';
-                    
-                    // ISSUE 2 FIX: Create #tts-root immediately on DOMContentLoaded
-                    // This ensures the container exists before prepareTtsChunks runs
-                    function ensureTtsRoot() {
-                        if (!document.getElementById('tts-root')) {
-                            var ttsRoot = document.createElement('div');
-                            ttsRoot.id = 'tts-root';
-                            ttsRoot.style.cssText = 'position:absolute;top:-9999px;left:-9999px;overflow:hidden;width:1px;height:1px;';
-                            document.body.appendChild(ttsRoot);
-                            console.log('[TTS] Created #tts-root container on DOMContentLoaded');
-                        }
-                    }
-                    
-                    function emitTtsReady() {
-                        // Emit ttsReady event after paginator layout complete
-                        var event = new CustomEvent('ttsReady', { detail: { timestamp: Date.now() } });
-                        document.dispatchEvent(event);
-                        console.log('[TTS] Emitted ttsReady event');
-                        
-                        // Also notify Android bridge if available
-                        if (window.AndroidTtsBridge && window.AndroidTtsBridge.onTtsReady) {
-                            try {
-                                window.AndroidTtsBridge.onTtsReady();
-                            } catch (e) {
-                                console.warn('[TTS] Failed to notify Android bridge:', e);
-                            }
-                        }
-                    }
-                    
-                    // Wait for paginator ready before emitting ttsReady
-                    // NOTE: #tts-root is already created on DOMContentLoaded, so prepareTtsChunks won't fail
-                    function waitForPaginatorThenEmitReady() {
-                        if (window.inpagePaginator && window.inpagePaginator.isReady && window.inpagePaginator.isReady()) {
-                            emitTtsReady();
-                        } else {
-                            // Paginator not ready, wait and retry
-                            setTimeout(waitForPaginatorThenEmitReady, 100);
-                        }
-                    }
-                    
-                    // ISSUE 2 FIX: Create #tts-root immediately on DOMContentLoaded
-                    // Then separately wait for paginator to emit ttsReady
-                    function onDomReady() {
-                        // Create #tts-root immediately - this happens before prepareTtsChunks
-                        ensureTtsRoot();
-                        // Then wait for paginator to emit ttsReady
-                        waitForPaginatorThenEmitReady();
-                    }
-                    
-                    // Start waiting for DOM to be ready
-                    if (document.readyState === 'loading') {
-                        document.addEventListener('DOMContentLoaded', onDomReady);
-                    } else {
-                        onDomReady();
-                    }
-                })();
-            </script>
-        """
         
         return """
             <!DOCTYPE html>
@@ -135,7 +103,7 @@ object ReaderHtmlWrapper {
                         width: 100%;
                         height: 100%;
                         overflow: hidden;
-                        background-color: $backgroundColor;
+                        background-color: ${config.backgroundColor};
                     }
                     body {
                         margin: 0;
@@ -144,8 +112,8 @@ object ReaderHtmlWrapper {
                         width: 100%;
                         height: 100%;
                         overflow: hidden;
-                        background-color: $backgroundColor;
-                        color: $textColor;
+                        background-color: ${config.backgroundColor};
+                        color: ${config.textColor};
                         font-size: ${config.textSizePx}px;
                         line-height: ${config.lineHeightMultiplier};
                         font-family: serif;
@@ -158,14 +126,9 @@ object ReaderHtmlWrapper {
                         -webkit-user-select: text;
                         user-select: text;
                     }
-                    /* TTS root container - hidden but accessible */
-                    #tts-root {
-                        position: absolute;
-                        top: -9999px;
-                        left: -9999px;
-                        overflow: hidden;
-                        width: 1px;
-                        height: 1px;
+                    /* Window root container */
+                    #window-root {
+                        width: 100%;
                     }
                     /* Preserve formatting for all block elements */
                     p, div, article {
@@ -189,7 +152,7 @@ object ReaderHtmlWrapper {
                     blockquote {
                         margin: 1em 0;
                         padding-left: 1em;
-                        border-left: 3px solid $textColor;
+                        border-left: 3px solid ${config.textColor};
                         font-style: italic;
                     }
                     ul, ol {
@@ -237,17 +200,84 @@ object ReaderHtmlWrapper {
                     .tts-highlight {
                         background-color: rgba(255, 213, 79, 0.4) !important;
                     }
+                    /* TTS root container - hidden but accessible */
+                    #tts-root {
+                        position: absolute;
+                        top: -9999px;
+                        left: -9999px;
+                        overflow: hidden;
+                        width: 1px;
+                        height: 1px;
+                    }
                 </style>
                 <script src="$PAGINATOR_SCRIPT_URL"></script>
             </head>
             <body>
                 <!-- TTS root container for TTS DOM operations -->
                 <div id="tts-root" aria-hidden="true"></div>
-                $contentHtml
+                ${sectionsHtml}
                 $diagnosticsScript
-                $ttsInitScript
             </body>
             </html>
         """.trimIndent()
+    }
+    
+    /**
+     * Build pre-wrapped HTML from PageContent objects.
+     * 
+     * @param chapters Map of chapter index to PageContent
+     * @param config Window HTML configuration
+     * @return Complete HTML document ready for WebView.loadDataWithBaseURL()
+     */
+    fun buildFromPageContents(
+        chapters: Map<Int, PageContent>,
+        config: WindowHtmlConfig
+    ): String {
+        val contentMap = chapters.mapValues { (_, pageContent) ->
+            pageContent.html ?: wrapTextAsHtml(pageContent.text)
+        }
+        return buildWindowHtml(contentMap, config)
+    }
+    
+    /**
+     * Build pre-wrapped HTML directly from a book parser.
+     * 
+     * @param bookFile The book file to read from
+     * @param parser The parser to use for extracting content
+     * @param chapterIndices List of chapter indices to include in the window
+     * @param config Window HTML configuration
+     * @return Complete HTML document ready for WebView.loadDataWithBaseURL()
+     */
+    suspend fun buildFromParser(
+        bookFile: File,
+        parser: BookParser,
+        chapterIndices: List<Int>,
+        config: WindowHtmlConfig
+    ): String {
+        val chapters = mutableMapOf<Int, PageContent>()
+        
+        for (chapterIndex in chapterIndices) {
+            val pageContent = withContext(Dispatchers.IO) {
+                parser.getPageContent(bookFile, chapterIndex)
+            }
+            chapters[chapterIndex] = pageContent
+        }
+        
+        return buildFromPageContents(chapters, config)
+    }
+    
+    /**
+     * Convert plain text to simple HTML paragraphs.
+     */
+    private fun wrapTextAsHtml(text: String): String {
+        if (text.isBlank()) return "<p></p>"
+        
+        // Split by paragraphs (double newlines) and wrap each in <p> tags
+        return text.split("\n\n")
+            .filter { it.isNotBlank() }
+            .joinToString("\n") { paragraph ->
+                val escaped = TextUtils.htmlEncode(paragraph.trim())
+                "<p>$escaped</p>"
+            }
     }
 }

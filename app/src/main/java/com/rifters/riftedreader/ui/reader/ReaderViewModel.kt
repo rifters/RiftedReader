@@ -16,6 +16,7 @@ import com.rifters.riftedreader.domain.pagination.ChapterIndexProvider
 import com.rifters.riftedreader.domain.pagination.ContinuousPaginator
 import com.rifters.riftedreader.domain.pagination.PageLocation
 import com.rifters.riftedreader.domain.pagination.PaginationMode
+import com.rifters.riftedreader.domain.pagination.WindowHtmlBuilder
 import com.rifters.riftedreader.domain.parser.BookParser
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.domain.parser.TocEntry
@@ -1005,6 +1006,63 @@ class ReaderViewModel(
                 totalChapters = _pages.value.size
             )
         }
+    }
+    
+    /**
+     * Assemble pre-wrapped HTML for a window using WindowHtmlBuilder.
+     * 
+     * This method generates a complete HTML document with proper CSS for column pagination,
+     * including html/body normalization, overflow hidden, and no body padding.
+     * 
+     * @param windowIndex The window index
+     * @param textSizePx Font size in pixels
+     * @param lineHeightMultiplier Line height multiplier
+     * @param backgroundColor Background color as hex string (e.g., "#FFFFFF")
+     * @param textColor Text color as hex string (e.g., "#000000")
+     * @param enableDiagnostics Whether to enable pagination diagnostics
+     * @return Complete HTML document ready for WebView.loadDataWithBaseURL(), or null if unavailable
+     */
+    suspend fun assembleChapterHtml(
+        windowIndex: Int,
+        textSizePx: Float,
+        lineHeightMultiplier: Float,
+        backgroundColor: String,
+        textColor: String,
+        enableDiagnostics: Boolean = false
+    ): String? {
+        AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] assembleChapterHtml called: windowIndex=$windowIndex")
+        
+        val paginator = continuousPaginator ?: return null
+        val windowInfo = paginator.getWindowInfo()
+        val totalChapters = windowInfo.totalChapters
+        
+        if (totalChapters <= 0) {
+            AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] assembleChapterHtml: no chapters available")
+            return null
+        }
+        
+        // Calculate which chapters belong to this window
+        val firstChapter = slidingWindowManager.firstChapterInWindow(windowIndex)
+            .coerceIn(0, totalChapters - 1)
+        val lastChapter = slidingWindowManager.lastChapterInWindow(windowIndex, totalChapters)
+            .coerceIn(0, totalChapters - 1)
+        val chapterIndices = (firstChapter..lastChapter).toList()
+        
+        val config = WindowHtmlBuilder.WindowHtmlConfig(
+            windowIndex = windowIndex,
+            textSizePx = textSizePx,
+            lineHeightMultiplier = lineHeightMultiplier,
+            backgroundColor = backgroundColor,
+            textColor = textColor,
+            enableDiagnostics = enableDiagnostics
+        )
+        
+        return WindowHtmlBuilder.buildFromParser(
+            bookFile = bookFile,
+            parser = parser,
+            chapterIndices = chapterIndices,
+            config = config
+        )
     }
     
     /**

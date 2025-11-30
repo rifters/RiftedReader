@@ -513,6 +513,38 @@ object WebViewPaginatorBridge {
     }
     
     /**
+     * Force horizontal column layout by reapplying styles with stricter settings.
+     * This is a debug/recovery API that can be called if vertical fallback is detected.
+     * This method does not suspend - it fires and forgets.
+     * 
+     * @param webView The WebView containing the paginated content
+     */
+    fun forceHorizontal(webView: WebView) {
+        AppLogger.d("WebViewPaginatorBridge", "forceHorizontal: forcing horizontal column layout")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.inpagePaginator && window.inpagePaginator.forceHorizontal) { window.inpagePaginator.forceHorizontal(); }",
+                null
+            )
+        }
+    }
+    
+    /**
+     * Check if columns are applied correctly (not in vertical fallback).
+     * 
+     * @param webView The WebView containing the paginated content
+     * @return true if columns appear to be working correctly
+     */
+    suspend fun checkColumnsApplied(webView: WebView): Boolean {
+        return try {
+            evaluateBoolean(webView, "window.inpagePaginator && window.inpagePaginator.checkColumnsApplied ? window.inpagePaginator.checkColumnsApplied() : false")
+        } catch (e: Exception) {
+            AppLogger.e("WebViewPaginatorBridge", "Error checking columns applied", e)
+            false
+        }
+    }
+    
+    /**
      * Get image diagnostics from the paginator.
      * Useful for debugging broken images under sliding window mode.
      * 

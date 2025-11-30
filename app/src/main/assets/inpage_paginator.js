@@ -46,6 +46,10 @@
     const MIN_CLIENT_WIDTH = 10; // Minimum valid clientWidth for column computation
     const COLUMN_RETRY_DELAY_MS = 50; // Delay before retrying column width computation
     const MAX_COLUMN_RETRIES = 5; // Maximum retries for column width computation
+    const VERTICAL_FALLBACK_CHECK_DELAY_MS = 100; // Delay before checking for vertical fallback
+    
+    // Content padding applied to #paginator-content after readiness
+    const CONTENT_PADDING_PX = 16;
     
     // Paginator configuration - set via configure() before init()
     let paginatorConfig = {
@@ -86,6 +90,10 @@
     
     // Injection tracking to prevent duplicate initialization
     let injectionAttemptCount = 0;
+    
+    // Vertical fallback prevention state
+    let verticalFallbackChecked = false;
+    let columnsAppliedSuccessfully = false;
     
     /**
      * Configure the paginator before initialization.
@@ -400,6 +408,160 @@
         return diagnostics;
     }
     
+    // ========================================================================
+    // Vertical Fallback Prevention
+    // ========================================================================
+    
+    /**
+     * Apply normalization styles to html/body to prevent vertical scrolling.
+     * This ensures horizontal column-based pagination works correctly.
+     * Called during init() before column styles are applied.
+     */
+    function normalizeHtmlBody() {
+        console.log('inpage_paginator: [NORMALIZE] Applying html/body normalization');
+        
+        // Normalize html element
+        var html = document.documentElement;
+        if (html) {
+            html.style.margin = '0';
+            html.style.padding = '0';
+            html.style.width = '100%';
+            html.style.height = '100%';
+            html.style.overflow = 'hidden';
+        }
+        
+        // Normalize body element
+        var body = document.body;
+        if (body) {
+            body.style.margin = '0';
+            body.style.padding = '0';
+            body.style.width = '100%';
+            body.style.height = '100%';
+            body.style.overflow = 'hidden';
+        }
+        
+        console.log('inpage_paginator: [NORMALIZE] html/body normalized');
+    }
+    
+    /**
+     * Apply padding to #paginator-content after readiness.
+     * This moves padding from body to content wrapper to maintain column alignment.
+     */
+    function applyContentPadding() {
+        if (!contentWrapper) {
+            console.warn('inpage_paginator: [PADDING] contentWrapper not available');
+            return;
+        }
+        
+        contentWrapper.style.padding = CONTENT_PADDING_PX + 'px';
+        contentWrapper.style.boxSizing = 'border-box';
+        
+        console.log('inpage_paginator: [PADDING] Applied padding=' + CONTENT_PADDING_PX + 'px to #paginator-content');
+    }
+    
+    /**
+     * Check if columns are applied correctly (horizontal layout, not vertical).
+     * 
+     * @returns {boolean} true if columns appear to be working correctly
+     */
+    function checkColumnsApplied() {
+        if (!contentWrapper || !columnContainer) {
+            return false;
+        }
+        
+        var containerHeight = columnContainer.offsetHeight;
+        var contentHeight = contentWrapper.scrollHeight;
+        var contentWidth = contentWrapper.scrollWidth;
+        
+        // If content is taller than container, columns may have fallen back to vertical
+        // If content is wider than viewport, columns are working
+        var isHorizontal = contentWidth > viewportWidth;
+        var isVertical = contentHeight > containerHeight && contentWidth <= viewportWidth;
+        
+        console.log('inpage_paginator: [COLUMN_CHECK] containerHeight=' + containerHeight + 
+                   ', contentHeight=' + contentHeight + ', contentWidth=' + contentWidth + 
+                   ', viewportWidth=' + viewportWidth + ', isHorizontal=' + isHorizontal + 
+                   ', isVertical=' + isVertical);
+        
+        return isHorizontal || (contentHeight <= containerHeight);
+    }
+    
+    /**
+     * Force horizontal column layout by reapplying styles with stricter settings.
+     * This is a debug/recovery API that can be called if vertical fallback is detected.
+     * 
+     * @returns {Object} Diagnostic info about the force operation
+     */
+    function forceHorizontal() {
+        console.log('inpage_paginator: [FORCE_HORIZONTAL] Starting forced horizontal layout');
+        
+        var before = {
+            contentWidth: contentWrapper ? contentWrapper.scrollWidth : 0,
+            contentHeight: contentWrapper ? contentWrapper.scrollHeight : 0,
+            pageCount: getPageCount()
+        };
+        
+        // Step 1: Normalize html/body again
+        normalizeHtmlBody();
+        
+        // Step 2: Reset column container overflow
+        if (columnContainer) {
+            columnContainer.style.overflowX = 'auto';
+            columnContainer.style.overflowY = 'hidden';
+            columnContainer.style.height = '100%';
+        }
+        
+        // Step 3: Reapply column styles with explicit height constraint
+        if (contentWrapper) {
+            var clientWidth = computeClientWidth();
+            viewportWidth = clientWidth || window.innerWidth;
+            
+            contentWrapper.style.cssText = contentWrapper.style.cssText + '; height: 100% !important;';
+            contentWrapper.style.columnWidth = viewportWidth + 'px';
+            contentWrapper.style.webkitColumnWidth = viewportWidth + 'px';
+            contentWrapper.style.columnFill = 'auto';
+            contentWrapper.style.webkitColumnFill = 'auto';
+            
+            // Force reflow
+            contentWrapper.offsetHeight;
+            
+            // Set exact width
+            var scrollWidth = contentWrapper.scrollWidth;
+            var pageCount = Math.max(1, Math.ceil(scrollWidth / viewportWidth));
+            var exactWidth = pageCount * viewportWidth;
+            contentWrapper.style.width = exactWidth + 'px';
+            
+            // Force another reflow
+            contentWrapper.offsetHeight;
+        }
+        
+        var after = {
+            contentWidth: contentWrapper ? contentWrapper.scrollWidth : 0,
+            contentHeight: contentWrapper ? contentWrapper.scrollHeight : 0,
+            pageCount: getPageCount()
+        };
+        
+        var result = {
+            before: before,
+            after: after,
+            columnsApplied: checkColumnsApplied(),
+            viewportWidth: viewportWidth
+        };
+        
+        console.log('inpage_paginator: [FORCE_HORIZONTAL] Complete: ' + JSON.stringify(result));
+        
+        // Notify Android
+        if (window.AndroidBridge && window.AndroidBridge.onForceHorizontalComplete) {
+            try {
+                window.AndroidBridge.onForceHorizontalComplete(JSON.stringify(result));
+            } catch (e) {
+                console.warn('inpage_paginator: Failed to notify Android of forceHorizontal', e);
+            }
+        }
+        
+        return result;
+    }
+    
     /**
      * Initialize the paginator by wrapping content in a column container
      */
@@ -410,6 +572,10 @@
         }
         
         console.log('inpage_paginator: [STATE] Starting initialization');
+        
+        // CRITICAL: Normalize html/body before any other operations
+        // This prevents vertical scrolling and ensures column layout works
+        normalizeHtmlBody();
         
         // Get the body content
         const body = document.body;
@@ -485,10 +651,28 @@
             // Force a reflow to ensure accurate measurements
             contentWrapper.offsetHeight;
             
-            const pageCount = getPageCount();
-            console.log('inpage_paginator: [STATE] Initialization complete after layout - pageCount=' + pageCount + ', viewportWidth=' + viewportWidth);
+            // Apply padding to content wrapper (not body) after initialization
+            applyContentPadding();
             
-            // CRITICAL: Set pagination ready flag AFTER we have valid page count
+            // Reapply columns after padding to recalculate page count
+            updateColumnStyles(contentWrapper);
+            
+            // Check if columns are applied correctly (not vertical fallback)
+            columnsAppliedSuccessfully = checkColumnsApplied();
+            verticalFallbackChecked = true;
+            
+            if (!columnsAppliedSuccessfully) {
+                console.warn('inpage_paginator: [VERTICAL_FALLBACK_DETECTED] Columns may have fallen back to vertical layout');
+                // Attempt recovery
+                forceHorizontal();
+                columnsAppliedSuccessfully = checkColumnsApplied();
+            }
+            
+            const pageCount = getPageCount();
+            console.log('inpage_paginator: [STATE] Initialization complete after layout - pageCount=' + pageCount + ', viewportWidth=' + viewportWidth + ', columnsApplied=' + columnsAppliedSuccessfully);
+            
+            // CRITICAL: Set pagination ready flag ONLY if columns are applied successfully
+            // If vertical fallback occurred, still set ready but log warning
             isPaginationReady = true;
             console.log('inpage_paginator: [STATE] isPaginationReady set to true');
             
@@ -2041,7 +2225,12 @@
         getImageDiagnostics: getImageDiagnostics,
         logFailedImages: logFailedImages,
         logPaginationState: logPaginationState,
-        getSegmentDiagnostics: getSegmentDiagnostics
+        getSegmentDiagnostics: getSegmentDiagnostics,
+        
+        // Vertical fallback prevention
+        forceHorizontal: forceHorizontal,
+        checkColumnsApplied: checkColumnsApplied,
+        normalizeHtmlBody: normalizeHtmlBody
     };
     
     // Also expose reapplyColumns as a global function for easy access from Android
