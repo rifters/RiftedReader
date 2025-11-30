@@ -55,12 +55,22 @@ class ContinuousPaginatorWindowHtmlProvider(
             
             if (!loadedChapters.contains(firstChapterInWindow)) {
                 AppLogger.d(TAG, "[PAGINATION_DEBUG] Window $windowIndex chapters not loaded (loaded: $loadedChapters), " +
-                    "navigating to chapter $firstChapterInWindow to load window")
+                    "triggering on-demand load for chapter $firstChapterInWindow")
                 
                 // Navigate to the first chapter in the window to trigger loading
                 paginator.navigateToChapter(firstChapterInWindow, 0)
                 
-                AppLogger.d(TAG, "[PAGINATION_DEBUG] Built wrapped HTML for window $windowIndex (chapters ${chapterIndices.first()}-${chapterIndices.last()}) via on-demand load")
+                // Verify navigation was successful by checking loaded chapters after navigation
+                val updatedWindowInfo = paginator.getWindowInfo()
+                val nowLoadedChapters = updatedWindowInfo.loadedChapterIndices
+                
+                if (nowLoadedChapters.contains(firstChapterInWindow)) {
+                    AppLogger.d(TAG, "[PAGINATION_DEBUG] On-demand load successful for window $windowIndex " +
+                        "(chapters ${chapterIndices.first()}-${chapterIndices.last()}), now loaded: $nowLoadedChapters")
+                } else {
+                    AppLogger.w(TAG, "[PAGINATION_DEBUG] On-demand load may have failed for window $windowIndex - " +
+                        "chapter $firstChapterInWindow still not in loaded chapters: $nowLoadedChapters")
+                }
             }
             
             // Collect chapter content from paginator
