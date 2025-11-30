@@ -54,7 +54,8 @@ object EpubImageAssetHelper {
             // URL-encode each path segment to handle special characters
             // Uri.encode handles path encoding correctly and avoids URLEncoder's space-to-+ conversion
             val encodedPath = relativePath.split("/").joinToString("/") { segment ->
-                Uri.encode(segment)
+                // Uri.encode may return null in test environments where Android framework is mocked
+                Uri.encode(segment) ?: segment
             }
             
             val assetUrl = "$EPUB_IMAGES_BASE_URL$encodedPath"

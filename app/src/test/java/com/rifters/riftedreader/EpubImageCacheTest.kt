@@ -44,14 +44,37 @@ class EpubImageCacheTest {
     }
     
     @Test
-    fun imageUrl_usesFileProtocol() {
+    fun imageUrl_usesAssetLoaderProtocol() {
         // Create a mock cached image file
-        val cachedImageFile = tempFolder.newFile("test_image.jpg")
-        val expectedUrl = "file://${cachedImageFile.absolutePath}"
+        val tempBookDir = tempFolder.newFolder("bookdir")
+        val imageCacheRoot = File(tempBookDir, ".image_cache")
+        imageCacheRoot.mkdirs()
         
-        // Verify the URL format
-        assertTrue(expectedUrl.startsWith("file://"))
-        assertTrue(expectedUrl.contains(cachedImageFile.name))
+        val bookCacheDir = File(imageCacheRoot, "BookTitle")
+        bookCacheDir.mkdirs()
+        
+        val chapterCacheDir = File(bookCacheDir, "chapter_0")
+        chapterCacheDir.mkdirs()
+        
+        val cachedImageFile = File(chapterCacheDir, "test_image.jpg")
+        cachedImageFile.createNewFile()
+        
+        // Verify test setup
+        assertTrue("Image file should exist", cachedImageFile.exists())
+        assertTrue("Cache root should be parent of file", 
+            cachedImageFile.absolutePath.startsWith(imageCacheRoot.absolutePath))
+        
+        // Use EpubImageAssetHelper to convert path to URL
+        val assetUrl = com.rifters.riftedreader.util.EpubImageAssetHelper.toAssetUrl(
+            cachedImageFile.absolutePath,
+            imageCacheRoot
+        )
+        
+        // Verify the URL format uses the asset loader domain
+        assertTrue("URL should use https: got $assetUrl", assetUrl.startsWith("https://"))
+        assertTrue("URL should use asset loader host", assetUrl.contains("appassets.androidplatform.net"))
+        assertTrue("URL should use epub-images path", assetUrl.contains("/epub-images/"))
+        assertTrue("URL should contain file name", assetUrl.contains("test_image.jpg"))
     }
     
     @Test
