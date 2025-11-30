@@ -8,9 +8,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.recyclerview.widget.RecyclerView
+import com.rifters.riftedreader.data.preferences.ChapterVisibilitySettings
 import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
 import com.rifters.riftedreader.data.repository.BookRepository
+import com.rifters.riftedreader.domain.pagination.ChapterIndexProvider
 import com.rifters.riftedreader.domain.pagination.ContinuousPaginator
 import com.rifters.riftedreader.domain.pagination.PageLocation
 import com.rifters.riftedreader.domain.pagination.PaginationMode
@@ -26,6 +28,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -55,6 +59,31 @@ class ReaderViewModel(
     // Table of Contents - list of chapter entries
     private val _tableOfContents = MutableStateFlow<List<TocEntry>>(emptyList())
     val tableOfContents: StateFlow<List<TocEntry>> = _tableOfContents.asStateFlow()
+    
+    /**
+     * Get the table of contents filtered by current visibility settings.
+     * 
+     * Returns only entries where the spine index (pageNumber) corresponds to a visible chapter.
+     * This filters out entries for cover pages, navigation documents, and non-linear content
+     * based on the current ChapterVisibilitySettings.
+     * 
+     * Use this for displaying the chapter list in the UI (ChaptersBottomSheet).
+     * 
+     * Note: Before chapters are loaded into ChapterIndexProvider, this returns all TOC entries
+     * (since isSpineIndexVisible() returns false for unknown indices, making the filter match nothing).
+     * This is safe because TOC loading is async and UI should observe _tableOfContents StateFlow.
+     */
+    val visibleTableOfContents: List<TocEntry>
+        get() {
+            // When ChapterIndexProvider has no chapters loaded, return all TOC entries
+            // This handles the case where TOC loads before spine data is available
+            if (chapterIndexProvider.spineCount == 0) {
+                return _tableOfContents.value
+            }
+            return _tableOfContents.value.filter { tocEntry ->
+                chapterIndexProvider.isSpineIndexVisible(tocEntry.pageNumber)
+            }
+        }
 
     // Pagination mode from preferences
     val paginationMode: PaginationMode
@@ -87,6 +116,13 @@ class ReaderViewModel(
     // Guard to prevent race conditions during window building
     // NOTE: paginationModeLiveData is not available in this repo snapshot; pass null for now.
     val paginationModeGuard = PaginationModeGuard(paginationModeLiveData = null)
+    
+    // Chapter index provider for unified chapter indexing with visibility settings
+    // Provides mapping between UI indices and spine indices based on visibility settings.
+    // NOTE: Chapters are populated during pagination initialization (initializeChapterBasedPagination
+    // or initializeContinuousPagination), not during construction. The initial visibility settings
+    // are applied when observeVisibilitySettingsChanges() starts collecting.
+    val chapterIndexProvider = ChapterIndexProvider(chaptersPerWindow)
 
     // Existing state holders (placeholders here — keep repo originals)
     private val _pages = MutableStateFlow<List<PageContent>>(emptyList())
@@ -127,6 +163,97 @@ class ReaderViewModel(
     val currentPage: StateFlow<Int> = _currentPage.asStateFlow()
     val currentWindowIndex: StateFlow<Int> = _currentWindowIndex.asStateFlow()
     val content: StateFlow<PageContent> = _content.asStateFlow()
+    
+    /**
+     * Get the count of visible chapters based on current visibility settings.
+     * 
+     * Use this for progress calculations and UI display instead of total spine count.
+     * This accounts for hidden chapters (cover, nav, non-linear) based on user preferences.
+     * 
+     * Returns 0 if chapters haven't been loaded yet (safe default for progress calculations).
+     */
+    val visibleChapterCount: Int
+        get() = chapterIndexProvider.visibleChapterCount
+    
+    /**
+     * Get the current chapter visibility settings.
+     */
+    val currentVisibilitySettings: ChapterVisibilitySettings
+        get() = chapterIndexProvider.currentVisibilitySettings
+    
+    /**
+     * Calculate reading progress percentage based on visible chapters.
+     * 
+     * This provides a more accurate progress indication as it excludes hidden chapters
+     * (cover, navigation, non-linear content) from the calculation.
+     * 
+     * **Behavior when current chapter is hidden:**
+     * If the user is viewing a hidden chapter (e.g., cover page when cover visibility is off),
+     * this method returns 0f. This is intentional because:
+     * - Hidden chapters are not part of the user's "reading progress" by design
+     * - The user would typically navigate to visible content before meaningful progress occurs
+     * - Finding the nearest visible chapter could give misleading progress values
+     * 
+     * For cases where progress from hidden chapters is needed, callers can check
+     * if the spine index is visible first using `chapterIndexProvider.isSpineIndexVisible()`.
+     * 
+     * @param currentSpineIndex The current spine index (0-based)
+     * @return Progress percentage (0-100), or 0f if no visible chapters or current chapter is hidden
+     */
+    fun calculateVisibleProgress(currentSpineIndex: Int): Float {
+        val visibleCount = chapterIndexProvider.visibleChapterCount
+        if (visibleCount <= 0) return 0f
+        
+        // Convert spine index to UI index
+        val uiIndex = chapterIndexProvider.spineIndexToUiIndex(currentSpineIndex)
+        if (uiIndex < 0) {
+            // Current chapter is hidden (e.g., cover page when cover visibility is off)
+            // Return 0 progress as the user isn't viewing visible content
+            return 0f
+        }
+        
+        return ((uiIndex + 1).toFloat() / visibleCount) * 100f
+    }
+    
+    /**
+     * Get the UI index for the current chapter position.
+     * 
+     * This converts the internal page index to a user-visible chapter index,
+     * accounting for hidden chapters.
+     * 
+     * Note: In chapter-based mode, _currentPage equals the spine index directly.
+     * In continuous mode, additional mapping through the paginator may be needed
+     * for accurate results.
+     * 
+     * Returns -1 if:
+     * - Chapters haven't been loaded yet
+     * - Current position corresponds to a hidden chapter
+     * - Current window has no visible chapters
+     * 
+     * @return The visible chapter index (0-based), or -1 if current position is not visible
+     */
+    fun getCurrentVisibleChapterIndex(): Int {
+        // Guard: Return -1 if chapters haven't been loaded yet
+        if (chapterIndexProvider.spineCount == 0) {
+            return -1
+        }
+        
+        // In chapter-based mode, _currentPage is the spine/chapter index
+        // In continuous mode, this may need additional mapping through ContinuousPaginator
+        // for precise chapter identification within a window
+        return if (isContinuousMode) {
+            // For continuous mode, we need to determine the chapter from the current window
+            // For now, use the window's first chapter as an approximation
+            val windowIdx = _currentWindowIndex.value
+            val spineIndices = chapterIndexProvider.getSpineIndicesForWindow(windowIdx)
+            spineIndices.firstOrNull()?.let { spineIndex ->
+                chapterIndexProvider.spineIndexToUiIndex(spineIndex)
+            } ?: -1
+        } else {
+            // Chapter-based mode: page index equals spine index
+            chapterIndexProvider.spineIndexToUiIndex(_currentPage.value)
+        }
+    }
 
     init {
         AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] init: bookId=$bookId, paginationMode=$paginationMode")
@@ -142,6 +269,70 @@ class ReaderViewModel(
         
         // Load table of contents
         loadTableOfContents()
+        
+        // Observe visibility settings changes and update window count accordingly
+        observeVisibilitySettingsChanges()
+    }
+    
+    /**
+     * Observe changes to chapter visibility settings and update pagination accordingly.
+     * 
+     * When visibility settings change (e.g., user toggles "Include cover page"), this:
+     * 1. Updates the ChapterIndexProvider with new visibility settings
+     * 2. Recomputes the window count based on visible chapters
+     * 3. Updates the UI state (windowCountLiveData, _windowCount StateFlow)
+     * 
+     * This enables dynamic visibility changes mid-session without requiring a book reload.
+     */
+    private fun observeVisibilitySettingsChanges() {
+        viewModelScope.launch {
+            readerPreferences.settings
+                .map { it.chapterVisibility }
+                .distinctUntilChanged()
+                .collect { visibilitySettings ->
+                    handleVisibilitySettingsChange(visibilitySettings)
+                }
+        }
+    }
+    
+    /**
+     * Handle a change in chapter visibility settings.
+     * 
+     * Updates the ChapterIndexProvider and recomputes window counts.
+     * 
+     * @param visibilitySettings The new visibility settings
+     */
+    private fun handleVisibilitySettingsChange(visibilitySettings: ChapterVisibilitySettings) {
+        AppLogger.d("ReaderViewModel", "[VISIBILITY] Settings changed: " +
+            "cover=${visibilitySettings.includeCover}, " +
+            "frontMatter=${visibilitySettings.includeFrontMatter}, " +
+            "nonLinear=${visibilitySettings.includeNonLinear}")
+        
+        // Update the ChapterIndexProvider with new settings
+        // This will rebuild the visible chapters list and mappings
+        chapterIndexProvider.updateVisibilitySettings(visibilitySettings)
+        
+        // Only recompute window count if chapters have been loaded into the provider.
+        // Check spineCount (total chapters) rather than visibleCount to handle the case
+        // where all chapters are filtered out by visibility settings.
+        val spineCount = chapterIndexProvider.spineCount
+        if (spineCount > 0) {
+            val visibleCount = chapterIndexProvider.visibleChapterCount
+            val newWindowCount = chapterIndexProvider.getWindowCount()
+            
+            AppLogger.d("ReaderViewModel", "[VISIBILITY] Recomputing windows: " +
+                "spineCount=$spineCount, visibleChapters=$visibleCount, windowCount=$newWindowCount")
+            
+            // Update window count state
+            _windowCount.value = newWindowCount
+            windowCountLiveData.postValue(newWindowCount)
+            
+            // Also update the SlidingWindowPaginator for consistency
+            slidingWindowPaginator.recomputeWindows(visibleCount)
+            
+            AppLogger.d("ReaderViewModel", "[VISIBILITY] Window update complete: " +
+                "spineCount=$spineCount, visibleCount=$visibleCount, windowCount=$newWindowCount")
+        }
     }
     
     /**

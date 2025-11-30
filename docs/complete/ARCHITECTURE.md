@@ -818,6 +818,51 @@ val range = WindowCalculator.getWindowRange(windowIndex, visibleCount, chaptersP
 4. **TTS Traversal**: Use visible chapters, skip NAV/COVER automatically
 5. **Validation**: Use `WindowCalculator.validateWindowCount()` to detect mismatches
 
+### Chapter Visibility Settings
+
+Users can control which chapter types are visible through Settings → Reader → Chapter visibility:
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Include cover page | Show cover XHTML in reading sequence | ❌ Off |
+| Include front matter | Show title, copyright, dedication | ✅ On |
+| Include supplemental content | Show footnotes, endnotes, glossaries | ❌ Off |
+| Reset to defaults | Restore default visibility | N/A |
+
+**Note**: Navigation documents (NAV) are **always** excluded regardless of settings.
+
+#### Dynamic Updates
+
+Visibility changes take effect immediately while reading:
+
+1. User toggles a setting in `ReaderSettingsFragment`
+2. `ReaderPreferences.updateSettings()` updates the `ChapterVisibilitySettings`
+3. `ReaderViewModel` observes the change via `distinctUntilChanged()` flow
+4. `ChapterIndexProvider.updateVisibilitySettings()` rebuilds visible chapters
+5. Window count is recomputed: `windowCount = ceil(visibleChapters / chaptersPerWindow)`
+6. UI adapters are notified via `notifyDataSetChanged()`
+
+```kotlin
+// In ReaderViewModel
+private fun observeVisibilitySettingsChanges() {
+    viewModelScope.launch {
+        readerPreferences.settings
+            .map { it.chapterVisibility }
+            .distinctUntilChanged()
+            .collect { handleVisibilitySettingsChange(it) }
+    }
+}
+```
+
+#### Diagnostic Logging
+
+Visibility changes emit diagnostic logs with the `[VISIBILITY]` prefix:
+
+```
+[VISIBILITY] Settings changed: cover=true, frontMatter=true, nonLinear=false
+[VISIBILITY] Recomputing windows: spineCount=109, visibleChapters=103, windowCount=21
+```
+
 ---
 
 ## Thread Management

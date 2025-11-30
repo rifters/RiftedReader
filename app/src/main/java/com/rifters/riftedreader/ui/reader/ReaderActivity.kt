@@ -479,12 +479,17 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         val recyclerViewHeight = binding.pageRecyclerView.height
                         val isMeasured = recyclerViewWidth > 0 && recyclerViewHeight > 0
                         val adapterItemCountBefore = pagerAdapter.itemCount
-                        val totalChapters = viewModel.tableOfContents.value.size
+                        
+                        // Use visible chapter count for window calculation validation
+                        // This accounts for hidden chapters (cover, NAV, non-linear) based on visibility settings
+                        val visibleChapterCount = viewModel.visibleChapterCount
+                        val spineCount = viewModel.chapterIndexProvider.spineCount
                         
                         AppLogger.d("ReaderActivity", 
                             "[PAGINATION_DEBUG] windowCount.collect triggered: " +
                             "windowCount=$windowCount, " +
-                            "totalChapters=$totalChapters, " +
+                            "visibleChapters=$visibleChapterCount, " +
+                            "spineAll=$spineCount, " +
                             "chaptersPerWindow=${viewModel.chaptersPerWindow}, " +
                             "adapterItemCount=$adapterItemCountBefore, " +
                             "paginationMode=${viewModel.paginationMode}")
@@ -494,20 +499,22 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             "width=$recyclerViewWidth, measuredWidth=$recyclerViewMeasuredWidth, " +
                             "height=$recyclerViewHeight, isMeasured=$isMeasured")
                         
-                        // Validate window count against expected calculation
-                        if (totalChapters > 0 && viewModel.isContinuousMode) {
-                            val expectedWindows = kotlin.math.ceil(totalChapters.toDouble() / viewModel.chaptersPerWindow).toInt()
+                        // Validate window count against expected calculation using visible chapters
+                        // This uses visibleChapterCount to avoid WINDOW_COUNT_MISMATCH errors
+                        if (visibleChapterCount > 0 && viewModel.isContinuousMode) {
+                            val expectedWindows = kotlin.math.ceil(visibleChapterCount.toDouble() / viewModel.chaptersPerWindow).toInt()
                             if (windowCount != expectedWindows && windowCount > 0) {
                                 AppLogger.e("ReaderActivity", 
                                     "[PAGINATION_DEBUG] WINDOW_COUNT_MISMATCH: " +
-                                    "received=$windowCount, expected=$expectedWindows")
+                                    "received=$windowCount, expected=$expectedWindows " +
+                                    "(visibleChapters=$visibleChapterCount, spineAll=$spineCount)")
                             }
                         }
                         
                         // [FALLBACK] If zero windows, log warning but still notify adapter
-                        if (windowCount == 0 && totalChapters > 0) {
+                        if (windowCount == 0 && visibleChapterCount > 0) {
                             AppLogger.e("ReaderActivity", 
-                                "[PAGINATION_DEBUG] ERROR: windowCount=0 but totalChapters=$totalChapters - " +
+                                "[PAGINATION_DEBUG] ERROR: windowCount=0 but visibleChapters=$visibleChapterCount - " +
                                 "book may have failed to load or pagination failed")
                         }
                         
@@ -692,7 +699,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     
     private fun openChapters() {
         controlsManager.showControls()
-        val chapters = viewModel.tableOfContents.value
+        // Use visibleTableOfContents to filter out hidden chapters based on visibility settings
+        val chapters = viewModel.visibleTableOfContents
         if (chapters.isEmpty()) {
             return
         }
