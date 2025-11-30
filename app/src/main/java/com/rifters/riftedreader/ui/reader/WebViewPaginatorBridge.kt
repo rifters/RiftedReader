@@ -704,6 +704,40 @@ object WebViewPaginatorBridge {
             """.trimIndent(), null)
         }
     }
+    
+    /**
+     * Force horizontal paging layout for debugging.
+     * 
+     * This method can be called when pagination appears stuck in vertical scroll mode.
+     * It re-normalizes HTML/body CSS, forces column recomputation, and logs diagnostics.
+     * 
+     * @param webView The WebView containing the paginated content
+     * @return JSON string with diagnostics info (via evaluateJavascript callback)
+     */
+    fun forceHorizontal(webView: WebView) {
+        AppLogger.d("WebViewPaginatorBridge", "forceHorizontal: forcing horizontal layout")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.forceHorizontal) { window.forceHorizontal(); } else if (window.inpagePaginator && window.inpagePaginator.forceHorizontal) { window.inpagePaginator.forceHorizontal(); }",
+                null
+            )
+        }
+    }
+    
+    /**
+     * Force horizontal paging layout and return diagnostics.
+     * 
+     * @param webView The WebView containing the paginated content
+     * @return JSON string with diagnostics info
+     */
+    suspend fun forceHorizontalWithDiagnostics(webView: WebView): String {
+        return try {
+            evaluateString(webView, "JSON.stringify(window.forceHorizontal ? window.forceHorizontal() : (window.inpagePaginator && window.inpagePaginator.forceHorizontal ? window.inpagePaginator.forceHorizontal() : {error: 'not available'}))")
+        } catch (e: Exception) {
+            AppLogger.e("WebViewPaginatorBridge", "Error in forceHorizontalWithDiagnostics", e)
+            "{\"error\": \"${e.message}\"}"
+        }
+    }
 }
 
 private fun String.toBase64(): String {

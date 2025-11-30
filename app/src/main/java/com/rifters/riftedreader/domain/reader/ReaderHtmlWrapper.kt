@@ -10,7 +10,8 @@ data class ReaderHtmlConfig(
     val textSizePx: Float,
     val lineHeightMultiplier: Float,
     val palette: ReaderThemePalette,
-    val enableDiagnostics: Boolean = false
+    val enableDiagnostics: Boolean = false,
+    val contentPaddingPx: Int = 16  // Padding applied post-init to paginator content
 )
 
 /**
@@ -18,6 +19,12 @@ data class ReaderHtmlConfig(
  * 
  * This wrapper can handle both single-chapter HTML and sliding-window HTML
  * (multiple chapters combined in <section> blocks).
+ * 
+ * ROBUSTNESS DESIGN:
+ * - html/body occupy full viewport with overflow:hidden to prevent vertical scroll
+ * - Body has no padding (margin:0, padding:0)
+ * - Padding is applied post-init by paginator via paginationReady event
+ * - Tap highlight is disabled to prevent purple circles
  */
 object ReaderHtmlWrapper {
     
@@ -54,17 +61,49 @@ object ReaderHtmlWrapper {
             """
         } else ""
         
+        // Post-init padding injection script
+        // Waits for paginationReady event then applies padding to #paginator-content
+        val paddingScript = """
+            <script>
+                // Post-init padding injection
+                // Applied after pagination ready to avoid affecting column calculations
+                (function() {
+                    'use strict';
+                    var CONTENT_PADDING_PX = ${config.contentPaddingPx};
+                    var paddingApplied = false;
+                    
+                    function injectPadding() {
+                        if (paddingApplied) return;
+                        var content = document.getElementById('paginator-content');
+                        if (content) {
+                            content.style.padding = CONTENT_PADDING_PX + 'px';
+                            paddingApplied = true;
+                            console.log('[PADDING] Injected padding: ' + CONTENT_PADDING_PX + 'px');
+                            
+                            // Trigger reflow after padding to recalculate columns
+                            if (window.inpagePaginator && window.inpagePaginator.reapplyColumns) {
+                                setTimeout(function() {
+                                    window.inpagePaginator.reapplyColumns();
+                                }, 50);
+                            }
+                        }
+                    }
+                    
+                    // Listen for custom paginationReady event from paginator
+                    document.addEventListener('paginationReady', function() {
+                        setTimeout(injectPadding, 100);
+                    });
+                })();
+            </script>
+        """
+        
         // TTS initialization script - ensures #tts-root exists and emits ttsReady event
-        // ISSUE 2 FIX: Create #tts-root immediately on DOMContentLoaded, NOT after paginator readiness
-        // This prevents race condition where prepareTtsChunks runs before #tts-root exists
         val ttsInitScript = """
             <script>
                 // TTS DOM initialization guard - create container if missing
                 (function() {
                     'use strict';
                     
-                    // ISSUE 2 FIX: Create #tts-root immediately on DOMContentLoaded
-                    // This ensures the container exists before prepareTtsChunks runs
                     function ensureTtsRoot() {
                         if (!document.getElementById('tts-root')) {
                             var ttsRoot = document.createElement('div');
@@ -76,12 +115,10 @@ object ReaderHtmlWrapper {
                     }
                     
                     function emitTtsReady() {
-                        // Emit ttsReady event after paginator layout complete
                         var event = new CustomEvent('ttsReady', { detail: { timestamp: Date.now() } });
                         document.dispatchEvent(event);
                         console.log('[TTS] Emitted ttsReady event');
                         
-                        // Also notify Android bridge if available
                         if (window.AndroidTtsBridge && window.AndroidTtsBridge.onTtsReady) {
                             try {
                                 window.AndroidTtsBridge.onTtsReady();
@@ -91,27 +128,19 @@ object ReaderHtmlWrapper {
                         }
                     }
                     
-                    // Wait for paginator ready before emitting ttsReady
-                    // NOTE: #tts-root is already created on DOMContentLoaded, so prepareTtsChunks won't fail
                     function waitForPaginatorThenEmitReady() {
                         if (window.inpagePaginator && window.inpagePaginator.isReady && window.inpagePaginator.isReady()) {
                             emitTtsReady();
                         } else {
-                            // Paginator not ready, wait and retry
                             setTimeout(waitForPaginatorThenEmitReady, 100);
                         }
                     }
                     
-                    // ISSUE 2 FIX: Create #tts-root immediately on DOMContentLoaded
-                    // Then separately wait for paginator to emit ttsReady
                     function onDomReady() {
-                        // Create #tts-root immediately - this happens before prepareTtsChunks
                         ensureTtsRoot();
-                        // Then wait for paginator to emit ttsReady
                         waitForPaginatorThenEmitReady();
                     }
                     
-                    // Start waiting for DOM to be ready
                     if (document.readyState === 'loading') {
                         document.addEventListener('DOMContentLoaded', onDomReady);
                     } else {
@@ -123,24 +152,25 @@ object ReaderHtmlWrapper {
         
         return """
             <!DOCTYPE html>
-            <html>
+            <html lang="en">
             <head>
                 <meta charset="utf-8"/>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
                 <style>
+                    /* CRITICAL: html/body occupy full viewport with no scrolling */
                     html, body {
                         margin: 0;
                         padding: 0;
+                        width: 100%;
+                        height: 100%;
+                        overflow: hidden;
                         background-color: $backgroundColor;
                         color: $textColor;
                         font-size: ${config.textSizePx}px;
                         line-height: ${config.lineHeightMultiplier};
                         font-family: serif;
-                    }
-                    body {
-                        padding: 16px;
-                        word-wrap: break-word;
-                        overflow-wrap: break-word;
+                        /* Disable tap highlight that causes purple circles */
+                        -webkit-tap-highlight-color: transparent;
                     }
                     /* TTS root container - hidden but accessible */
                     #tts-root {
@@ -152,12 +182,16 @@ object ReaderHtmlWrapper {
                         height: 1px;
                     }
                     /* Preserve formatting for all block elements */
-                    p, div, section, article {
+                    p, div, article {
                         margin: 0.8em 0;
                     }
                     /* Section styling for window-based chapters */
                     section[data-chapter-index] {
                         margin-bottom: 2em;
+                    }
+                    /* Section within sections (EPUB structure) */
+                    section[data-chapter-index] > section {
+                        margin: 0.8em 0;
                     }
                     h1, h2, h3, h4, h5, h6 {
                         margin: 1em 0 0.5em 0;
@@ -189,6 +223,7 @@ object ReaderHtmlWrapper {
                         height: auto !important;
                         display: block;
                         margin: 1em auto;
+                        object-fit: contain;
                     }
                     /* Window-root specific image styling to prevent overflow-induced layout issues */
                     #window-root img {
@@ -223,6 +258,7 @@ object ReaderHtmlWrapper {
                 <div id="tts-root" aria-hidden="true"></div>
                 $contentHtml
                 $diagnosticsScript
+                $paddingScript
                 $ttsInitScript
             </body>
             </html>

@@ -13,6 +13,14 @@
  * - TOC-based navigation with chapter jump callbacks
  * - Robust reflow and repagination
  * - Memory-efficient segment management
+ * - Pre-wrapped HTML detection (sections with data-chapter-index used directly)
+ * 
+ * Robustness Features (v2):
+ * - Apply provisional column styles even when clientWidth < MIN_CLIENT_WIDTH
+ * - Final fallback after retries using fallback width
+ * - Gate isPaginationReady until appliedColumnWidth > 0 AND getPageCount() > 0
+ * - Normalize html/body CSS in init for safety
+ * - forceHorizontal() debug API for testing horizontal paging
  * 
  * Injection Protection:
  * - Global guard prevents duplicate script execution
@@ -46,6 +54,7 @@
     const MIN_CLIENT_WIDTH = 10; // Minimum valid clientWidth for column computation
     const COLUMN_RETRY_DELAY_MS = 50; // Delay before retrying column width computation
     const MAX_COLUMN_RETRIES = 5; // Maximum retries for column width computation
+    const FALLBACK_WIDTH = 360; // Fallback width when all retries exhausted (mobile default)
     
     // Paginator configuration - set via configure() before init()
     let paginatorConfig = {
@@ -418,6 +427,10 @@
             return;
         }
         
+        // ROBUSTNESS FIX: Normalize html/body CSS for safety
+        // Ensures full viewport coverage with overflow:hidden to prevent vertical scroll
+        normalizeHtmlBodyCss();
+        
         // Create column container
         columnContainer = document.createElement('div');
         columnContainer.id = 'paginator-container';
@@ -485,12 +498,28 @@
             // Force a reflow to ensure accurate measurements
             contentWrapper.offsetHeight;
             
+            // ROBUSTNESS FIX: Gate isPaginationReady until appliedColumnWidth > 0 and pageCount > 0
             const pageCount = getPageCount();
-            console.log('inpage_paginator: [STATE] Initialization complete after layout - pageCount=' + pageCount + ', viewportWidth=' + viewportWidth);
+            const ready = appliedColumnWidth > 0 && pageCount > 0;
             
-            // CRITICAL: Set pagination ready flag AFTER we have valid page count
+            console.log('inpage_paginator: [STATE] Initialization complete after layout - pageCount=' + pageCount + 
+                       ', viewportWidth=' + viewportWidth + ', appliedColumnWidth=' + appliedColumnWidth + ', ready=' + ready);
+            
+            if (!ready) {
+                console.warn('inpage_paginator: [STATE] Not ready yet - appliedColumnWidth=' + appliedColumnWidth + ', pageCount=' + pageCount);
+                // Schedule retry
+                setTimeout(function() {
+                    checkAndFirePaginationReady();
+                }, 100);
+                return;
+            }
+            
+            // CRITICAL: Set pagination ready flag AFTER we have valid page count and column width
             isPaginationReady = true;
             console.log('inpage_paginator: [STATE] isPaginationReady set to true');
+            
+            // Emit custom event for listeners
+            dispatchPaginationReadyEvent(pageCount);
             
             // Log pagination state for diagnostics
             logPaginationState('[INIT] onPaginationReady');
@@ -508,6 +537,91 @@
                 console.warn('inpage_paginator: [STATE] Invalid state - pageCount=' + pageCount + ', AndroidBridge=' + (window.AndroidBridge ? 'present' : 'missing'));
             }
         });
+    }
+    
+    /**
+     * Check conditions and fire pagination ready if not already done.
+     * Used as a retry mechanism when initial check fails.
+     */
+    function checkAndFirePaginationReady() {
+        if (isPaginationReady) {
+            return; // Already ready
+        }
+        
+        const pageCount = getPageCount();
+        const ready = appliedColumnWidth > 0 && pageCount > 0;
+        
+        console.log('inpage_paginator: [STATE] checkAndFirePaginationReady - pageCount=' + pageCount + 
+                   ', appliedColumnWidth=' + appliedColumnWidth + ', ready=' + ready);
+        
+        if (ready) {
+            isPaginationReady = true;
+            console.log('inpage_paginator: [STATE] isPaginationReady set to true (retry)');
+            
+            // Emit custom event
+            dispatchPaginationReadyEvent(pageCount);
+            
+            // Log pagination state
+            logPaginationState('[INIT_RETRY] onPaginationReady');
+            
+            // Notify Android
+            if (pageCount > 0 && window.AndroidBridge && window.AndroidBridge.onPaginationReady) {
+                console.log('inpage_paginator: [CALLBACK] Calling AndroidBridge.onPaginationReady with pageCount=' + pageCount + ' (retry)');
+                window.AndroidBridge.onPaginationReady(pageCount);
+            }
+        }
+    }
+    
+    /**
+     * Dispatch custom paginationReady event for listeners.
+     */
+    function dispatchPaginationReadyEvent(pageCount) {
+        try {
+            var event = new CustomEvent('paginationReady', {
+                detail: {
+                    pageCount: pageCount,
+                    appliedColumnWidth: appliedColumnWidth,
+                    viewportWidth: viewportWidth
+                }
+            });
+            document.dispatchEvent(event);
+            console.log('inpage_paginator: [EVENT] Dispatched paginationReady event');
+        } catch (e) {
+            console.warn('inpage_paginator: [EVENT] Failed to dispatch paginationReady event', e);
+        }
+    }
+    
+    /**
+     * Normalize html/body CSS to ensure full viewport with no scrolling.
+     * This prevents vertical scrolling that can occur before paginator takes over.
+     */
+    function normalizeHtmlBodyCss() {
+        try {
+            var html = document.documentElement;
+            var body = document.body;
+            
+            if (html) {
+                html.style.margin = '0';
+                html.style.padding = '0';
+                html.style.width = '100%';
+                html.style.height = '100%';
+                html.style.overflow = 'hidden';
+            }
+            
+            if (body) {
+                body.style.margin = '0';
+                body.style.padding = '0';
+                body.style.width = '100%';
+                body.style.height = '100%';
+                body.style.overflow = 'hidden';
+                // Disable tap highlight that causes purple circles
+                body.style.webkitTapHighlightColor = 'transparent';
+            }
+            
+            console.log('inpage_paginator: [INIT] Normalized html/body CSS for full viewport');
+        } catch (e) {
+            console.warn('inpage_paginator: [INIT] Failed to normalize html/body CSS', e);
+        }
     }
     
     /**
@@ -548,6 +662,9 @@
      * CRITICAL FIX: Sets wrapper width to an exact multiple of viewport width
      * to ensure horizontal paging aligns correctly and prevents vertical stacking.
      * 
+     * ROBUSTNESS FIX: Apply provisional styles even when clientWidth < MIN_CLIENT_WIDTH,
+     * then retry. After MAX_COLUMN_RETRIES, use FALLBACK_WIDTH.
+     * 
      * @param {HTMLElement} wrapper - The content wrapper element
      * @param {number} retryCount - Number of retry attempts (for guarding against clientWidth < 10)
      */
@@ -562,21 +679,37 @@
         }
         
         // Compute client width with fallbacks
-        const clientWidth = computeClientWidth();
+        var clientWidth = computeClientWidth();
+        var usedFallback = false;
         
-        // Guard against invalid client width - retry with delay
-        if (clientWidth < MIN_CLIENT_WIDTH && retryCount < MAX_COLUMN_RETRIES) {
-            console.warn('inpage_paginator: [STYLES] clientWidth=' + clientWidth + ' < ' + MIN_CLIENT_WIDTH + 
-                        ', retrying in ' + COLUMN_RETRY_DELAY_MS + 'ms (attempt ' + (retryCount + 1) + '/' + MAX_COLUMN_RETRIES + ')');
-            pendingColumnRetryTimeoutId = setTimeout(function() {
-                pendingColumnRetryTimeoutId = null;
-                updateColumnStyles(wrapper, retryCount + 1);
-            }, COLUMN_RETRY_DELAY_MS);
-            return;
+        // Guard against invalid client width - apply provisional styles once and retry
+        if (clientWidth < MIN_CLIENT_WIDTH) {
+            if (retryCount < MAX_COLUMN_RETRIES) {
+                console.warn('inpage_paginator: [STYLES] clientWidth=' + clientWidth + ' < ' + MIN_CLIENT_WIDTH + 
+                            ', retrying in ' + COLUMN_RETRY_DELAY_MS + 'ms (attempt ' + (retryCount + 1) + '/' + MAX_COLUMN_RETRIES + ')');
+                
+                // ROBUSTNESS FIX: Apply provisional styles only on first attempt (retryCount=0)
+                // This prevents layout thrashing from repeated style applications
+                if (retryCount === 0) {
+                    console.log('inpage_paginator: [STYLES] Applying provisional styles with fallback width: ' + FALLBACK_WIDTH + 'px');
+                    applyColumnStylesWithWidth(wrapper, FALLBACK_WIDTH);
+                }
+                
+                pendingColumnRetryTimeoutId = setTimeout(function() {
+                    pendingColumnRetryTimeoutId = null;
+                    updateColumnStyles(wrapper, retryCount + 1);
+                }, COLUMN_RETRY_DELAY_MS);
+                return;
+            } else {
+                // ROBUSTNESS FIX: Final fallback after all retries exhausted
+                console.warn('inpage_paginator: [STYLES] All ' + MAX_COLUMN_RETRIES + ' retries exhausted, using fallback width: ' + FALLBACK_WIDTH + 'px');
+                clientWidth = FALLBACK_WIDTH;
+                usedFallback = true;
+            }
         }
         
-        viewportWidth = clientWidth || window.innerWidth;
-        const columnWidth = viewportWidth;
+        viewportWidth = clientWidth || window.innerWidth || FALLBACK_WIDTH;
+        var columnWidth = viewportWidth;
         
         // Track applied column width for diagnostics
         appliedColumnWidth = columnWidth;
@@ -585,13 +718,26 @@
             clientWidth: clientWidth,
             viewportWidth: viewportWidth,
             columnWidth: columnWidth,
-            retryCount: retryCount
+            retryCount: retryCount,
+            usedFallback: usedFallback
         });
         
-        console.log('inpage_paginator: [STYLES] updateColumnStyles called, clientWidth=' + clientWidth + ', viewportWidth=' + viewportWidth);
+        console.log('inpage_paginator: [STYLES] updateColumnStyles called, clientWidth=' + clientWidth + 
+                   ', viewportWidth=' + viewportWidth + ', usedFallback=' + usedFallback);
         
+        applyColumnStylesWithWidth(wrapper, columnWidth);
+    }
+    
+    /**
+     * Apply column styles with a specific width.
+     * Separated from updateColumnStyles for reuse in provisional application.
+     * 
+     * @param {HTMLElement} wrapper - The content wrapper element
+     * @param {number} columnWidth - The column width to apply
+     */
+    function applyColumnStylesWithWidth(wrapper, columnWidth) {
         // Preserve the current font size before updating styles
-        const preservedFontSize = wrapper.style.fontSize;
+        var preservedFontSize = wrapper.style.fontSize;
         
         // Set up column CSS with explicit -webkit prefixes for better Android WebView support
         wrapper.style.cssText = `
@@ -617,16 +763,18 @@
         // CRITICAL FIX: Compute page count and set wrapper width to an exact multiple
         // of viewport width. This guarantees horizontal grid alignment and prevents
         // vertical stacking that breaks horizontal paging.
-        const scrollWidth = wrapper.scrollWidth;
-        const pageCount = Math.max(1, Math.ceil(scrollWidth / viewportWidth));
-        const exactWidth = pageCount * viewportWidth;
+        var useWidth = columnWidth > 0 ? columnWidth : FALLBACK_WIDTH;
+        var scrollWidth = wrapper.scrollWidth;
+        var pageCount = Math.max(1, Math.ceil(scrollWidth / useWidth));
+        var exactWidth = pageCount * useWidth;
         
         wrapper.style.width = exactWidth + 'px';
         
         // Force another reflow after setting width to ensure layout is stable
         wrapper.offsetHeight;
         
-        console.log('inpage_paginator: [STYLES] Set wrapper width=' + exactWidth + 'px (pageCount=' + pageCount + ', scrollWidth=' + scrollWidth + ', viewportWidth=' + viewportWidth + ')');
+        console.log('inpage_paginator: [STYLES] Set wrapper width=' + exactWidth + 'px (pageCount=' + pageCount + 
+                   ', scrollWidth=' + scrollWidth + ', columnWidth=' + columnWidth + ')');
     }
     
     /**
@@ -1986,6 +2134,93 @@
         }
     }
     
+    /**
+     * Debug API: Force horizontal paging layout.
+     * 
+     * This method can be called from Android console or debugger to:
+     * 1. Re-normalize html/body CSS to prevent vertical scroll
+     * 2. Force recomputation of column styles
+     * 3. Ensure scroll container is properly configured
+     * 4. Log detailed diagnostics
+     * 
+     * Use for debugging when pagination appears stuck in vertical scroll mode.
+     * 
+     * @returns {Object} Diagnostics info about the forced layout
+     */
+    function forceHorizontal() {
+        console.log('inpage_paginator: [DEBUG] forceHorizontal() called');
+        
+        var diagnostics = {
+            before: {
+                isPaginationReady: isPaginationReady,
+                appliedColumnWidth: appliedColumnWidth,
+                viewportWidth: viewportWidth,
+                pageCount: isPaginationReady ? getPageCount() : -1,
+                currentPage: isPaginationReady ? getCurrentPage() : -1
+            },
+            actions: [],
+            after: null
+        };
+        
+        try {
+            // 1. Re-normalize html/body CSS
+            normalizeHtmlBodyCss();
+            diagnostics.actions.push('normalizeHtmlBodyCss');
+            
+            // 2. Force column container overflow settings
+            if (columnContainer) {
+                columnContainer.style.overflowX = 'auto';
+                columnContainer.style.overflowY = 'hidden';
+                columnContainer.style.scrollSnapType = 'x mandatory';
+                diagnostics.actions.push('fixColumnContainerOverflow');
+            }
+            
+            // 3. Force recomputation of column styles
+            if (contentWrapper) {
+                updateColumnStyles(contentWrapper, 0);
+                diagnostics.actions.push('updateColumnStyles');
+            }
+            
+            // 4. If paginator wasn't ready, check again
+            if (!isPaginationReady) {
+                var pageCount = getPageCount();
+                if (appliedColumnWidth > 0 && pageCount > 0) {
+                    isPaginationReady = true;
+                    console.log('inpage_paginator: [DEBUG] forceHorizontal - set isPaginationReady=true');
+                    diagnostics.actions.push('setPaginationReady');
+                    
+                    // Dispatch event and notify Android
+                    dispatchPaginationReadyEvent(pageCount);
+                    if (window.AndroidBridge && window.AndroidBridge.onPaginationReady) {
+                        window.AndroidBridge.onPaginationReady(pageCount);
+                        diagnostics.actions.push('notifyAndroid');
+                    }
+                }
+            }
+            
+            // 5. Collect after diagnostics
+            diagnostics.after = {
+                isPaginationReady: isPaginationReady,
+                appliedColumnWidth: appliedColumnWidth,
+                viewportWidth: viewportWidth,
+                pageCount: isPaginationReady ? getPageCount() : -1,
+                currentPage: isPaginationReady ? getCurrentPage() : -1,
+                computedClientWidth: computeClientWidth()
+            };
+            
+            console.log('inpage_paginator: [DEBUG] forceHorizontal completed:', JSON.stringify(diagnostics));
+            
+            // Log full pagination state
+            logPaginationState('[DEBUG] forceHorizontal');
+            
+        } catch (e) {
+            console.error('inpage_paginator: [DEBUG] forceHorizontal error:', e);
+            diagnostics.error = e.message;
+        }
+        
+        return diagnostics;
+    }
+    
     // Initialize on DOM ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
@@ -2041,10 +2276,14 @@
         getImageDiagnostics: getImageDiagnostics,
         logFailedImages: logFailedImages,
         logPaginationState: logPaginationState,
-        getSegmentDiagnostics: getSegmentDiagnostics
+        getSegmentDiagnostics: getSegmentDiagnostics,
+        
+        // Debug API
+        forceHorizontal: forceHorizontal
     };
     
-    // Also expose reapplyColumns as a global function for easy access from Android
+    // Also expose reapplyColumns and forceHorizontal as global functions for easy access from Android
     window.reapplyColumns = reapplyColumns;
+    window.forceHorizontal = forceHorizontal;
     
 })();
