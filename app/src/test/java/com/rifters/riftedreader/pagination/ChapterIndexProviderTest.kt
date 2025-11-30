@@ -507,4 +507,195 @@ class ChapterIndexProviderTest {
         assertEquals(false, provider.currentVisibilitySettings.includeFrontMatter)
         assertEquals(true, provider.currentVisibilitySettings.includeNonLinear)
     }
+    
+    // ==== Mid-session visibility update tests ====
+    
+    @Test
+    fun `cover toggle mid-session adds first chapter when COVER present`() {
+        // Simulate a real-world EPUB with cover as first item
+        val chapters = listOf(
+            ChapterInfo(0, "cover.xhtml", ChapterType.COVER),
+            ChapterInfo(1, "chapter1.xhtml", ChapterType.CONTENT),
+            ChapterInfo(2, "chapter2.xhtml", ChapterType.CONTENT),
+            ChapterInfo(3, "chapter3.xhtml", ChapterType.CONTENT),
+            ChapterInfo(4, "chapter4.xhtml", ChapterType.CONTENT),
+            ChapterInfo(5, "chapter5.xhtml", ChapterType.CONTENT)
+        )
+        
+        // Start with cover hidden (default)
+        provider.setChaptersWithVisibility(chapters, ChapterVisibilitySettings.DEFAULT)
+        
+        // Initial state: cover hidden, 5 content chapters visible -> 1 window
+        assertEquals(5, provider.visibleChapterCount)
+        assertEquals(1, provider.getWindowCount())
+        assertFalse(provider.isSpineIndexVisible(0)) // Cover is hidden
+        assertEquals(0, provider.spineIndexToUiIndex(1)) // First visible chapter is UI index 0
+        
+        // Toggle cover ON mid-session
+        provider.updateVisibilitySettings(
+            ChapterVisibilitySettings(includeCover = true, includeFrontMatter = true, includeNonLinear = false)
+        )
+        
+        // After toggle: 6 visible chapters -> 2 windows
+        assertEquals(6, provider.visibleChapterCount)
+        assertEquals(2, provider.getWindowCount())
+        assertTrue(provider.isSpineIndexVisible(0)) // Cover is now visible
+        assertEquals(0, provider.spineIndexToUiIndex(0)) // Cover is now UI index 0
+        assertEquals(1, provider.spineIndexToUiIndex(1)) // Content chapter shifted to UI index 1
+    }
+    
+    @Test
+    fun `non-linear toggle mid-session includes notes and glossary chapters`() {
+        val chapters = listOf(
+            ChapterInfo(0, "chapter1.xhtml", ChapterType.CONTENT),
+            ChapterInfo(1, "chapter2.xhtml", ChapterType.CONTENT),
+            ChapterInfo(2, "chapter3.xhtml", ChapterType.CONTENT),
+            ChapterInfo(3, "chapter4.xhtml", ChapterType.CONTENT),
+            ChapterInfo(4, "chapter5.xhtml", ChapterType.CONTENT),
+            ChapterInfo(5, "notes.xhtml", ChapterType.NON_LINEAR, isLinear = false, title = "Notes"),
+            ChapterInfo(6, "glossary.xhtml", ChapterType.NON_LINEAR, isLinear = false, title = "Glossary")
+        )
+        
+        // Start with non-linear hidden (default)
+        provider.setChaptersWithVisibility(chapters, ChapterVisibilitySettings.DEFAULT)
+        
+        // Initial state: 5 content visible -> 1 window
+        assertEquals(5, provider.visibleChapterCount)
+        assertEquals(1, provider.getWindowCount())
+        assertFalse(provider.isSpineIndexVisible(5)) // Notes hidden
+        assertFalse(provider.isSpineIndexVisible(6)) // Glossary hidden
+        
+        // Toggle non-linear ON mid-session
+        provider.updateVisibilitySettings(
+            ChapterVisibilitySettings(includeCover = false, includeFrontMatter = true, includeNonLinear = true)
+        )
+        
+        // After toggle: 7 visible chapters -> 2 windows
+        assertEquals(7, provider.visibleChapterCount)
+        assertEquals(2, provider.getWindowCount())
+        assertTrue(provider.isSpineIndexVisible(5)) // Notes now visible
+        assertTrue(provider.isSpineIndexVisible(6)) // Glossary now visible
+        assertEquals(5, provider.spineIndexToUiIndex(5)) // Notes is UI index 5
+        assertEquals(6, provider.spineIndexToUiIndex(6)) // Glossary is UI index 6
+    }
+    
+    @Test
+    fun `visibility update mid-session preserves spine index mappings`() {
+        val chapters = listOf(
+            ChapterInfo(0, "cover.xhtml", ChapterType.COVER),
+            ChapterInfo(1, "nav.xhtml", ChapterType.NAV),
+            ChapterInfo(2, "chapter1.xhtml", ChapterType.CONTENT),
+            ChapterInfo(3, "chapter2.xhtml", ChapterType.CONTENT),
+            ChapterInfo(4, "notes.xhtml", ChapterType.NON_LINEAR)
+        )
+        
+        // Start with default visibility
+        provider.setChaptersWithVisibility(chapters, ChapterVisibilitySettings.DEFAULT)
+        
+        // Verify spine index 2 maps to UI index 0
+        assertEquals(0, provider.spineIndexToUiIndex(2))
+        assertEquals(2, provider.uiIndexToSpineIndex(0))
+        
+        // Enable cover
+        provider.updateVisibilitySettings(
+            ChapterVisibilitySettings(includeCover = true, includeFrontMatter = true, includeNonLinear = false)
+        )
+        
+        // Now cover is UI index 0, chapter1 is UI index 1
+        assertEquals(0, provider.spineIndexToUiIndex(0)) // Cover is UI 0
+        assertEquals(1, provider.spineIndexToUiIndex(2)) // Chapter1 shifted to UI 1
+        assertEquals(0, provider.uiIndexToSpineIndex(0)) // UI 0 is spine 0 (cover)
+        assertEquals(2, provider.uiIndexToSpineIndex(1)) // UI 1 is spine 2 (chapter1)
+        
+        // NAV is still always hidden
+        assertEquals(-1, provider.spineIndexToUiIndex(1))
+    }
+    
+    @Test
+    fun `multiple visibility toggles mid-session maintain consistency`() {
+        val chapters = listOf(
+            ChapterInfo(0, "cover.xhtml", ChapterType.COVER),
+            ChapterInfo(1, "title.xhtml", ChapterType.FRONT_MATTER),
+            ChapterInfo(2, "chapter1.xhtml", ChapterType.CONTENT),
+            ChapterInfo(3, "notes.xhtml", ChapterType.NON_LINEAR)
+        )
+        
+        // Start: cover=false, frontMatter=true, nonLinear=false
+        provider.setChaptersWithVisibility(chapters, ChapterVisibilitySettings.DEFAULT)
+        assertEquals(2, provider.visibleChapterCount) // title + chapter1
+        assertEquals(1, provider.getWindowCount())
+        
+        // Toggle 1: Enable cover
+        provider.updateVisibilitySettings(
+            ChapterVisibilitySettings(includeCover = true, includeFrontMatter = true, includeNonLinear = false)
+        )
+        assertEquals(3, provider.visibleChapterCount) // cover + title + chapter1
+        assertEquals(1, provider.getWindowCount())
+        
+        // Toggle 2: Disable front matter
+        provider.updateVisibilitySettings(
+            ChapterVisibilitySettings(includeCover = true, includeFrontMatter = false, includeNonLinear = false)
+        )
+        assertEquals(2, provider.visibleChapterCount) // cover + chapter1
+        assertEquals(1, provider.getWindowCount())
+        
+        // Toggle 3: Enable non-linear
+        provider.updateVisibilitySettings(
+            ChapterVisibilitySettings(includeCover = true, includeFrontMatter = false, includeNonLinear = true)
+        )
+        assertEquals(3, provider.visibleChapterCount) // cover + chapter1 + notes
+        assertEquals(1, provider.getWindowCount())
+        
+        // Final mapping check
+        assertEquals(0, provider.spineIndexToUiIndex(0)) // cover -> UI 0
+        assertEquals(-1, provider.spineIndexToUiIndex(1)) // title (front matter) -> hidden
+        assertEquals(1, provider.spineIndexToUiIndex(2)) // chapter1 -> UI 1
+        assertEquals(2, provider.spineIndexToUiIndex(3)) // notes -> UI 2
+    }
+    
+    @Test
+    fun `window count changes correctly with visibility updates for large book`() {
+        // Create a realistic book with many chapters
+        val chapters = mutableListOf<ChapterInfo>()
+        chapters.add(ChapterInfo(0, "cover.xhtml", ChapterType.COVER))
+        chapters.add(ChapterInfo(1, "nav.xhtml", ChapterType.NAV))
+        chapters.add(ChapterInfo(2, "title.xhtml", ChapterType.FRONT_MATTER))
+        chapters.add(ChapterInfo(3, "copyright.xhtml", ChapterType.FRONT_MATTER))
+        
+        // Add 20 content chapters
+        for (i in 4..23) {
+            chapters.add(ChapterInfo(i, "chapter${i-3}.xhtml", ChapterType.CONTENT))
+        }
+        
+        // Add 3 non-linear chapters
+        chapters.add(ChapterInfo(24, "notes.xhtml", ChapterType.NON_LINEAR))
+        chapters.add(ChapterInfo(25, "glossary.xhtml", ChapterType.NON_LINEAR))
+        chapters.add(ChapterInfo(26, "appendix.xhtml", ChapterType.NON_LINEAR))
+        
+        // Default: 2 front matter + 20 content = 22 visible -> 5 windows
+        provider.setChaptersWithVisibility(chapters, ChapterVisibilitySettings.DEFAULT)
+        assertEquals(22, provider.visibleChapterCount)
+        assertEquals(5, provider.getWindowCount()) // ceil(22/5) = 5
+        
+        // Enable cover: 23 visible -> 5 windows
+        provider.updateVisibilitySettings(
+            ChapterVisibilitySettings(includeCover = true, includeFrontMatter = true, includeNonLinear = false)
+        )
+        assertEquals(23, provider.visibleChapterCount)
+        assertEquals(5, provider.getWindowCount()) // ceil(23/5) = 5
+        
+        // Enable all: 26 visible -> 6 windows
+        provider.updateVisibilitySettings(
+            ChapterVisibilitySettings(includeCover = true, includeFrontMatter = true, includeNonLinear = true)
+        )
+        assertEquals(26, provider.visibleChapterCount)
+        assertEquals(6, provider.getWindowCount()) // ceil(26/5) = 6
+        
+        // Disable front matter: 24 visible -> 5 windows
+        provider.updateVisibilitySettings(
+            ChapterVisibilitySettings(includeCover = true, includeFrontMatter = false, includeNonLinear = true)
+        )
+        assertEquals(24, provider.visibleChapterCount)
+        assertEquals(5, provider.getWindowCount()) // ceil(24/5) = 5
+    }
 }

@@ -69,15 +69,16 @@ class ReaderPagerAdapter(
         }
         
         // [PAGINATION_DEBUG] Validate window count matches expected calculation (emit warning only once per session)
-        val totalChapters = viewModel.tableOfContents.value.size
-        if (totalChapters > 0 && viewModel.isContinuousMode && !windowMismatchWarningLogged) {
-            val expectedWindows = kotlin.math.ceil(totalChapters.toDouble() / viewModel.chaptersPerWindow).toInt()
+        // Use visible chapter count (accounts for hidden chapters like cover, NAV, non-linear)
+        val visibleChapterCount = viewModel.visibleChapterCount
+        val spineCount = viewModel.chapterIndexProvider.spineCount
+        if (visibleChapterCount > 0 && viewModel.isContinuousMode && !windowMismatchWarningLogged) {
+            val expectedWindows = kotlin.math.ceil(visibleChapterCount.toDouble() / viewModel.chaptersPerWindow).toInt()
             if (count != expectedWindows && count > 0) {
                 // Log both actual and expected counts in a single diagnostic message
                 AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] WINDOW_COUNT_MISMATCH (one-time): " +
-                    "actual=$count, expected=$expectedWindows based on TOC " +
-                    "(totalChapters=$totalChapters, perWindow=${viewModel.chaptersPerWindow}) - " +
-                    "Note: paginator chapters ($count windows) may differ from TOC entries ($totalChapters)")
+                    "actual=$count, expected=$expectedWindows based on visible chapters " +
+                    "(visibleChapters=$visibleChapterCount, spineAll=$spineCount, perWindow=${viewModel.chaptersPerWindow})")
                 windowMismatchWarningLogged = true
             }
         }
