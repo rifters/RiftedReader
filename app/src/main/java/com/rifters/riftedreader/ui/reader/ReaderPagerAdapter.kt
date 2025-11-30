@@ -44,9 +44,14 @@ class ReaderPagerAdapter(
     
     // Track active fragments for debugging
     private val activeFragments = mutableSetOf<Int>()
+    
+    // Flag to track if window count mismatch warning has been logged (emit only once per session)
+    private var windowMismatchWarningLogged: Boolean = false
 
     override fun getItemCount(): Int {
-        val count = viewModel.windowCount.value
+        // ISSUE 1 FIX: Derive window count from SlidingWindowPaginator's window count, NOT from TOC length
+        // This ensures adapter/VM use the same source of truth for chapter count
+        val count = viewModel.slidingWindowPaginator.getWindowCount()
         
         // [PAGINATION_DEBUG] Log window count changes with detailed context
         if (count != lastKnownItemCount) {
@@ -63,13 +68,17 @@ class ReaderPagerAdapter(
                 "- book content may not have loaded or pagination failed")
         }
         
-        // [PAGINATION_DEBUG] Validate window count matches expected calculation
+        // [PAGINATION_DEBUG] Validate window count matches expected calculation (emit warning only once per session)
         val totalChapters = viewModel.tableOfContents.value.size
-        if (totalChapters > 0 && viewModel.isContinuousMode) {
+        if (totalChapters > 0 && viewModel.isContinuousMode && !windowMismatchWarningLogged) {
             val expectedWindows = kotlin.math.ceil(totalChapters.toDouble() / viewModel.chaptersPerWindow).toInt()
             if (count != expectedWindows && count > 0) {
-                AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] WINDOW_COUNT_MISMATCH: " +
-                    "actual=$count, expected=$expectedWindows (totalChapters=$totalChapters, perWindow=${viewModel.chaptersPerWindow})")
+                // Log both actual and expected counts in a single diagnostic message
+                AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] WINDOW_COUNT_MISMATCH (one-time): " +
+                    "actual=$count, expected=$expectedWindows based on TOC " +
+                    "(totalChapters=$totalChapters, perWindow=${viewModel.chaptersPerWindow}) - " +
+                    "Note: paginator chapters ($count windows) may differ from TOC entries ($totalChapters)")
+                windowMismatchWarningLogged = true
             }
         }
         

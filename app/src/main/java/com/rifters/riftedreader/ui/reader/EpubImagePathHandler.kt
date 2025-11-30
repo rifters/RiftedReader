@@ -12,6 +12,9 @@ import java.io.FileNotFoundException
  *
  * This handler intercepts requests to /epub-images/ and serves the corresponding
  * files from the image cache directory on disk.
+ * 
+ * ISSUE 3 FIX: Added retry logic to handle race conditions where EpubParser
+ * may still be caching images when WebView requests them.
  *
  * @param imageCacheRoot The root directory of the image cache
  */
@@ -21,6 +24,10 @@ class EpubImagePathHandler(
 
     companion object {
         private const val TAG = "EpubImagePathHandler"
+        
+        // ISSUE 3 FIX: Retry configuration for handling cache races
+        private const val MAX_RETRIES = 4
+        private const val RETRY_DELAY_MS = 50L
     }
 
     override fun handle(path: String): WebResourceResponse? {
@@ -57,10 +64,35 @@ class EpubImagePathHandler(
                 return null
             }
 
-            // Check if file exists
+            // ISSUE 3 FIX: Add retry logic if file not found
+            // This handles the race condition where EpubParser is still caching images
+            // NOTE: Thread.sleep() is safe here because WebViewAssetLoader.PathHandler.handle()
+            // is called on a background thread, not the main/UI thread
+            var retryCount = 0
+            while ((!imageFile.exists() || !imageFile.isFile) && retryCount < MAX_RETRIES) {
+                retryCount++
+                AppLogger.d(TAG, "Image file not found, retrying ($retryCount/$MAX_RETRIES): ${imageFile.absolutePath}")
+                try {
+                    Thread.sleep(RETRY_DELAY_MS)
+                } catch (ie: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+            }
+            
+            // Check if file exists after retries
             if (!imageFile.exists() || !imageFile.isFile) {
-                AppLogger.w(TAG, "Image file not found: ${imageFile.absolutePath}")
+                if (retryCount > 0) {
+                    AppLogger.w(TAG, "Image file not found after $retryCount retries: ${imageFile.absolutePath}")
+                } else {
+                    AppLogger.w(TAG, "Image file not found: ${imageFile.absolutePath}")
+                }
                 return null
+            }
+            
+            // Log successful retry if applicable
+            if (retryCount > 0) {
+                AppLogger.d(TAG, "Image file found after $retryCount retries: ${imageFile.absolutePath}")
             }
 
             // Determine MIME type based on file extension

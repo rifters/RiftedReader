@@ -67,6 +67,14 @@
     let initialChapterIndex = 0;
     let currentPage = 0; // CRITICAL: Track current page explicitly to avoid async scrollTo issues
     
+    // ISSUE 4 FIX: Track last known page count for returning during reflow when isPaginationReady=false
+    let lastKnownPageCount = -1;
+    
+    // ISSUE 4 FIX: Hysteresis tracking for segment eviction - prevent evicting just-appended segments
+    let lastAppendedChapterIndex = -1;
+    let lastAppendedTimestamp = 0;
+    const EVICTION_HYSTERESIS_MS = 500; // Don't evict segment within 500ms of append
+    
     // Window mode discipline - CONSTRUCTION vs ACTIVE
     let windowMode = 'CONSTRUCTION'; // 'CONSTRUCTION' or 'ACTIVE'
     
@@ -848,6 +856,9 @@
     
     /**
      * Get the current page count based on scroll width and viewport width
+     * 
+     * ISSUE 4 FIX: When returning page count during reflow (isPaginationReady=false),
+     * return lastKnownPageCount instead of calculating, to prevent page count flips.
      */
     function getPageCount() {
         if (!columnContainer) {
@@ -857,23 +868,37 @@
         // Double check after init - if still not ready, return safe default
         if (!columnContainer || !isInitialized) {
             console.warn('inpage_paginator: getPageCount called before initialization complete');
-            return 1;
+            return lastKnownPageCount > 0 ? lastKnownPageCount : 1;
+        }
+        
+        // ISSUE 4 FIX: When pagination is not ready (e.g., during reflow), 
+        // return lastKnownPageCount to prevent page count flips
+        if (!isPaginationReady && lastKnownPageCount > 0) {
+            console.log('inpage_paginator: getPageCount during reflow, returning lastKnownPageCount=' + lastKnownPageCount);
+            return lastKnownPageCount;
         }
         
         const contentWrapper = document.getElementById('paginator-content');
         if (!contentWrapper) {
             console.warn('inpage_paginator: contentWrapper not found in getPageCount');
-            return 1;
+            return lastKnownPageCount > 0 ? lastKnownPageCount : 1;
         }
         
         const scrollWidth = contentWrapper.scrollWidth;
         const pageWidth = viewportWidth || window.innerWidth;
         
         if (pageWidth === 0) {
-            return 1;
+            return lastKnownPageCount > 0 ? lastKnownPageCount : 1;
         }
         
-        return Math.max(1, Math.ceil(scrollWidth / pageWidth));
+        const computedPageCount = Math.max(1, Math.ceil(scrollWidth / pageWidth));
+        
+        // ISSUE 4 FIX: Update lastKnownPageCount when we have a valid calculation
+        if (isPaginationReady && computedPageCount > 0) {
+            lastKnownPageCount = computedPageCount;
+        }
+        
+        return computedPageCount;
     }
     
     /**
@@ -1098,14 +1123,41 @@
         if (chapterSegments.length <= MAX_CHAPTER_SEGMENTS) {
             return;
         }
+        
+        // ISSUE 4 FIX: Check hysteresis - don't evict segments within EVICTION_HYSTERESIS_MS of last append
+        const now = Date.now();
+        if (lastAppendedTimestamp > 0 && (now - lastAppendedTimestamp) < EVICTION_HYSTERESIS_MS) {
+            console.log('inpage_paginator: [HYSTERESIS] Skipping segment eviction - within ' + EVICTION_HYSTERESIS_MS + 'ms of last append');
+            return;
+        }
+        
         while (chapterSegments.length > MAX_CHAPTER_SEGMENTS) {
             const seg = chapterSegments.shift();
             if (seg && seg.parentNode) {
-                const chapterIndex = seg.getAttribute('data-chapter-index');
+                const chapterIndexAttr = seg.getAttribute('data-chapter-index');
+                // Guard against null attribute - skip segment if no chapter index
+                if (chapterIndexAttr === null || chapterIndexAttr === undefined) {
+                    console.warn('inpage_paginator: Segment missing data-chapter-index, skipping eviction');
+                    continue;
+                }
+                const chapterIndex = parseInt(chapterIndexAttr, 10);
+                // Guard against NaN from parseInt
+                if (isNaN(chapterIndex)) {
+                    console.warn('inpage_paginator: Invalid data-chapter-index value: ' + chapterIndexAttr);
+                    continue;
+                }
+                
+                // ISSUE 4 FIX: Check if this is the just-appended segment
+                if (chapterIndex === lastAppendedChapterIndex && (now - lastAppendedTimestamp) < EVICTION_HYSTERESIS_MS) {
+                    console.log('inpage_paginator: [HYSTERESIS] Skipping eviction of just-appended chapter ' + chapterIndex);
+                    chapterSegments.unshift(seg); // Put it back at the start
+                    return; // Stop trimming
+                }
+                
                 seg.parentNode.removeChild(seg);
                 if (window.AndroidBridge && window.AndroidBridge.onSegmentEvicted) {
                     try {
-                        window.AndroidBridge.onSegmentEvicted(parseInt(chapterIndex, 10));
+                        window.AndroidBridge.onSegmentEvicted(chapterIndex);
                     } catch (err) {
                         console.warn('inpage_paginator: onSegmentEvicted callback failed', err);
                     }
@@ -1118,14 +1170,41 @@
         if (chapterSegments.length <= MAX_CHAPTER_SEGMENTS) {
             return;
         }
+        
+        // ISSUE 4 FIX: Check hysteresis - don't evict segments within EVICTION_HYSTERESIS_MS of last append
+        const now = Date.now();
+        if (lastAppendedTimestamp > 0 && (now - lastAppendedTimestamp) < EVICTION_HYSTERESIS_MS) {
+            console.log('inpage_paginator: [HYSTERESIS] Skipping segment eviction - within ' + EVICTION_HYSTERESIS_MS + 'ms of last append');
+            return;
+        }
+        
         while (chapterSegments.length > MAX_CHAPTER_SEGMENTS) {
             const seg = chapterSegments.pop();
             if (seg && seg.parentNode) {
-                const chapterIndex = seg.getAttribute('data-chapter-index');
+                const chapterIndexAttr = seg.getAttribute('data-chapter-index');
+                // Guard against null attribute - skip segment if no chapter index
+                if (chapterIndexAttr === null || chapterIndexAttr === undefined) {
+                    console.warn('inpage_paginator: Segment missing data-chapter-index, skipping eviction');
+                    continue;
+                }
+                const chapterIndex = parseInt(chapterIndexAttr, 10);
+                // Guard against NaN from parseInt
+                if (isNaN(chapterIndex)) {
+                    console.warn('inpage_paginator: Invalid data-chapter-index value: ' + chapterIndexAttr);
+                    continue;
+                }
+                
+                // ISSUE 4 FIX: Check if this is the just-appended segment
+                if (chapterIndex === lastAppendedChapterIndex && (now - lastAppendedTimestamp) < EVICTION_HYSTERESIS_MS) {
+                    console.log('inpage_paginator: [HYSTERESIS] Skipping eviction of just-appended chapter ' + chapterIndex);
+                    chapterSegments.push(seg); // Put it back at the end
+                    return; // Stop trimming
+                }
+                
                 seg.parentNode.removeChild(seg);
                 if (window.AndroidBridge && window.AndroidBridge.onSegmentEvicted) {
                     try {
-                        window.AndroidBridge.onSegmentEvicted(parseInt(chapterIndex, 10));
+                        window.AndroidBridge.onSegmentEvicted(chapterIndex);
                     } catch (err) {
                         console.warn('inpage_paginator: onSegmentEvicted callback failed', err);
                     }
@@ -1161,6 +1240,8 @@
      * 
      * IMPORTANT: Only allowed during CONSTRUCTION mode, not during active reading.
      * 
+     * ISSUE 4 FIX: Tracks lastAppendedChapterIndex and lastAppendedTimestamp for hysteresis.
+     * 
      * @param {number} chapterIndex - The chapter index to append
      * @param {string} rawHtml - The HTML content to append
      * @returns {boolean} - True if successful, false otherwise
@@ -1184,6 +1265,10 @@
         
         try {
             console.log('inpage_paginator: [STREAMING] Appending chapter segment ' + chapterIndex + ' (CONSTRUCTION mode), isPaginationReady=' + isPaginationReady);
+            
+            // ISSUE 4 FIX: Track last appended chapter for hysteresis
+            lastAppendedChapterIndex = chapterIndex;
+            lastAppendedTimestamp = Date.now();
             
             // Save current scroll position before modification
             const currentPage = getCurrentPage();
@@ -1245,6 +1330,10 @@
         
         try {
             console.log('inpage_paginator: [STREAMING] Prepending chapter segment ' + chapterIndex + ' (CONSTRUCTION mode), isPaginationReady=' + isPaginationReady);
+            
+            // ISSUE 4 FIX: Track last appended chapter for hysteresis
+            lastAppendedChapterIndex = chapterIndex;
+            lastAppendedTimestamp = Date.now();
             
             // Save current page and chapter info
             const currentPage = getCurrentPage();

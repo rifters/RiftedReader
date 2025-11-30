@@ -55,19 +55,23 @@ object ReaderHtmlWrapper {
         } else ""
         
         // TTS initialization script - ensures #tts-root exists and emits ttsReady event
+        // ISSUE 2 FIX: Create #tts-root immediately on DOMContentLoaded, NOT after paginator readiness
+        // This prevents race condition where prepareTtsChunks runs before #tts-root exists
         val ttsInitScript = """
             <script>
                 // TTS DOM initialization guard - create container if missing
                 (function() {
                     'use strict';
                     
+                    // ISSUE 2 FIX: Create #tts-root immediately on DOMContentLoaded
+                    // This ensures the container exists before prepareTtsChunks runs
                     function ensureTtsRoot() {
                         if (!document.getElementById('tts-root')) {
                             var ttsRoot = document.createElement('div');
                             ttsRoot.id = 'tts-root';
                             ttsRoot.style.cssText = 'position:absolute;top:-9999px;left:-9999px;overflow:hidden;width:1px;height:1px;';
                             document.body.appendChild(ttsRoot);
-                            console.log('[TTS] Created #tts-root container');
+                            console.log('[TTS] Created #tts-root container on DOMContentLoaded');
                         }
                     }
                     
@@ -87,22 +91,31 @@ object ReaderHtmlWrapper {
                         }
                     }
                     
-                    // Wait for paginator ready before TTS init
-                    function waitForPaginatorThenInit() {
+                    // Wait for paginator ready before emitting ttsReady
+                    // NOTE: #tts-root is already created on DOMContentLoaded, so prepareTtsChunks won't fail
+                    function waitForPaginatorThenEmitReady() {
                         if (window.inpagePaginator && window.inpagePaginator.isReady && window.inpagePaginator.isReady()) {
-                            ensureTtsRoot();
                             emitTtsReady();
                         } else {
                             // Paginator not ready, wait and retry
-                            setTimeout(waitForPaginatorThenInit, 100);
+                            setTimeout(waitForPaginatorThenEmitReady, 100);
                         }
                     }
                     
-                    // Start waiting for paginator after DOM is ready
+                    // ISSUE 2 FIX: Create #tts-root immediately on DOMContentLoaded
+                    // Then separately wait for paginator to emit ttsReady
+                    function onDomReady() {
+                        // Create #tts-root immediately - this happens before prepareTtsChunks
+                        ensureTtsRoot();
+                        // Then wait for paginator to emit ttsReady
+                        waitForPaginatorThenEmitReady();
+                    }
+                    
+                    // Start waiting for DOM to be ready
                     if (document.readyState === 'loading') {
-                        document.addEventListener('DOMContentLoaded', waitForPaginatorThenInit);
+                        document.addEventListener('DOMContentLoaded', onDomReady);
                     } else {
-                        waitForPaginatorThenInit();
+                        onDomReady();
                     }
                 })();
             </script>
