@@ -93,6 +93,18 @@ class EpubParser : BookParser {
         /** Placeholder dimensions for missing images to maintain layout stability */
         private const val PLACEHOLDER_WIDTH = 100
         private const val PLACEHOLDER_HEIGHT = 100
+        
+        /**
+         * Helper function to truncate text for display in logs/diagnostics.
+         * Appends "..." if the text exceeds MAX_SRC_DISPLAY_LENGTH.
+         */
+        private fun truncateForDisplay(text: String): String {
+            return if (text.length > MAX_SRC_DISPLAY_LENGTH) {
+                text.take(MAX_SRC_DISPLAY_LENGTH) + "..."
+            } else {
+                text
+            }
+        }
     }
     
     // Store cover path to use when rendering pages
@@ -217,7 +229,7 @@ class EpubParser : BookParser {
                 }
                 
                 // Log comprehensive image diagnostics
-                logImageDiagnostics(file, page, imageDiagnostics)
+                logImageDiagnostics(page, imageDiagnostics)
                 
                 val html = body.html()
                 
@@ -313,9 +325,9 @@ class EpubParser : BookParser {
             // Skip data URIs (already embedded)
             if (originalSrc.startsWith("data:")) {
                 return ImageDiagnostics(
-                    originalSrc = originalSrc.take(MAX_SRC_DISPLAY_LENGTH) + "...",
+                    originalSrc = truncateForDisplay(originalSrc),
                     resolvedPath = "data-uri",
-                    finalSrc = originalSrc.take(MAX_SRC_DISPLAY_LENGTH) + "...",
+                    finalSrc = truncateForDisplay(originalSrc),
                     originalWidth = originalWidth,
                     originalHeight = originalHeight,
                     actualWidth = null,
@@ -450,7 +462,8 @@ class EpubParser : BookParser {
             val dataUri = "data:image/jpeg;base64,$base64Cover"
             
             // Inject dimensions if not present and successfully decoded
-            val dimensionsInjected = if (originalWidth == null && originalHeight == null && 
+            val hasOriginalDimensions = originalWidth != null && originalHeight != null
+            val dimensionsInjected = if (!hasOriginalDimensions && 
                                         actualWidth != null && actualHeight != null) {
                 injectImageDimensions(img, actualWidth, actualHeight)
                 true
@@ -544,7 +557,7 @@ class EpubParser : BookParser {
         
         DiagnosticLogger.d(
             DiagnosticLogger.Category.PARSER,
-            "Injected dimensions: ${width}x${height} for ${img.attr("src").take(MAX_SRC_DISPLAY_LENGTH)}"
+            "Injected dimensions: ${width}x${height} for ${truncateForDisplay(img.attr("src") ?: "")}"
         )
     }
     
@@ -561,7 +574,18 @@ class EpubParser : BookParser {
         // Add inline style for visual indication (gray placeholder)
         val existingStyle = img.attr("style")
         val placeholderStyle = "background-color: #e0e0e0; border: 1px dashed #999;"
-        img.attr("style", if (existingStyle.isBlank()) placeholderStyle else "$existingStyle; $placeholderStyle")
+        val combinedStyle = if (existingStyle.isBlank()) {
+            placeholderStyle
+        } else {
+            // Ensure proper CSS concatenation by adding semicolon separator
+            val trimmedStyle = existingStyle.trimEnd()
+            if (trimmedStyle.endsWith(";")) {
+                "$trimmedStyle $placeholderStyle"
+            } else {
+                "$trimmedStyle; $placeholderStyle"
+            }
+        }
+        img.attr("style", combinedStyle)
     }
     
     /**
@@ -617,15 +641,14 @@ class EpubParser : BookParser {
                 img.attr("xlink:href", dataUri)
             }
             
-            dataUri.take(MAX_SRC_DISPLAY_LENGTH) + "..."
+            truncateForDisplay(dataUri)
         }
     }
     
     /**
      * Log comprehensive image diagnostics for the chapter.
      */
-    @Suppress("UNUSED_PARAMETER")
-    private fun logImageDiagnostics(bookFile: File, page: Int, diagnostics: List<ImageDiagnostics>) {
+    private fun logImageDiagnostics(page: Int, diagnostics: List<ImageDiagnostics>) {
         if (diagnostics.isEmpty()) return
         
         val successCount = diagnostics.count { it.status == ImageDiagnostics.ImageStatus.SUCCESS }
@@ -643,7 +666,7 @@ class EpubParser : BookParser {
         diagnostics.filter { it.status != ImageDiagnostics.ImageStatus.SUCCESS }.forEach { diag ->
             DiagnosticLogger.w(
                 DiagnosticLogger.Category.PARSER,
-                "Image issue: ${diag.originalSrc.take(MAX_SRC_DISPLAY_LENGTH)} - status=${diag.status}, " +
+                "Image issue: ${truncateForDisplay(diag.originalSrc)} - status=${diag.status}, " +
                 "error=${diag.errorMessage ?: "none"}"
             )
         }
@@ -661,7 +684,7 @@ class EpubParser : BookParser {
             "imageDecodeFailCount" to diagnostics.count { it.status == ImageDiagnostics.ImageStatus.DECODE_FAILED }.toString(),
             "imageErrorCount" to diagnostics.count { it.status == ImageDiagnostics.ImageStatus.ERROR }.toString(),
             "imageDetails" to diagnostics.joinToString("; ") { 
-                "${it.originalSrc.take(MAX_SRC_DISPLAY_LENGTH)}:${it.status}:${it.actualWidth}x${it.actualHeight}:injected=${it.dimensionsInjected}"
+                "${truncateForDisplay(it.originalSrc)}:${it.status}:${it.actualWidth}x${it.actualHeight}:injected=${it.dimensionsInjected}"
             }
         )
     }
