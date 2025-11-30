@@ -23,6 +23,9 @@
     const SCROLL_BEHAVIOR_AUTO = 'auto';
     const MAX_CHAPTER_SEGMENTS = 5; // Limit DOM growth when streaming chapters
     const UNKNOWN_WINDOW_INDEX = -1; // Used when windowIndex is unknown or invalid
+    const MIN_CLIENT_WIDTH = 10; // Minimum valid clientWidth for column computation
+    const COLUMN_RETRY_DELAY_MS = 50; // Delay before retrying column width computation
+    const MAX_COLUMN_RETRIES = 5; // Maximum retries for column width computation
     
     // Paginator configuration - set via configure() before init()
     let paginatorConfig = {
@@ -37,6 +40,7 @@
     let columnContainer = null;
     let contentWrapper = null;
     let viewportWidth = 0;
+    let appliedColumnWidth = 0; // Track the actually applied column width for diagnostics
     let isInitialized = false;
     let isPaginationReady = false; // CRITICAL: Only true after onPaginationReady callback fires
     let chapterSegments = [];
@@ -45,6 +49,13 @@
     
     // Window mode discipline - CONSTRUCTION vs ACTIVE
     let windowMode = 'CONSTRUCTION'; // 'CONSTRUCTION' or 'ACTIVE'
+    
+    // Diagnostics (toggleable via enableDiagnostics())
+    let diagnosticsEnabled = false;
+    
+    // Pending column retry timeout ID (for cancellation)
+    let pendingColumnRetryTimeoutId = null;
+    let diagnosticsEnabled = false;
     
     /**
      * Configure the paginator before initialization.
@@ -99,6 +110,177 @@
                     ', windowIndex=' + paginatorConfig.windowIndex + 
                     ', chapterIndex=' + paginatorConfig.chapterIndex +
                     ', rootSelector=' + paginatorConfig.rootSelector);
+    }
+    
+    // ========================================================================
+    // Diagnostics Functions
+    // ========================================================================
+    
+    /**
+     * Enable or disable pagination diagnostics logging.
+     * When enabled, detailed pagination state is logged after key events.
+     * 
+     * @param {boolean} enable - Whether to enable diagnostics
+     */
+    function enableDiagnostics(enable) {
+        diagnosticsEnabled = enable !== false;
+        console.log('inpage_paginator: [DIAG] Diagnostics ' + (diagnosticsEnabled ? 'enabled' : 'disabled'));
+    }
+    
+    /**
+     * Log a diagnostics message with payload (only when diagnostics enabled).
+     * 
+     * @param {string} context - The context or event name
+     * @param {Object} payload - Additional data to log
+     */
+    function logDiagnostics(context, payload) {
+        if (!diagnosticsEnabled) return;
+        
+        console.log('inpage_paginator: [DIAG] ' + context + ' ' + JSON.stringify(payload || {}));
+        
+        // Notify Android if callback exists
+        if (window.AndroidBridge && window.AndroidBridge.onDiagnosticsLog) {
+            try {
+                window.AndroidBridge.onDiagnosticsLog(context, JSON.stringify(payload || {}));
+            } catch (e) {
+                console.warn('inpage_paginator: [DIAG] Failed to send to Android', e);
+            }
+        }
+    }
+    
+    /**
+     * Log the current pagination state for diagnostics.
+     * Called after onPaginationReady and after each streaming append/evict.
+     * 
+     * @param {string} trigger - What triggered this state log
+     */
+    function logPaginationState(trigger) {
+        if (!diagnosticsEnabled && !console.log) return; // Skip if no logging needed
+        
+        const state = {
+            trigger: trigger,
+            clientWidth: computeClientWidth(),
+            appliedColumnWidth: appliedColumnWidth,
+            pageCount: getPageCount(),
+            currentPage: getCurrentPage(),
+            currentChapter: getCurrentChapter(),
+            loadedSegments: getSegmentDiagnostics(),
+            windowMode: windowMode,
+            isPaginationReady: isPaginationReady,
+            isInitialized: isInitialized
+        };
+        
+        // Optionally include outerHTML hash/length
+        if (diagnosticsEnabled) {
+            const windowRoot = document.getElementById('window-root');
+            if (windowRoot) {
+                state.windowRootHtmlLength = windowRoot.outerHTML.length;
+            }
+        }
+        
+        console.log('inpage_paginator: [STATE_LOG] ' + JSON.stringify(state));
+        
+        // Notify Android if callback exists and diagnostics enabled
+        if (diagnosticsEnabled && window.AndroidBridge && window.AndroidBridge.onPaginationStateLog) {
+            try {
+                window.AndroidBridge.onPaginationStateLog(JSON.stringify(state));
+            } catch (e) {
+                console.warn('inpage_paginator: [DIAG] Failed to send state to Android', e);
+            }
+        }
+        
+        return state;
+    }
+    
+    /**
+     * Get diagnostics info for all loaded segments.
+     * 
+     * @returns {Array} Array of segment info objects
+     */
+    function getSegmentDiagnostics() {
+        if (!contentWrapper || !columnContainer) {
+            return [];
+        }
+        
+        try {
+            const pageWidth = viewportWidth || window.innerWidth;
+            if (pageWidth === 0) {
+                return [];
+            }
+            
+            const contentRect = contentWrapper.getBoundingClientRect();
+            
+            return chapterSegments.map(function(seg) {
+                const chapterIndex = parseInt(seg.getAttribute('data-chapter-index'), 10);
+                const segmentRect = seg.getBoundingClientRect();
+                const offsetLeft = segmentRect.left - contentRect.left + columnContainer.scrollLeft;
+                const startPage = Math.floor(Math.max(0, offsetLeft) / pageWidth);
+                const endPage = Math.ceil((offsetLeft + segmentRect.width) / pageWidth);
+                const pageCount = Math.max(1, endPage - startPage);
+                
+                return {
+                    chapterIndex: chapterIndex,
+                    startPage: startPage,
+                    endPage: endPage,
+                    pageCount: pageCount
+                };
+            });
+        } catch (e) {
+            console.error('inpage_paginator: getSegmentDiagnostics error', e);
+            return [];
+        }
+    }
+    
+    /**
+     * Get image diagnostics - enumerate all images and their load status.
+     * Useful for debugging broken images under sliding window.
+     * 
+     * @returns {Array} Array of image info objects
+     */
+    function getImageDiagnostics() {
+        const images = document.querySelectorAll('img');
+        const diagnostics = [];
+        
+        for (var i = 0; i < images.length; i++) {
+            var img = images[i];
+            diagnostics.push({
+                index: i,
+                src: img.src,
+                complete: img.complete,
+                naturalWidth: img.naturalWidth,
+                naturalHeight: img.naturalHeight,
+                failed: img.complete && img.naturalWidth === 0
+            });
+        }
+        
+        return diagnostics;
+    }
+    
+    /**
+     * Log failed images for debugging.
+     * Called post-load to identify images that failed to load.
+     */
+    function logFailedImages() {
+        const diagnostics = getImageDiagnostics();
+        const failed = diagnostics.filter(function(img) { return img.failed; });
+        
+        if (failed.length > 0) {
+            console.warn('inpage_paginator: [IMAGES] ' + failed.length + ' images failed to load:', 
+                        JSON.stringify(failed));
+            
+            // Notify Android if callback exists
+            if (window.AndroidBridge && window.AndroidBridge.onImagesFailedToLoad) {
+                try {
+                    window.AndroidBridge.onImagesFailedToLoad(JSON.stringify(failed));
+                } catch (e) {
+                    console.warn('inpage_paginator: Failed to notify Android of failed images', e);
+                }
+            }
+        } else {
+            console.log('inpage_paginator: [IMAGES] All ' + diagnostics.length + ' images loaded successfully');
+        }
+        
+        return diagnostics;
     }
     
     /**
@@ -164,6 +346,14 @@
         // Handle window resize
         window.addEventListener('resize', handleResize);
         
+        // Handle orientation changes - reapply columns
+        window.addEventListener('orientationchange', function() {
+            console.log('inpage_paginator: [EVENT] orientationchange detected');
+            setTimeout(function() {
+                reapplyColumns();
+            }, 100); // Small delay to allow layout to settle
+        });
+        
         isInitialized = true;
         console.log('inpage_paginator: [STATE] isInitialized set to true');
         
@@ -185,6 +375,14 @@
             isPaginationReady = true;
             console.log('inpage_paginator: [STATE] isPaginationReady set to true');
             
+            // Log pagination state for diagnostics
+            logPaginationState('[INIT] onPaginationReady');
+            
+            // Check for failed images after load
+            setTimeout(function() {
+                logFailedImages();
+            }, 500);
+            
             // Only notify Android if we have a valid page count
             if (pageCount > 0 && window.AndroidBridge && window.AndroidBridge.onPaginationReady) {
                 console.log('inpage_paginator: [CALLBACK] Calling AndroidBridge.onPaginationReady with pageCount=' + pageCount);
@@ -196,27 +394,97 @@
     }
     
     /**
+     * Compute the effective client width for column calculation.
+     * Uses multiple fallbacks to ensure we get a valid width.
+     * 
+     * @returns {number} The computed client width
+     */
+    function computeClientWidth() {
+        // Primary: document.documentElement.clientWidth (most accurate)
+        let clientWidth = document.documentElement.clientWidth;
+        
+        // Fallback 1: window.innerWidth
+        if (!clientWidth || clientWidth < MIN_CLIENT_WIDTH) {
+            clientWidth = window.innerWidth;
+        }
+        
+        // Fallback 2: #window-root.clientWidth if present
+        if (!clientWidth || clientWidth < MIN_CLIENT_WIDTH) {
+            const windowRoot = document.getElementById('window-root');
+            if (windowRoot) {
+                clientWidth = windowRoot.clientWidth;
+            }
+        }
+        
+        // Fallback 3: body.clientWidth
+        if (!clientWidth || clientWidth < MIN_CLIENT_WIDTH) {
+            clientWidth = document.body ? document.body.clientWidth : 0;
+        }
+        
+        return clientWidth || 0;
+    }
+    
+    /**
      * Update column styles on the content wrapper
      * Preserves existing fontSize to avoid breaking dynamic font size adjustments
      * 
      * CRITICAL FIX: Sets wrapper width to an exact multiple of viewport width
      * to ensure horizontal paging aligns correctly and prevents vertical stacking.
+     * 
+     * @param {HTMLElement} wrapper - The content wrapper element
+     * @param {number} retryCount - Number of retry attempts (for guarding against clientWidth < 10)
      */
-    function updateColumnStyles(wrapper) {
-        viewportWidth = window.innerWidth;
+    function updateColumnStyles(wrapper, retryCount) {
+        if (retryCount === undefined) {
+            retryCount = 0;
+            // Cancel any pending retry timeout when starting fresh
+            if (pendingColumnRetryTimeoutId !== null) {
+                clearTimeout(pendingColumnRetryTimeoutId);
+                pendingColumnRetryTimeoutId = null;
+            }
+        }
+        
+        // Compute client width with fallbacks
+        const clientWidth = computeClientWidth();
+        
+        // Guard against invalid client width - retry with delay
+        if (clientWidth < MIN_CLIENT_WIDTH && retryCount < MAX_COLUMN_RETRIES) {
+            console.warn('inpage_paginator: [STYLES] clientWidth=' + clientWidth + ' < ' + MIN_CLIENT_WIDTH + 
+                        ', retrying in ' + COLUMN_RETRY_DELAY_MS + 'ms (attempt ' + (retryCount + 1) + '/' + MAX_COLUMN_RETRIES + ')');
+            pendingColumnRetryTimeoutId = setTimeout(function() {
+                pendingColumnRetryTimeoutId = null;
+                updateColumnStyles(wrapper, retryCount + 1);
+            }, COLUMN_RETRY_DELAY_MS);
+            return;
+        }
+        
+        viewportWidth = clientWidth || window.innerWidth;
         const columnWidth = viewportWidth;
         
-        console.log('inpage_paginator: [STYLES] updateColumnStyles called, viewportWidth=' + viewportWidth);
+        // Track applied column width for diagnostics
+        appliedColumnWidth = columnWidth;
+        
+        logDiagnostics('[STYLES] updateColumnStyles called', {
+            clientWidth: clientWidth,
+            viewportWidth: viewportWidth,
+            columnWidth: columnWidth,
+            retryCount: retryCount
+        });
+        
+        console.log('inpage_paginator: [STYLES] updateColumnStyles called, clientWidth=' + clientWidth + ', viewportWidth=' + viewportWidth);
         
         // Preserve the current font size before updating styles
         const preservedFontSize = wrapper.style.fontSize;
         
-        // Set up column CSS with explicit display and height
+        // Set up column CSS with explicit -webkit prefixes for better Android WebView support
         wrapper.style.cssText = `
             display: block;
             column-width: ${columnWidth}px;
+            -webkit-column-width: ${columnWidth}px;
             column-gap: ${COLUMN_GAP}px;
+            -webkit-column-gap: ${COLUMN_GAP}px;
             column-fill: auto;
+            -webkit-column-fill: auto;
             height: 100%;
             scroll-snap-align: start;
         `;
@@ -242,6 +510,31 @@
         wrapper.offsetHeight;
         
         console.log('inpage_paginator: [STYLES] Set wrapper width=' + exactWidth + 'px (pageCount=' + pageCount + ', scrollWidth=' + scrollWidth + ', viewportWidth=' + viewportWidth + ')');
+    }
+    
+    /**
+     * Recompute and reapply column width.
+     * Called on resize, orientation changes, font/line-height changes, and after streaming appends.
+     * This is the public API exposed as window.reapplyColumns().
+     */
+    function reapplyColumns() {
+        if (!contentWrapper || !isInitialized) {
+            console.warn('inpage_paginator: [REAPPLY] reapplyColumns called before initialization');
+            return;
+        }
+        
+        console.log('inpage_paginator: [REAPPLY] Reapplying column styles');
+        
+        // Recompute column width and apply
+        updateColumnStyles(contentWrapper);
+        
+        // Force reflow after reapply
+        if (columnContainer) {
+            columnContainer.offsetHeight;
+        }
+        
+        // Log diagnostics after reapply
+        logPaginationState('[REAPPLY] Column reapply complete');
     }
 
     function wrapExistingContentAsSegment() {
@@ -402,6 +695,9 @@
             requestAnimationFrame(function() {
                 isPaginationReady = true;
                 console.log('inpage_paginator: [STATE] isPaginationReady set back to true after reflow layout');
+                
+                // Log pagination state for diagnostics
+                logPaginationState('[REFLOW] reflow complete');
                 
                 // Notify Android if callback exists
                 if (window.AndroidBridge && window.AndroidBridge.onPaginationReady) {
@@ -788,11 +1084,17 @@
             contentWrapper.appendChild(segment);
             chapterSegments.push(segment);
             
-            // Trim old segments if needed
-            trimSegmentsFromStart();
+            // Trim old segments if needed - but avoid simultaneous append+evict in same frame
+            // Schedule eviction for next animation frame to reduce oscillation
+            requestAnimationFrame(function() {
+                trimSegmentsFromStart();
+            });
             
-            // Reflow to recalculate layout
+            // Reflow to recalculate layout (includes column style update)
             const reflowResult = reflow(true);
+            
+            // Log pagination state after append
+            logPaginationState('[STREAMING_APPEND] chapter=' + chapterIndex);
             
             console.log('inpage_paginator: [STREAMING] Appended chapter ' + chapterIndex + 
                        ' - pages before=' + pageCountBefore + 
@@ -848,10 +1150,13 @@
             }
             chapterSegments.unshift(segment);
             
-            // Trim old segments from end if needed
-            trimSegmentsFromEnd();
+            // Trim old segments from end if needed - but avoid simultaneous append+evict in same frame
+            // Schedule eviction for next animation frame to reduce oscillation
+            requestAnimationFrame(function() {
+                trimSegmentsFromEnd();
+            });
             
-            // Reflow without preserving position initially
+            // Reflow without preserving position initially (includes column style update)
             const reflowResult = reflow(false);
             
             // Calculate how many pages the new segment added
@@ -865,6 +1170,9 @@
                            ', pages added=' + pagesAdded + ', new target=' + newTargetPage);
                 goToPage(newTargetPage, false);
             }
+            
+            // Log pagination state after prepend
+            logPaginationState('[STREAMING_PREPEND] chapter=' + chapterIndex);
             
             console.log('inpage_paginator: [STREAMING] Prepended chapter ' + chapterIndex + 
                        ' - pages before=' + pageCountBefore + 
@@ -1511,6 +1819,7 @@
         
         // Font and reflow
         reflow: reflow,
+        reapplyColumns: reapplyColumns,
         setFontSize: setFontSize,
         
         // Position preservation
@@ -1524,7 +1833,17 @@
         removeChapter: removeChapterSegment,
         clearAllSegments: clearAllSegments,
         setInitialChapter: setInitialChapterIndex,
-        getSegmentPageCount: getSegmentPageCount
+        getSegmentPageCount: getSegmentPageCount,
+        
+        // Diagnostics
+        enableDiagnostics: enableDiagnostics,
+        getImageDiagnostics: getImageDiagnostics,
+        logFailedImages: logFailedImages,
+        logPaginationState: logPaginationState,
+        getSegmentDiagnostics: getSegmentDiagnostics
     };
+    
+    // Also expose reapplyColumns as a global function for easy access from Android
+    window.reapplyColumns = reapplyColumns;
     
 })();

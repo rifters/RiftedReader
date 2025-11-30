@@ -18,7 +18,8 @@ data class ReaderSettings(
     val theme: ReaderTheme = ReaderTheme.LIGHT,
     val mode: ReaderMode = ReaderMode.PAGE,
     val paginationMode: PaginationMode = PaginationMode.CONTINUOUS,
-    val continuousStreamingEnabled: Boolean = true
+    val continuousStreamingEnabled: Boolean = true,
+    val paginationDiagnosticsEnabled: Boolean = false
 )
 
 enum class ReaderTheme {
@@ -60,7 +61,8 @@ class ReaderPreferences(context: Context) {
         val paginationMode = runCatching { PaginationMode.valueOf(paginationModeName) }
             .getOrDefault(PaginationMode.CONTINUOUS)
         val streamingEnabled = prefs.getBoolean(KEY_CONTINUOUS_STREAMING, true)
-        return ReaderSettings(size, lineHeight, theme, mode, paginationMode, streamingEnabled)
+        val diagnosticsEnabled = prefs.getBoolean(KEY_PAGINATION_DIAGNOSTICS, false)
+        return ReaderSettings(size, lineHeight, theme, mode, paginationMode, streamingEnabled, diagnosticsEnabled)
     }
 
     private fun saveSettings(settings: ReaderSettings) {
@@ -71,6 +73,7 @@ class ReaderPreferences(context: Context) {
             putString(KEY_MODE, settings.mode.name)
             putString(KEY_PAGINATION_MODE, settings.paginationMode.name)
             putBoolean(KEY_CONTINUOUS_STREAMING, settings.continuousStreamingEnabled)
+            putBoolean(KEY_PAGINATION_DIAGNOSTICS, settings.paginationDiagnosticsEnabled)
         }
     }
 
@@ -117,6 +120,7 @@ class ReaderPreferences(context: Context) {
         private const val KEY_MODE = "reader_mode"
         private const val KEY_PAGINATION_MODE = "pagination_mode"
         private const val KEY_CONTINUOUS_STREAMING = "continuous_streaming_enabled"
+        private const val KEY_PAGINATION_DIAGNOSTICS = "pagination_diagnostics_enabled"
         private const val KEY_TAP_ACTIONS = "reader_tap_actions"
 
         private const val ENTRY_SEPARATOR = "|"
