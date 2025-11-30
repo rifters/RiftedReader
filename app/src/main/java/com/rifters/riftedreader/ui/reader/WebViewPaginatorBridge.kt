@@ -240,6 +240,34 @@ object WebViewPaginatorBridge {
             )
         }
     }
+    
+    /**
+     * Reconfigure display settings without full reinitialization.
+     * Use for theme changes, font size, or line height updates.
+     * 
+     * @param webView The WebView containing the paginated content
+     * @param options Configuration options
+     */
+    fun reconfigure(webView: WebView, options: ReconfigureOptions) {
+        AppLogger.d("WebViewPaginatorBridge", "reconfigure: $options")
+        
+        val jsonOptions = buildString {
+            append("{")
+            options.fontSize?.let { append("fontSize:$it,") }
+            options.lineHeight?.let { append("lineHeight:$it,") }
+            options.backgroundColor?.let { append("backgroundColor:'$it',") }
+            options.textColor?.let { append("textColor:'$it',") }
+            append("preservePosition:${options.preservePosition}")
+            append("}")
+        }
+        
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.inpagePaginator && window.inpagePaginator.reconfigure) { window.inpagePaginator.reconfigure($jsonOptions); }",
+                null
+            )
+        }
+    }
 
     fun setInitialChapter(webView: WebView, chapterIndex: Int) {
         AppLogger.d("WebViewPaginatorBridge", "setInitialChapter: chapter=$chapterIndex")
@@ -666,3 +694,20 @@ object WebViewPaginatorBridge {
 private fun String.toBase64(): String {
     return Base64.encodeToString(this.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
 }
+
+/**
+ * Options for reconfiguring the paginator display settings.
+ *
+ * @property fontSize Font size in pixels (null to keep current)
+ * @property lineHeight Line height multiplier (null to keep current)
+ * @property backgroundColor Background color as CSS value (null to keep current)
+ * @property textColor Text color as CSS value (null to keep current)
+ * @property preservePosition Whether to preserve reading position (default: true)
+ */
+data class ReconfigureOptions(
+    val fontSize: Int? = null,
+    val lineHeight: Float? = null,
+    val backgroundColor: String? = null,
+    val textColor: String? = null,
+    val preservePosition: Boolean = true
+)

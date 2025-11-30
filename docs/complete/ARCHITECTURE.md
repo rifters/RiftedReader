@@ -738,6 +738,88 @@ See `SLIDING_WINDOW_PAGINATION.md` for detailed implementation guide.
 
 ---
 
+## Chapter Indexing System
+
+### The Problem: EPUB Spine vs TOC Mismatch
+
+EPUB files contain a **spine** that lists all readable content items in order, and a **TOC** (table of contents) that lists user-visible chapters. These often differ:
+
+```
+Example EPUB Structure:
+├── cover.xhtml          (spine only - not in TOC)
+├── nav.xhtml            (provides TOC - not a chapter itself)
+├── title.xhtml          (front matter - may not be in TOC)
+├── chapter1.xhtml       ← User sees as Chapter 1
+├── chapter2.xhtml       ← User sees as Chapter 2
+├── ...
+├── notes.xhtml          (linear="no" - appendix)
+└── glossary.xhtml       (linear="no" - appendix)
+
+Spine count: 109 items
+TOC visible: 101 entries
+Difference: 8 items (cover + nav + non-linear items)
+```
+
+This mismatch causes `WINDOW_COUNT_MISMATCH` errors when different parts of the code use different counts for window calculation:
+- `ceil(109/5) = 22 windows` (spine-based)
+- `ceil(101/5) = 21 windows` (TOC-based)
+
+### The Solution: ChapterIndexProvider
+
+The `ChapterIndexProvider` class maintains two lists:
+
+1. **spineAll**: All spine items in reading order (for parser operations)
+2. **visibleChapters**: Filtered subset for UI (excludes NAV, COVER, NON_LINEAR by default)
+
+```kotlin
+// Single source of truth for chapter counts
+val provider = ChapterIndexProvider(chaptersPerWindow = 5)
+provider.setChapters(parsedChapters)
+
+// Use visible count for UI (progress, window count)
+val windowCount = provider.getWindowCount()  // Uses visibleChapters
+
+// Map between UI index and spine index
+val spineIdx = provider.uiIndexToSpineIndex(userSelection)
+val uiIdx = provider.spineIndexToUiIndex(parserResult)
+```
+
+### Chapter Type Classification
+
+| Type | Description | Included by Default |
+|------|-------------|---------------------|
+| `CONTENT` | Main readable chapters | ✅ Yes |
+| `FRONT_MATTER` | Title, copyright, dedication | ✅ Yes |
+| `COVER` | Cover page/image | ❌ No |
+| `NAV` | Navigation document | ❌ No |
+| `NON_LINEAR` | Footnotes, glossary (linear="no") | ❌ No (configurable) |
+
+### Window Calculation
+
+The `WindowCalculator` provides pure, stateless window computation:
+
+```kotlin
+// Always use visible chapter count for UI windowing
+val visibleCount = provider.visibleChapterCount
+val windowCount = WindowCalculator.calculateWindowCount(visibleCount, chaptersPerWindow)
+
+// Map chapter to window
+val window = WindowCalculator.getWindowForChapter(chapterIndex, chaptersPerWindow)
+
+// Get chapters in a window
+val range = WindowCalculator.getWindowRange(windowIndex, visibleCount, chaptersPerWindow)
+```
+
+### Implementation Guidelines
+
+1. **UI Layer**: Always use `visibleChapterCount` and `getWindowCount()`
+2. **Parser Layer**: Use `spineAll` for content extraction
+3. **Progress Display**: Use UI indices, convert with `spineIndexToUiIndex()`
+4. **TTS Traversal**: Use visible chapters, skip NAV/COVER automatically
+5. **Validation**: Use `WindowCalculator.validateWindowCount()` to detect mismatches
+
+---
+
 ## Thread Management
 
 ```
