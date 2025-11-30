@@ -1,6 +1,7 @@
 package com.rifters.riftedreader.domain.reader
 
 import com.rifters.riftedreader.ui.reader.ReaderThemePalette
+import com.rifters.riftedreader.util.EpubImageAssetHelper
 
 /**
  * Configuration for wrapping HTML content for WebView display.
@@ -19,6 +20,9 @@ data class ReaderHtmlConfig(
  * (multiple chapters combined in <section> blocks).
  */
 object ReaderHtmlWrapper {
+    
+    /** Script URL using WebViewAssetLoader domain for consistent URL handling */
+    private val PAGINATOR_SCRIPT_URL = "https://${EpubImageAssetHelper.ASSET_HOST}/assets/inpage_paginator.js"
     
     /**
      * Convert a color integer to a hex color string.
@@ -199,7 +203,7 @@ object ReaderHtmlWrapper {
                         background-color: rgba(255, 213, 79, 0.4) !important;
                     }
                 </style>
-                <script src="file:///android_asset/inpage_paginator.js"></script>
+                <script src="$PAGINATOR_SCRIPT_URL"></script>
             </head>
             <body>
                 <!-- TTS root container for TTS DOM operations -->

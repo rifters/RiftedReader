@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import com.rifters.riftedreader.util.AppLogger
+import com.rifters.riftedreader.util.EpubImageAssetHelper
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -177,7 +178,7 @@ class EpubParser : BookParser {
                             }
                         }
                         
-                        // For all other images (non-cover), cache to disk and use file:// URL
+                        // For all other images (non-cover), cache to disk and use asset loader URL
                         val imageEntry = zip.getEntry(imagePath)
                         if (imageEntry != null) {
                             AppLogger.d("EpubParser", "Found image in ZIP: $imagePath (size: ${imageEntry.size})")
@@ -194,17 +195,19 @@ class EpubParser : BookParser {
                                     output.write(imageBytes)
                                 }
                                 
-                                // Update appropriate attribute based on element type
-                                val fileUrl = "file://${cachedImageFile.absolutePath}"
+                                // Use WebViewAssetLoader URL instead of file:// for security
+                                val imageCacheRoot = EpubImageAssetHelper.getImageCacheRoot(file)
+                                val assetUrl = EpubImageAssetHelper.toAssetUrl(cachedImageFile.absolutePath, imageCacheRoot)
+                                
                                 if (img.tagName() == "img") {
-                                    img.attr("src", fileUrl)
+                                    img.attr("src", assetUrl)
                                 } else {
                                     // For SVG <image> elements, update both href and xlink:href for compatibility
-                                    img.attr("href", fileUrl)
-                                    img.attr("xlink:href", fileUrl)
+                                    img.attr("href", assetUrl)
+                                    img.attr("xlink:href", assetUrl)
                                 }
                                 
-                                AppLogger.d("EpubParser", "Cached image to: ${cachedImageFile.absolutePath}")
+                                AppLogger.d("EpubParser", "Cached image to: ${cachedImageFile.absolutePath}, asset URL: $assetUrl")
                             } catch (e: Exception) {
                                 AppLogger.e("EpubParser", "Failed to cache image to disk: ${e.message}", e)
                                 // Fall back to base64 if file caching fails

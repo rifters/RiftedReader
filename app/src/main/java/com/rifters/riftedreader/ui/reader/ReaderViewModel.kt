@@ -62,6 +62,14 @@ class ReaderViewModel(
     
     val isContinuousMode: Boolean
         get() = paginationMode == PaginationMode.CONTINUOUS
+    
+    /**
+     * Get the image cache root directory for WebViewAssetLoader.
+     * This is needed to set up the EpubImagePathHandler for loading cached images.
+     */
+    fun getImageCacheRoot(): File {
+        return com.rifters.riftedreader.util.EpubImageAssetHelper.getImageCacheRoot(bookFile)
+    }
 
     // Sliding window manager for window index calculations
     private val slidingWindowManager = com.rifters.riftedreader.domain.pagination.SlidingWindowManager(
