@@ -10,6 +10,7 @@ import com.rifters.riftedreader.util.EpubImageAssetHelper
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.jsoup.select.Elements
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipFile
@@ -84,6 +85,7 @@ data class ImageDiagnostics(
 class EpubParser : BookParser {
     
     companion object {
+        private const val TAG = "EpubParser"
         private val SUPPORTED_EXTENSIONS = listOf("epub")
         private const val CONTAINER_PATH = "META-INF/container.xml"
         
@@ -1109,11 +1111,11 @@ class EpubParser : BookParser {
                 try {
                     val chapterNum = chapterDir.name.removePrefix("chapter_").toIntOrNull()
                     if (chapterNum != null && (chapterNum < minKeep || chapterNum > maxKeep)) {
-                        AppLogger.d("EpubParser", "Cleaning up old chapter cache: ${chapterDir.name}")
+                        AppLogger.d(TAG, "Cleaning up old chapter cache: ${chapterDir.name}")
                         chapterDir.deleteRecursively()
                     }
                 } catch (e: Exception) {
-                    AppLogger.w("EpubParser", "Failed to clean up chapter cache: ${chapterDir.name}", e)
+                    AppLogger.w(TAG, "Failed to clean up chapter cache: ${chapterDir.name}", e)
                 }
             }
         }
