@@ -323,6 +323,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             }
                             controlsManager.onUserInteraction()
                         }
+                        
+                        // Notify WindowBufferManager that this window became visible
+                        // This triggers phase transition checks and potential buffer shifts
+                        if (position >= 0) {
+                            viewModel.onWindowBecameVisible(position)
+                        }
                     }
                 }
             })

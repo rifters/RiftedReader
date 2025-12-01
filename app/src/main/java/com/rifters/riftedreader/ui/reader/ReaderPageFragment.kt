@@ -1832,6 +1832,16 @@ class ReaderPageFragment : Fragment() {
                         )
                         
                         readerViewModel.updateWebViewPageState(newPage, totalPages)
+                        
+                        // Notify WindowBufferManager of position for potential buffer shifts
+                        // Only call if near boundaries to reduce unnecessary method invocations
+                        // Buffer shift threshold is 2 pages, so check if within that range
+                        if (totalPages > 0 && newPage >= totalPages - 2) {
+                            readerViewModel.maybeShiftForward(newPage, totalPages)
+                        }
+                        if (newPage < 2) {
+                            readerViewModel.maybeShiftBackward(newPage)
+                        }
                     } catch (e: Exception) {
                         com.rifters.riftedreader.util.AppLogger.e(
                             "ReaderPageFragment",
