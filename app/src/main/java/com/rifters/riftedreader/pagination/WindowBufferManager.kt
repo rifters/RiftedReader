@@ -124,7 +124,15 @@ class WindowBufferManager(
             }
             
             // Set active window to the first window in buffer (user starts here)
-            activeWindowIndex = if (buffer.isNotEmpty()) buffer.first else 0
+            // Note: If buffer is empty after initialization, this indicates a book with 0 windows
+            // (no chapters), which is a valid edge case handled by returning early in that case
+            if (buffer.isEmpty()) {
+                AppLogger.w(TAG, "[PAGINATION_DEBUG] Buffer is empty after initialization " +
+                    "(totalWindows=$totalWindows) - book may have no content")
+                activeWindowIndex = 0
+                return@withLock
+            }
+            activeWindowIndex = buffer.first
             
             AppLogger.d(TAG, "[PAGINATION_DEBUG] Buffer initialized: " +
                 "buffer=${buffer.toList()}, activeWindow=$activeWindowIndex, phase=${_phase.value}")

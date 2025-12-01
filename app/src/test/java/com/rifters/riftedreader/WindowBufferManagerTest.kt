@@ -182,8 +182,8 @@ class WindowBufferManagerTest {
         bufferManager.initialize(startWindow = 0)
         delay(100) // Wait for preload
         
-        // Window 0 should be cached
-        val cachedBefore = bufferManager.getCachedWindow(0)
+        // Window 0 should be cached before shift
+        assertNotNull("Window 0 should be cached before shift", bufferManager.getCachedWindow(0))
         
         bufferManager.shiftForward()
         delay(100) // Wait for any async operations
@@ -240,8 +240,8 @@ class WindowBufferManagerTest {
         bufferManager.initialize(startWindow = 5)
         delay(100) // Wait for preload
         
-        // Window 9 should be cached
-        val cachedBefore = bufferManager.getCachedWindow(9)
+        // Window 9 should be cached before shift
+        assertNotNull("Window 9 should be cached before shift", bufferManager.getCachedWindow(9))
         
         bufferManager.shiftBackward()
         delay(100) // Wait for any async operations

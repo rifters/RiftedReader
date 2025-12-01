@@ -112,24 +112,29 @@ class DefaultWindowAssembler(
     /**
      * Get the total chapters count.
      * 
-     * Note: This uses a cached approach since getWindowInfo() is suspend.
-     * The total chapters value is set during assembleWindow calls.
+     * Returns the cached value that was set via setTotalChapters().
+     * This approach avoids calling the suspend function getWindowInfo().
+     * 
+     * Important: Callers must call setTotalChapters() before using this assembler
+     * to ensure accurate chapter counts.
      */
     @Volatile
     private var cachedTotalChapters: Int = 0
     
     override fun getTotalChapters(): Int {
-        // Return the cached value - this is updated during assembleWindow
         return cachedTotalChapters
     }
     
     /**
-     * Set the total chapters count (called during initialization or when chapters change).
+     * Set the total chapters count.
+     * 
+     * This must be called during initialization or when the chapter count changes.
      * 
      * @param totalChapters The total number of chapters
      */
     fun setTotalChapters(totalChapters: Int) {
         cachedTotalChapters = totalChapters
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] setTotalChapters: $totalChapters")
     }
     
     /**
@@ -142,24 +147,18 @@ class DefaultWindowAssembler(
         lastChapter: ChapterIndex,
         html: String
     ) {
-        // Build chapter HTML map for HtmlDebugLogger
-        val chapterIndices = (firstChapter..lastChapter).toList()
-        val chaptersMap = chapterIndices.associateWith { chapterIndex ->
-            // Extract the section for this chapter from the combined HTML
-            // This is approximate - we're logging the full HTML but recording the chapter indices
-            html
-        }
-        
-        HtmlDebugLogger.logWindowHtml(
+        // Log the window using HtmlDebugLogger.logWrappedHtml for single-file logging
+        // This is more efficient than creating a map with duplicate HTML strings
+        HtmlDebugLogger.logWrappedHtml(
             bookId = bookId,
-            windowIndex = windowIndex,
-            chapterIndices = chapterIndices,
-            chapters = chaptersMap,
+            chapterIndex = windowIndex, // Use windowIndex as identifier
+            wrappedHtml = html,
             metadata = mapOf(
-                "assembler" to "DefaultWindowAssembler",
+                "type" to "assembled-window",
+                "windowIndex" to windowIndex.toString(),
                 "firstChapter" to firstChapter.toString(),
                 "lastChapter" to lastChapter.toString(),
-                "chapterCount" to chapterIndices.size.toString(),
+                "chapterCount" to (lastChapter - firstChapter + 1).toString(),
                 "htmlLength" to html.length.toString()
             )
         )
