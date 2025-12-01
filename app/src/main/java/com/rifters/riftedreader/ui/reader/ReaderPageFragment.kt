@@ -904,6 +904,10 @@ class ReaderPageFragment : Fragment() {
      */
     private fun configurePaginator() {
         if (_binding == null || !isWebViewReady) {
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "[PAGINATION_DEBUG] configurePaginator skipped: _binding=${_binding != null}, isWebViewReady=$isWebViewReady"
+            )
             return
         }
         
@@ -932,7 +936,9 @@ class ReaderPageFragment : Fragment() {
         
         com.rifters.riftedreader.util.AppLogger.d(
             "ReaderPageFragment",
-            "Configuring paginator: mode=${paginatorConfig.mode}, windowIndex=${paginatorConfig.windowIndex}, chapterIndex=${paginatorConfig.chapterIndex}"
+            "[PAGINATION_DEBUG] Configuring paginator: mode=${paginatorConfig.mode}, " +
+            "windowIndex=${paginatorConfig.windowIndex}, chapterIndex=${paginatorConfig.chapterIndex}, " +
+            "rootSelector=${paginatorConfig.rootSelector}"
         )
         
         WebViewPaginatorBridge.configure(binding.pageWebView, paginatorConfig)
