@@ -106,12 +106,16 @@ class WindowBufferManager(
             
             val totalWindows = paginator.getWindowCount()
             
+            // Calculate valid window bounds (window indices are 0-based)
+            val maxValidWindowIndex = (totalWindows - 1).coerceAtLeast(0)
+            
             // Clamp start window to valid bounds
-            val clampedStart = startWindow.coerceIn(0, (totalWindows - 1).coerceAtLeast(0))
+            val clampedStart = startWindow.coerceIn(0, maxValidWindowIndex)
             
             // Calculate the window range for the buffer
             // In STARTUP phase, we fill 5 consecutive windows starting from clampedStart
-            val endWindow = (clampedStart + BUFFER_SIZE - 1).coerceAtMost(totalWindows - 1)
+            // but adjust if we're near the end to maintain BUFFER_SIZE windows when possible
+            val endWindow = (clampedStart + BUFFER_SIZE - 1).coerceAtMost(maxValidWindowIndex)
             val actualStart = (endWindow - BUFFER_SIZE + 1).coerceAtLeast(0)
             
             AppLogger.d(TAG, "[PAGINATION_DEBUG] Building buffer: " +

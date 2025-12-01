@@ -116,12 +116,19 @@ class DefaultWindowAssembler(
      * This approach avoids calling the suspend function getWindowInfo().
      * 
      * Important: Callers must call setTotalChapters() before using this assembler
-     * to ensure accurate chapter counts.
+     * to ensure accurate chapter counts. Returns 0 if not initialized.
      */
     @Volatile
     private var cachedTotalChapters: Int = 0
     
+    @Volatile
+    private var isTotalChaptersInitialized: Boolean = false
+    
     override fun getTotalChapters(): Int {
+        if (!isTotalChaptersInitialized) {
+            AppLogger.w(TAG, "[PAGINATION_DEBUG] getTotalChapters called before setTotalChapters - " +
+                "returning 0. Call setTotalChapters() during initialization.")
+        }
         return cachedTotalChapters
     }
     
@@ -134,6 +141,7 @@ class DefaultWindowAssembler(
      */
     fun setTotalChapters(totalChapters: Int) {
         cachedTotalChapters = totalChapters
+        isTotalChaptersInitialized = true
         AppLogger.d(TAG, "[PAGINATION_DEBUG] setTotalChapters: $totalChapters")
     }
     
