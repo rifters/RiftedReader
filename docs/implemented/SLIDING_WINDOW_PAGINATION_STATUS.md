@@ -1,5 +1,51 @@
 # Sliding Window Pagination - Implementation Status
 
+## 2025-12-01 Update - WindowBufferManager Integration
+
+- **WindowBufferManager integration complete**: The two-phase, five-window buffer lifecycle manager is now wired into the ReaderViewModel:
+  - `WindowBufferManager` and `DefaultWindowAssembler` are created during continuous pagination initialization
+  - Buffer is initialized with 5 windows starting from the user's current reading position
+  - Phase transitions (STARTUP → STEADY) are tracked and logged
+  
+- **New ViewModel methods added**:
+  - `onWindowBecameVisible(windowIndex)`: Called when RecyclerView scroll settles, triggers phase checks and buffer position updates
+  - `maybeShiftForward(currentPage, totalPages)`: Proactively shifts buffer forward when user approaches end of window
+  - `maybeShiftBackward(currentPage)`: Proactively shifts buffer backward when user approaches start of window
+  - `getCachedWindowData(windowIndex)`: Returns cached WindowData from buffer if available
+  
+- **Cache priority order for getWindowHtml()**:
+  1. WindowBufferManager cache (highest priority - managed buffer)
+  2. Pre-wrapped HTML cache (initial load optimization)
+  3. On-demand generation via ContinuousPaginatorWindowHtmlProvider
+  
+- **UI integration**:
+  - `ReaderActivity`: Calls `viewModel.onWindowBecameVisible()` when RecyclerView scroll state becomes IDLE
+  - `ReaderPageFragment`: Calls `viewModel.maybeShiftForward/Backward()` in `onPageChanged` callback from JS paginator
+  
+- **Debug logging**: All buffer operations logged with `[WINDOW_BUFFER]` prefix:
+  ```bash
+  adb logcat | grep "WINDOW_BUFFER"
+  ```
+
+### WindowBufferManager Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ReaderViewModel                           │
+│  ┌─────────────────────┐  ┌──────────────────────────────┐  │
+│  │ WindowBufferManager │  │    DefaultWindowAssembler     │  │
+│  │                     │  │                               │  │
+│  │  Phase: STARTUP     │──│ Delegates to                  │  │
+│  │         ↓           │  │ ContinuousPaginatorWindow     │  │
+│  │  Phase: STEADY      │  │ HtmlProvider                  │  │
+│  │                     │  │                               │  │
+│  │  Buffer: [0,1,2,3,4]│  │ setTotalChapters()           │  │
+│  │  Cache:  Map<Int,   │  │ assembleWindow()             │  │
+│  │          WindowData>│  │                               │  │
+│  └─────────────────────┘  └──────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
 ## 2025-11-29 Update - Debug Logging & Validation
 
 - **Targeted debug logging**: Added `[PAGINATION_DEBUG]` tagged logs at key lifecycle points:
@@ -137,8 +183,9 @@ This PR provides the **foundation** for sliding window pagination but does **not
 The following components are **required** for a complete, user-facing implementation:
 
 ### 1. ViewModel Integration
-- [ ] Refactor `ReaderViewModel` to support both pagination modes
-- [ ] Initialize `ContinuousPaginator` based on `paginationMode`
+- [x] Refactor `ReaderViewModel` to support both pagination modes *(completed in PR #215 and this update)*
+- [x] Initialize `ContinuousPaginator` based on `paginationMode` *(completed)*
+- [x] Add WindowBufferManager integration for two-phase buffer lifecycle *(completed 2025-12-01)*
 - [ ] Update page state flows for global indices
 - [ ] Implement repagination on font size changes
 - [ ] Add position preservation logic
@@ -157,7 +204,7 @@ The following components are **required** for a complete, user-facing implementa
 - [ ] Handle dynamic fragment creation/destruction
 
 ### 4. Fragment Modifications
-- [ ] Extend `ReaderPageFragment` for continuous mode
+- [x] Extend `ReaderPageFragment` for continuous mode *(partial - buffer shift calls added)*
 - [ ] Support dynamic chapter loading in fragments
 - [ ] Handle WebView streaming for chapter boundaries
 
