@@ -111,8 +111,12 @@ class ReaderPageFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         resolvePageLocation()
-        com.rifters.riftedreader.util.AppLogger.event("ReaderPageFragment", "onViewCreated for windowIndex $windowIndex", "ui/webview/lifecycle")
-        
+        com.rifters.riftedreader.util.AppLogger.event(
+            "ReaderPageFragment",
+            "onViewCreated for windowIndex $windowIndex",
+            "ui/webview/lifecycle"
+        )
+
         // Set up WebViewAssetLoader for serving cached EPUB images
         // This allows images to load via virtual HTTPS domain instead of blocked file:// URLs
         val imageCacheRoot = readerViewModel.getImageCacheRoot()
@@ -124,13 +128,13 @@ class ReaderPageFragment : Fragment() {
             )
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(requireContext()))
             .build()
-        
+
         // Log asset loader initialization for diagnostics
         com.rifters.riftedreader.util.AppLogger.d(
             "ReaderPageFragment",
             "[ASSET_LOADER_INIT] root=${imageCacheRoot.absolutePath} domain=${EpubImageAssetHelper.ASSET_HOST} prefix=${EpubImageAssetHelper.EPUB_IMAGES_PATH}"
         )
-        
+
         // Configure WebView for EPUB rendering with column-based layout support
         binding.pageWebView.apply {
             settings.javaScriptEnabled = true
@@ -144,13 +148,13 @@ class ReaderPageFragment : Fragment() {
             settings.databaseEnabled = true
             settings.allowFileAccess = false
             settings.allowContentAccess = false
-            
+
             // Add JavaScript interface for TTS communication
             addJavascriptInterface(TtsWebBridge(), "AndroidTtsBridge")
-            
+
             // Add JavaScript interface for pagination callbacks
             addJavascriptInterface(PaginationBridge(), "AndroidBridge")
-            
+
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(
                     view: WebView?,
@@ -908,118 +912,108 @@ class ReaderPageFragment : Fragment() {
     }
 
     private fun renderBaseContent() {
-        if (_binding == null) return
-        val html = latestPageHtml
-        
-        // [PAGINATION_DEBUG] Log render request details
-        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
-            "[PAGINATION_DEBUG] renderBaseContent called: windowIndex=$windowIndex, " +
-            "hasHtml=${!html.isNullOrBlank()}, htmlLength=${html?.length ?: 0}, " +
-            "paginationMode=${readerViewModel.paginationMode}"
-        )
-        
-        if (!html.isNullOrBlank()) {
-            // Use WebView for rich HTML content (EPUB)
-            binding.pageWebView.visibility = View.VISIBLE
-            binding.pageTextView.visibility = View.GONE
-            
-            val settings = readerViewModel.readerSettings.value
-            val palette = ReaderThemePaletteResolver.resolve(requireContext(), settings.theme)
-            
-            // In continuous mode with streaming enabled, use window HTML
-            // Otherwise use the single chapter HTML as before
-            viewLifecycleOwner.lifecycleScope.launch {
-                try {
-                    val contentHtml = if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
-                        // Get window HTML containing multiple chapters
-                        // windowIndex is the RecyclerView position, directly used as window index
-                        val windowPayload = readerViewModel.getWindowHtml(windowIndex)
-                        if (windowPayload != null) {
-                            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
-                                "[PAGINATION_DEBUG] Using window HTML for windowIndex=$windowIndex: window=${windowPayload.windowIndex}, " +
-                                "firstChapter=${windowPayload.chapterIndex} (${windowPayload.windowSize} chapters per window, totalChapters=${windowPayload.totalChapters}), " +
-                                "htmlLength=${windowPayload.html.length}"
-                            )
-                            windowPayload.html
-                        } else {
-                            com.rifters.riftedreader.util.AppLogger.w("ReaderPageFragment", "[PAGINATION_DEBUG] Failed to get window HTML for windowIndex=$windowIndex, falling back to single chapter")
-                            html
-                        }
-                    } else {
-                        // Chapter-based mode: use single chapter HTML as before
-                        // In this mode, windowIndex equals chapter index
-                        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
-                            "[PAGINATION_DEBUG] Using chapter HTML for chapterIndex=$windowIndex, htmlLength=${html.length}"
-                        )
-                        html
-                    }
-                    
-                    // Wrap HTML with proper styling using ReaderHtmlWrapper
-                    val config = com.rifters.riftedreader.domain.reader.ReaderHtmlConfig(
-                        textSizePx = settings.textSizeSp,
-                        lineHeightMultiplier = settings.lineHeightMultiplier,
-                        palette = palette,
-                        enableDiagnostics = settings.paginationDiagnosticsEnabled
+    if (_binding == null) return
+
+    val mode = readerViewModel.paginationMode
+
+    com.rifters.riftedreader.util.AppLogger.d(
+        "ReaderPageFragment",
+        "[PAGINATION_DEBUG] renderBaseContent called: windowIndex=$windowIndex, " +
+            "hasHtml=${!latestPageHtml.isNullOrBlank()}, htmlLength=${latestPageHtml?.length ?: 0}, " +
+            "paginationMode=$mode"
+    )
+
+    if (mode == PaginationMode.CONTINUOUS) {
+        // CONTINUOUS: always drive from window HTML, not latestPageHtml
+        binding.pageWebView.visibility = View.VISIBLE
+        binding.pageTextView.visibility = View.GONE
+
+        val settings = readerViewModel.readerSettings.value
+        val palette = ReaderThemePaletteResolver.resolve(requireContext(), settings.theme)
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val windowPayload = readerViewModel.getWindowHtml(windowIndex)
+                if (windowPayload == null) {
+                    com.rifters.riftedreader.util.AppLogger.w(
+                        "ReaderPageFragment",
+                        "[PAGINATION_DEBUG] getWindowHtml returned null for windowIndex=$windowIndex; loading empty page"
                     )
-                    val wrappedHtml = com.rifters.riftedreader.domain.reader.ReaderHtmlWrapper.wrap(contentHtml, config)
-                    
-                    // [PAGINATION_DEBUG] Log wrapped HTML size
-                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
-                        "[PAGINATION_DEBUG] Wrapped HTML prepared: windowIndex=$windowIndex, wrappedLength=${wrappedHtml.length}, diagnostics=${settings.paginationDiagnosticsEnabled}"
-                    )
-                    
-                    // Log the wrapped HTML for debugging
-                    val chapterIndex = resolvedChapterIndex ?: windowIndex
-                    readerViewModel.bookId?.let { bookId ->
-                        com.rifters.riftedreader.util.HtmlDebugLogger.logWrappedHtml(
-                            bookId = bookId,
-                            chapterIndex = chapterIndex,
-                            wrappedHtml = wrappedHtml,
-                            metadata = mapOf(
-                                "windowIndex" to windowIndex.toString(),
-                                "textSize" to settings.textSizeSp.toString(),
-                                "lineHeight" to settings.lineHeightMultiplier.toString(),
-                                "theme" to settings.theme.name,
-                                "paginationMode" to readerViewModel.paginationMode.name,
-                                "diagnosticsEnabled" to settings.paginationDiagnosticsEnabled.toString()
-                            )
-                        )
-                    }
-                    
-                    // Bug Fix 2: Reset isWebViewReady flag when loading new content to prevent race conditions
-                    isWebViewReady = false
-                    // Reset paginator initialization flag - will be set to true in onPaginationReady callback
-                    isPaginatorInitialized = false
-                    
-                    // MEASUREMENT DISCIPLINE: Use doOnLayout to defer HTML loading until WebView is measured
-                    ensureMeasuredAndLoadHtml(wrappedHtml)
-                    
-                } catch (e: Exception) {
-                    com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "[PAGINATION_DEBUG] Error loading window HTML for windowIndex=$windowIndex, using fallback", e)
-                    // Fallback to old method if there's any error
-                    val wrappedHtml = wrapHtmlForWebView(html, settings.textSizeSp, settings.lineHeightMultiplier, palette)
-                    isWebViewReady = false
-                    isPaginatorInitialized = false
-                    val baseUrl = "https://${EpubImageAssetHelper.ASSET_HOST}/"
                     binding.pageWebView.loadDataWithBaseURL(
-                        baseUrl, 
-                        wrappedHtml, 
-                        "text/html", 
-                        "UTF-8", 
+                        "https://appassets.androidplatform.net/",
+                        "<html><body></body></html>",
+                        "text/html",
+                        "UTF-8",
                         null
                     )
+                    return@launch
                 }
+
+                val contentHtml = windowPayload.html
+
+                val config = com.rifters.riftedreader.domain.reader.ReaderHtmlConfig(
+                    textSizePx = settings.textSizeSp,
+                    lineHeightMultiplier = settings.lineHeightMultiplier,
+                    palette = palette,
+                    enableDiagnostics = settings.paginationDiagnosticsEnabled
+                )
+                val wrappedHtml =
+                    com.rifters.riftedreader.domain.reader.ReaderHtmlWrapper.wrap(contentHtml, config)
+
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "[PAGINATION_DEBUG] Continuous mode: loading window HTML for windowIndex=$windowIndex, " +
+                        "wrappedLength=${wrappedHtml.length}"
+                )
+
+                // Reset flags before loading
+                isWebViewReady = false
+                isPaginatorInitialized = false
+
+                ensureMeasuredAndLoadHtml(wrappedHtml)
+            } catch (e: Exception) {
+                com.rifters.riftedreader.util.AppLogger.e(
+                    "ReaderPageFragment",
+                    "[PAGINATION_DEBUG] Error loading window HTML for windowIndex=$windowIndex",
+                    e
+                )
             }
-        } else {
-            // Use TextView for plain text content (TXT)
-            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
-                "[PAGINATION_DEBUG] Using TextView for plain text: windowIndex=$windowIndex, textLength=${latestPageText.length}"
-            )
-            binding.pageWebView.visibility = View.GONE
-            binding.pageTextView.visibility = View.VISIBLE
-            binding.pageTextView.text = latestPageText
         }
+
+        return
     }
+
+    // CHAPTER_BASED mode: use original chapter-based logic
+    val html = latestPageHtml
+    if (!html.isNullOrBlank()) {
+        // Use WebView for rich HTML content (EPUB)
+        binding.pageWebView.visibility = View.VISIBLE
+        binding.pageTextView.visibility = View.GONE
+
+        val settings = readerViewModel.readerSettings.value
+        val palette = ReaderThemePaletteResolver.resolve(requireContext(), settings.theme)
+
+        // Wrap HTML with proper styling using ReaderHtmlWrapper
+        val config = com.rifters.riftedreader.domain.reader.ReaderHtmlConfig(
+            textSizePx = settings.textSizeSp,
+            lineHeightMultiplier = settings.lineHeightMultiplier,
+            palette = palette,
+            enableDiagnostics = settings.paginationDiagnosticsEnabled
+        )
+        val wrappedHtml =
+            com.rifters.riftedreader.domain.reader.ReaderHtmlWrapper.wrap(html, config)
+
+        isWebViewReady = false
+        isPaginatorInitialized = false
+
+        ensureMeasuredAndLoadHtml(wrappedHtml)
+    } else {
+        // Plain text fallback
+        binding.pageWebView.visibility = View.GONE
+        binding.pageTextView.visibility = View.VISIBLE
+        binding.pageTextView.text = latestPageText
+    }
+}
     
     /**
      * Ensure WebView is measured (width/height > 0) before loading HTML.
