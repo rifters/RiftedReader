@@ -1,15 +1,30 @@
 package com.rifters.riftedreader.domain.pagination
 
 /**
- * Manages chapter-to-window index mapping for sliding-window pagination.
+ * Stateless helper for chapter-to-window index mapping in sliding-window pagination.
  * 
+ * **Ownership Model:**
+ * This class provides **deterministic, pure-function calculations only**. It does NOT:
+ * - Track which windows are currently active or buffered
+ * - Maintain any runtime state
+ * - Own window lifecycle or loading
+ * 
+ * For runtime window management (which windows exist, caching, etc.), use
+ * `WindowBufferManager` as the authoritative source.
+ * 
+ * **Usage:**
  * A sliding window groups multiple chapters together for efficient memory management
  * and smooth navigation. For example, with windowSize=5:
  * - Window 0: chapters 0-4
  * - Window 1: chapters 5-9
  * - Window 2: chapters 10-14
  * 
+ * All methods are pure functions that compute mappings based on input parameters.
+ * 
  * @param windowSize Number of chapters per window (default: 5)
+ * 
+ * @see com.rifters.riftedreader.pagination.WindowBufferManager For runtime window management
+ * @see SlidingWindowPaginator Similar helper with additional window range utilities
  */
 class SlidingWindowManager(private val windowSize: Int = DEFAULT_WINDOW_SIZE) {
     

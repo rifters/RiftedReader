@@ -5,6 +5,21 @@ import com.rifters.riftedreader.util.AppLogger
 /**
  * Deterministic sliding-window paginator for chapter-to-window grouping.
  * 
+ * **Ownership Model:**
+ * This class is a **stateless helper with memoization**. It does NOT:
+ * - Track which windows are currently active or buffered
+ * - Own window lifecycle, loading, or caching
+ * - Maintain runtime state about the reading session
+ * 
+ * It DOES provide:
+ * - Deterministic chapter-to-window index mapping (pure math)
+ * - Cached window count after `recomputeWindows()` (memoization for efficiency)
+ * - Window range calculations
+ * 
+ * For runtime window management (which windows exist, caching, etc.), use
+ * `WindowBufferManager` as the authoritative source.
+ * 
+ * **Usage:**
  * Provides stable, predictable mapping between chapters and windows to prevent
  * race conditions in RecyclerView pagination. Windows are computed once
  * and remain stable until explicitly recomputed.
@@ -22,6 +37,9 @@ import com.rifters.riftedreader.util.AppLogger
  * - Window 23: chapters 115-119 (5 chapters)
  * 
  * @param chaptersPerWindow Number of chapters per window (default: 5)
+ * 
+ * @see WindowBufferManager For runtime window management (authoritative owner)
+ * @see com.rifters.riftedreader.domain.pagination.SlidingWindowManager Similar helper in domain package
  */
 class SlidingWindowPaginator(
     private var chaptersPerWindow: Int = DEFAULT_CHAPTERS_PER_WINDOW

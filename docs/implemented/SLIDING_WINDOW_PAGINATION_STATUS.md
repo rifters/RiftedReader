@@ -1,5 +1,46 @@
 # Sliding Window Pagination - Implementation Status
 
+## 2025-12-02 Update - Consolidated Ownership Model
+
+### Ownership Model Refactor
+
+The window management architecture has been refactored to consolidate ownership and eliminate overlapping responsibilities:
+
+#### **Single Source of Truth:**
+
+| Concept | Owner | Non-owners |
+|---------|-------|------------|
+| Windows & buffer state | `WindowBufferManager` | ~~StableWindowManager~~ (deprecated) |
+| In-page pagination (currentPage, pageCount) | `inpage_paginator.js` | Android (queries JS) |
+| Window/chapter math | `SlidingWindowPaginator` + `SlidingWindowManager` (stateless helpers) | - |
+| HTML assembly | `DefaultWindowAssembler` + `ContinuousPaginatorWindowHtmlProvider` | - |
+| UI wiring & persistence | `ReaderViewModel` (orchestrator) | - |
+
+#### **Key Changes:**
+
+1. **`WindowBufferManager` is now the authoritative runtime window manager:**
+   - Added `StateFlow<WindowData?>` for `activeWindow` - UI can observe window state
+   - Added `StateFlow<Position?>` for `currentPosition` - UI can observe reading position  
+   - Added `updatePosition()` method for JS page change callbacks
+   - Added `isAtWindowBoundary()` and `hasNextWindow()`/`hasPreviousWindow()` helpers
+   - Added `PreloadConfig` for configurable progress-based preloading thresholds
+
+2. **`StableWindowManager` is now deprecated:**
+   - Class marked with `@Deprecated` annotation
+   - Documentation updated with migration guide pointing to `WindowBufferManager`
+   - Types (`WindowSnapshot`, `WindowPosition`, etc.) remain valid and used
+
+3. **Window math helpers clarified as stateless:**
+   - `SlidingWindowManager` documentation updated to clarify it's a pure-function helper
+   - `SlidingWindowPaginator` documentation updated to clarify its memoization is not authoritative state
+
+4. **`ReaderViewModel` responsibilities clarified:**
+   - Thin coordinator that delegates to appropriate owners
+   - Does not maintain its own window tracking logic
+   - Routes buffer/window decisions through `WindowBufferManager`
+
+---
+
 ## 2025-12-01 Update - WindowBufferManager Integration
 
 - **WindowBufferManager integration complete**: The two-phase, five-window buffer lifecycle manager is now wired into the ReaderViewModel:
