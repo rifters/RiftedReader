@@ -310,32 +310,66 @@ class ReaderPageFragment : Fragment() {
             setupWebViewSwipeHandling()
         }
         
-        viewLifecycleOwner.lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                readerViewModel.observePageContent(pageIndex).collect { page ->
-                    if (page == PageContent.EMPTY && readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
-                        return@collect
+        // Content loading strategy differs by pagination mode:
+        // - CONTINUOUS mode: Content is loaded via getWindowHtml(windowIndex) in renderBaseContent()
+        //   The observePageContent() cache is keyed by global page index, not window index,
+        //   so we skip it and trigger render directly.
+        // - CHAPTER_BASED mode: Content is loaded via observePageContent(chapterIndex)
+        //   where pageIndex == chapterIndex (1:1 mapping)
+        if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            // CONTINUOUS mode: Trigger initial render once when fragment is created
+            // Content will be fetched via getWindowHtml(windowIndex) in renderBaseContent()
+            // 
+            // Note on position restoration: In CONTINUOUS mode, we preserve the in-page position
+            // (targetInPageIndex) across window navigation. This allows users to return to
+            // the exact in-page position when navigating back to a previously viewed window.
+            // In CHAPTER_BASED mode, each chapter always starts at page 0.
+            //
+            // We use repeatOnLifecycle with a guard condition to ensure the render
+            // only happens once per fragment creation, not on every STARTED transition.
+            viewLifecycleOwner.lifecycleScope.launch {
+                // Wait for STARTED state before rendering (aligns with other observers)
+                repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    // Only render once - this block will be skipped on subsequent STARTED transitions
+                    // because latestPageHtml will already be populated
+                    if (latestPageHtml.isNullOrBlank() && latestPageText.isBlank()) {
+                        // Reset state for new window
+                        ttsChunks = emptyList()
+                        currentInPageIndex = targetInPageIndex
+                        pendingInitialInPageIndex = targetInPageIndex.takeIf { it > 0 }
+                        isPaginatorInitialized = false
+                        
+                        // Render content - getWindowHtml() will be called inside renderBaseContent()
+                        if (highlightedRange == null) {
+                            renderBaseContent()
+                        } else {
+                            applyHighlight(highlightedRange)
+                        }
                     }
-                    latestPageText = page.text
-                    latestPageHtml = page.html
+                }
+            }
+        } else {
+            // CHAPTER_BASED mode: Subscribe to page content cache
+            // In this mode, pageIndex == chapterIndex (1:1 mapping)
+            // Each chapter always starts at in-page index 0 (no position restoration across chapters)
+            viewLifecycleOwner.lifecycleScope.launch {
+                repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    readerViewModel.observePageContent(pageIndex).collect { page ->
+                        latestPageText = page.text
+                        latestPageHtml = page.html
 
-                    // Clear chunks when content changes - they'll be rebuilt by prepareTtsChunks
-                    ttsChunks = emptyList()
-                    // Reset in-page position for new content
-                    currentInPageIndex = if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
-                        targetInPageIndex
-                    } else {
-                        0
-                    }
-                    pendingInitialInPageIndex = targetInPageIndex.takeIf {
-                        readerViewModel.paginationMode == PaginationMode.CONTINUOUS && it > 0
-                    }
-                    // Reset paginator initialization flag for new chapter content
-                    isPaginatorInitialized = false
-                    if (highlightedRange == null) {
-                        renderBaseContent()
-                    } else {
-                        applyHighlight(highlightedRange)
+                        // Clear chunks when content changes - they'll be rebuilt by prepareTtsChunks
+                        ttsChunks = emptyList()
+                        // Reset in-page position for new content (chapters always start at page 0)
+                        currentInPageIndex = 0
+                        pendingInitialInPageIndex = null
+                        // Reset paginator initialization flag for new chapter content
+                        isPaginatorInitialized = false
+                        if (highlightedRange == null) {
+                            renderBaseContent()
+                        } else {
+                            applyHighlight(highlightedRange)
+                        }
                     }
                 }
             }
