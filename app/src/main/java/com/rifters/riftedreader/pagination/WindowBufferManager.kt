@@ -70,6 +70,9 @@ class WindowBufferManager(
         
         /** Center position in the buffer (0-indexed) */
         const val CENTER_POS = 2
+        
+        /** Threshold for considering progress at the forward boundary (nearly at end) */
+        const val FORWARD_BOUNDARY_THRESHOLD = 0.99
     }
     
     /**
@@ -493,8 +496,9 @@ class WindowBufferManager(
         totalPagesInWindow: Int
     ) {
         bufferMutex.withLock {
+            // Use explicit double division to ensure floating-point precision
             val progress = if (totalPagesInWindow > 0) {
-                (inPageIndex.toDouble() / totalPagesInWindow).coerceIn(0.0, 1.0)
+                (inPageIndex.toDouble() / totalPagesInWindow.toDouble()).coerceIn(0.0, 1.0)
             } else {
                 0.0
             }
@@ -514,12 +518,12 @@ class WindowBufferManager(
             // Check for preload triggers based on progress
             if (_phase.value == Phase.STEADY) {
                 if (position.shouldPreloadForward(preloadConfig.forwardThreshold)) {
-                    AppLogger.d(TAG, "[PAGINATION_DEBUG] Progress ${progress * 100}% >= " +
-                        "${preloadConfig.forwardThreshold * 100}% - forward preload may be needed")
+                    AppLogger.d(TAG, "[PAGINATION_DEBUG] Progress ${"%.1f".format(progress * 100)}% >= " +
+                        "${"%.1f".format(preloadConfig.forwardThreshold * 100)}% - forward preload may be needed")
                 }
                 if (position.shouldPreloadBackward(preloadConfig.backwardThreshold)) {
-                    AppLogger.d(TAG, "[PAGINATION_DEBUG] Progress ${progress * 100}% <= " +
-                        "${preloadConfig.backwardThreshold * 100}% - backward preload may be needed")
+                    AppLogger.d(TAG, "[PAGINATION_DEBUG] Progress ${"%.1f".format(progress * 100)}% <= " +
+                        "${"%.1f".format(preloadConfig.backwardThreshold * 100)}% - backward preload may be needed")
                 }
             }
         }
@@ -540,8 +544,8 @@ class WindowBufferManager(
         
         return when (direction) {
             NavigationDirection.FORWARD -> {
-                // At boundary if we're on the last page
-                position.progress >= 0.99 // Allow small tolerance
+                // At boundary if we're on the last page (nearly at end)
+                position.progress >= FORWARD_BOUNDARY_THRESHOLD
             }
             NavigationDirection.BACKWARD -> {
                 // At boundary if we're on the first page
