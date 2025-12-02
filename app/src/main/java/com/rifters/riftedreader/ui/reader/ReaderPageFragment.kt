@@ -1925,7 +1925,7 @@ class ReaderPageFragment : Fragment() {
      * 
      * @param isNext true for next/forward navigation, false for previous/backward
      * @param source Logging tag to identify the navigation source (e.g., "HARDWARE_KEY", "FLING", "SCROLL")
-     * @return true if navigation was handled (either in-page or edge handover), false if nothing could be done
+     * @return true if navigation was attempted (either in-page or edge handover), false if paginator not ready
      */
     private suspend fun handlePagedNavigation(isNext: Boolean, source: String): Boolean {
         // Safety check: paginator must be ready
@@ -1994,13 +1994,14 @@ class ReaderPageFragment : Fragment() {
                 "ERROR in $source navigation for window $pageIndex: ${e.message} [EDGE_AWARE_NAV_ERROR]",
                 e
             )
-            // Fallback: try activity navigation
+            // Fallback: try activity navigation as a best-effort recovery
+            // Return true since we attempted navigation (activity methods handle their own errors)
             if (isNext) {
                 navigateToNextWindow()
             } else {
                 navigateToPreviousWindowLastPage()
             }
-            return false
+            return true
         }
     }
     
