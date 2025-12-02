@@ -11,10 +11,7 @@ The JavaScript paginator (`inpage_paginator.js`) maintains a strict contract wit
 ### Single Canonical State
 
 ```javascript
-// inpage_paginator.js (line 87)
 let currentPage = 0;  // SINGLE source of truth for in-page position
-
-// inpage_paginator.js (lines 97-98)  
 let windowMode = 'CONSTRUCTION';  // 'CONSTRUCTION' or 'ACTIVE'
 ```
 

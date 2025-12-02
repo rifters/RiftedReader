@@ -39,7 +39,7 @@ import java.io.File
  * - Use `WindowBufferManager.currentPosition` for position tracking
  * - Use `WindowBufferManager.updatePosition()` for position updates from JS
  * 
- * The types defined in this package (`WindowSnapshot`, `WindowPosition`, `WindowState`,
+ * The types defined in the pagination package (`WindowSnapshot`, `WindowPosition`, `WindowState`,
  * `WindowChapterData`, `WindowPreloadConfig`, `WindowLoadState`) remain useful and are
  * not deprecated. They are used by both the legacy and current implementations.
  * 
