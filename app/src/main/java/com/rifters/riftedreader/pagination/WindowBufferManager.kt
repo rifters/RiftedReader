@@ -53,7 +53,7 @@ import java.util.concurrent.ConcurrentHashMap
  * @param coroutineScope Scope for launching preload coroutines
  * @param preloadConfig Configuration for preloading behavior (optional)
  * 
- * @see com.rifters.riftedreader.domain.pagination.StableWindowManager Conceptual ancestor (deprecated)
+ * @see com.rifters.riftedreader.domain.pagination.legacy.StableWindowManager Conceptual ancestor (deprecated)
  */
 class WindowBufferManager(
     private val windowAssembler: WindowAssembler,

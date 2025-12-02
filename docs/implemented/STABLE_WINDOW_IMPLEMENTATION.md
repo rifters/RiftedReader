@@ -2,9 +2,49 @@
 
 **Status**: ✅ **Core Implementation Complete**
 
-**Date**: 2025-11-23
+**Date**: 2025-11-23 | **Updated**: 2025-12-02
 
-## What Was Implemented
+---
+
+## Current Ownership Model (2025-12)
+
+> **IMPORTANT**: The runtime window management has evolved since the original implementation.
+
+### Active Components
+
+| Component | Package | Responsibility |
+|-----------|---------|----------------|
+| **`WindowBufferManager`** | `com.rifters.riftedreader.pagination` | Authoritative runtime window manager with 5-window buffer and two-phase lifecycle (STARTUP → STEADY) |
+| **`SlidingWindowPaginator`** | `com.rifters.riftedreader.pagination` | Deterministic window/chapter mapping calculations |
+| **`inpage_paginator.js`** | `assets/` | In-page horizontal pagination with CSS columns; owns `currentPage` and `windowMode` |
+
+### Deprecated Components
+
+| Component | Location | Status |
+|-----------|----------|--------|
+| **`StableWindowManager`** | `domain/pagination/legacy/` | Reference implementation only; not used in production |
+
+### ReaderViewModel Integration
+
+The `ReaderViewModel` integrates with `WindowBufferManager` through these methods:
+- `onWindowBecameVisible(windowIndex)` - Called when RecyclerView scroll settles on a window
+- `maybeShiftForward(currentInPageIndex, totalPagesInWindow)` - Triggers buffer shift when approaching window end  
+- `maybeShiftBackward(currentInPageIndex)` - Triggers buffer shift when approaching window start
+- `getCachedWindowData(windowIndex)` - Retrieves cached window HTML from buffer
+
+### JS→Android Bridge Contract
+
+The JavaScript paginator communicates with Android through `AndroidBridge` callbacks:
+- `onPageChanged(pageIndex)` - After any `goToPage()` call
+- `onPaginationReady(pageCount)` - After initial layout or reflow
+- `onWindowFinalized(pageCount)` - After `finalizeWindow()` locks down content
+- `onBoundaryReached(direction, currentPage, pageCount)` - At window boundaries
+
+**Invariant**: The JS `currentPage` variable is the single canonical source for in-page position.
+
+---
+
+## What Was Implemented (Original)
 
 This implementation provides the foundational architecture for a stable, immutable sliding window reading experience.
 

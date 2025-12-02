@@ -1,4 +1,16 @@
-package com.rifters.riftedreader.domain.pagination
+package com.rifters.riftedreader.domain.pagination.legacy
+
+import com.rifters.riftedreader.domain.pagination.ChapterIndex
+import com.rifters.riftedreader.domain.pagination.InPageIndex
+import com.rifters.riftedreader.domain.pagination.SlidingWindowManager
+import com.rifters.riftedreader.domain.pagination.WindowChapterData
+import com.rifters.riftedreader.domain.pagination.WindowHtmlProvider
+import com.rifters.riftedreader.domain.pagination.WindowIndex
+import com.rifters.riftedreader.domain.pagination.WindowLoadState
+import com.rifters.riftedreader.domain.pagination.WindowPosition
+import com.rifters.riftedreader.domain.pagination.WindowPreloadConfig
+import com.rifters.riftedreader.domain.pagination.WindowSnapshot
+import com.rifters.riftedreader.domain.pagination.WindowState
 
 import com.rifters.riftedreader.domain.parser.BookParser
 import com.rifters.riftedreader.domain.parser.PageContent
@@ -60,7 +72,8 @@ import java.io.File
     replaceWith = ReplaceWith(
         "WindowBufferManager",
         "com.rifters.riftedreader.pagination.WindowBufferManager"
-    )
+    ),
+    level = DeprecationLevel.WARNING
 )
 class StableWindowManager(
     private val bookFile: File,

@@ -1,5 +1,18 @@
 # Stable Sliding Window Reading Model
 
+> **Current Implementation Status (2025-12)**
+> 
+> This document describes the stable sliding window reading model design. The implementation details below have evolved:
+> 
+> | Component | Role | Status |
+> |-----------|------|--------|
+> | **`WindowBufferManager`** | Authoritative runtime window manager for continuous pagination | ✅ Active |
+> | **`inpage_paginator.js`** | Owns in-page state (`currentPage`, `windowMode`) and horizontal column pagination | ✅ Active |
+> | **`ReaderViewModel`** | Wires into `WindowBufferManager` via `onWindowBecameVisible()`, `maybeShiftForward()`, `maybeShiftBackward()` | ✅ Active |
+> | **`StableWindowManager`** | Original design reference; moved to `domain/pagination/legacy/` | ⚠️ Deprecated |
+> 
+> The `StableWindowManager` class is now located in the `legacy` package and is kept only for historical reference. All runtime window management is handled by `WindowBufferManager`.
+
 ## Overview
 
 The Stable Sliding Window Reading Model provides an immutable, predictable reading experience while maintaining efficient memory management through background window preloading. This document describes the architecture, principles, and integration points.

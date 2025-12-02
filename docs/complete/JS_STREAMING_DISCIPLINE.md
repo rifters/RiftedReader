@@ -4,6 +4,52 @@
 
 This document defines the strict discipline for JavaScript streaming operations (append/prepend) in the stable sliding window model. The key principle: **streaming operations are ONLY allowed during background window construction, NEVER during active reading**.
 
+## JS→Android Bridge Contract
+
+The JavaScript paginator (`inpage_paginator.js`) maintains a strict contract with the Android layer:
+
+### Single Canonical State
+
+```javascript
+// inpage_paginator.js (line 87)
+let currentPage = 0;  // SINGLE source of truth for in-page position
+
+// inpage_paginator.js (lines 97-98)  
+let windowMode = 'CONSTRUCTION';  // 'CONSTRUCTION' or 'ACTIVE'
+```
+
+**Invariant**: `currentPage` is the single canonical source for the current page within a window. All navigation updates this variable before scrolling.
+
+### Required Callbacks
+
+After navigation or state changes, the JS paginator calls Android through `AndroidBridge`:
+
+| Callback | Trigger | Purpose |
+|----------|---------|---------|
+| `onPageChanged(pageIndex)` | After `goToPage()` completes | Sync position to Android |
+| `onPaginationReady(pageCount)` | After init or reflow | Report total pages available |
+| `onWindowFinalized(pageCount)` | After `finalizeWindow()` | Signal window is immutable |
+| `onBoundaryReached(direction, page, total)` | At first/last page | Trigger window transition |
+
+### Implementation Reference
+
+The following pattern is used in `goToPage()` within `inpage_paginator.js`:
+
+```javascript
+// goToPage updates currentPage BEFORE scrolling
+const prevPage = currentPage;
+currentPage = safeIndex;
+
+// Then notifies Android
+if (window.AndroidBridge && window.AndroidBridge.onPageChanged) {
+    window.AndroidBridge.onPageChanged(safeIndex);
+}
+```
+
+*Note: See `inpage_paginator.js` for the canonical implementation. The pattern above illustrates the invariant that `currentPage` is updated synchronously before notification.*
+
+---
+
 ## The Problem
 
 In previous implementations, JavaScript code could append or prepend chapters to the active window during reading. This caused:
