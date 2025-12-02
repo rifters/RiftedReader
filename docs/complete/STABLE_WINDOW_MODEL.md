@@ -102,51 +102,65 @@ data class WindowPosition(
 
 ### Window Manager
 
-The `StableWindowManager` class orchestrates window lifecycle:
+> **Note:** The original design specified `StableWindowManager`, but the actual runtime implementation
+> is `WindowBufferManager`. The concepts and principles described here are implemented by
+> `WindowBufferManager` with some variations (5-window buffer instead of 3-window, two-phase lifecycle).
+
+The `WindowBufferManager` class orchestrates window lifecycle:
 
 ```kotlin
-class StableWindowManager(
-    private val bookFile: File,
-    private val parser: BookParser,
-    private val windowHtmlProvider: WindowHtmlProvider,
-    private val config: WindowPreloadConfig
+class WindowBufferManager(
+    private val windowAssembler: WindowAssembler,
+    private val paginator: SlidingWindowPaginator,
+    private val coroutineScope: CoroutineScope,
+    private val preloadConfig: PreloadConfig = PreloadConfig()
 ) {
+    // Lifecycle phase (STARTUP → STEADY)
+    val phase: StateFlow<Phase>
+    
     // State flows for reactive UI updates
-    val prevWindow: StateFlow<WindowSnapshot?>
-    val activeWindow: StateFlow<WindowSnapshot?>
-    val nextWindow: StateFlow<WindowSnapshot?>
-    val currentPosition: StateFlow<WindowPosition?>
+    val activeWindow: StateFlow<WindowData?>
+    val currentPosition: StateFlow<Position?>
     
-    // Initialization
-    suspend fun initialize()
+    // Initialization - creates 5-window buffer
+    suspend fun initialize(startWindow: WindowIndex)
     
-    // Load initial window
-    suspend fun loadInitialWindow(
-        chapterIndex: ChapterIndex,
-        inPageIndex: InPageIndex = 0
-    ): WindowSnapshot
+    // Called when user enters a window (from RecyclerView scroll)
+    suspend fun onEnteredWindow(globalWindowIndex: WindowIndex)
     
-    // Update reading position (triggers preloading)
+    // Update reading position (from JS page changes)
     suspend fun updatePosition(
-        windowIndex: WindowIndex,
         chapterIndex: ChapterIndex,
-        inPageIndex: InPageIndex
+        inPageIndex: InPageIndex,
+        totalPagesInWindow: Int
     )
     
-    // Atomic window transitions
-    suspend fun navigateToNextWindow(): WindowSnapshot?
-    suspend fun navigateToPrevWindow(): WindowSnapshot?
+    // Buffer shift operations
+    suspend fun shiftForward(): Boolean
+    suspend fun shiftBackward(): Boolean
     
     // Boundary detection
-    suspend fun isAtWindowBoundary(direction: NavigationDirection): Boolean
+    fun isAtWindowBoundary(direction: NavigationDirection): Boolean
+    fun hasNextWindow(): Boolean
+    fun hasPreviousWindow(): Boolean
+    
+    // Cache access
+    fun getCachedWindow(windowIndex: WindowIndex): WindowData?
+    fun getBufferedWindows(): List<WindowIndex>
 }
 ```
+
+**Key differences from original StableWindowManager design:**
+- 5-window buffer instead of 3-window (prev/active/next)
+- Two-phase lifecycle (STARTUP → STEADY) for smoother initial load
+- `Position` data class includes progress percentage for preload triggers
+- Uses `WindowData` (simpler) instead of `WindowSnapshot` (richer)
 
 ## Integration Points
 
 ### 1. ReaderViewModel Integration
 
-The `ReaderViewModel` should integrate `StableWindowManager` for continuous pagination mode:
+The `ReaderViewModel` integrates `WindowBufferManager` for continuous pagination mode:
 
 ```kotlin
 class ReaderViewModel(/* ... */) : ViewModel() {

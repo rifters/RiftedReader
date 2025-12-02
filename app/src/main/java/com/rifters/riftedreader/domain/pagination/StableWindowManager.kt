@@ -13,6 +13,31 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
+ * **DEPRECATED**: This class is superseded by `WindowBufferManager`.
+ * 
+ * StableWindowManager was the original design for managing stable sliding windows,
+ * but the actual runtime implementation is now handled by `WindowBufferManager` which:
+ * - Implements a 5-window buffer with two-phase lifecycle (STARTUP, STEADY)
+ * - Provides StateFlow-based window and position observation
+ * - Integrates with `SlidingWindowPaginator` for deterministic window computations
+ * 
+ * **Migration Guide:**
+ * - Replace `StableWindowManager` usage with `WindowBufferManager`
+ * - Use `WindowBufferManager.activeWindow` for active window state
+ * - Use `WindowBufferManager.currentPosition` for position tracking
+ * - Use `WindowBufferManager.updatePosition()` for position updates from JS
+ * 
+ * The types defined in this package (`WindowSnapshot`, `WindowPosition`, `WindowState`,
+ * `WindowChapterData`, `WindowPreloadConfig`, `WindowLoadState`) remain useful and are
+ * not deprecated. They are used by both the legacy and current implementations.
+ * 
+ * @see com.rifters.riftedreader.pagination.WindowBufferManager The authoritative runtime window manager
+ * @see com.rifters.riftedreader.pagination.SlidingWindowPaginator For window/chapter mapping
+ * 
+ * ---
+ * 
+ * **Original Documentation (for reference):**
+ * 
  * Manages stable sliding windows for the reading experience.
  * 
  * This manager enforces the following principles:
@@ -30,6 +55,13 @@ import java.io.File
  * @property windowHtmlProvider Provider for generating window HTML
  * @property config Configuration for preloading behavior
  */
+@Deprecated(
+    message = "Use WindowBufferManager instead. This class is kept for reference but is no longer the authoritative runtime window manager.",
+    replaceWith = ReplaceWith(
+        "WindowBufferManager",
+        "com.rifters.riftedreader.pagination.WindowBufferManager"
+    )
+)
 class StableWindowManager(
     private val bookFile: File,
     private val parser: BookParser,

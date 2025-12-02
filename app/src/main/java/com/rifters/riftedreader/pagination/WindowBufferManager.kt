@@ -1,5 +1,7 @@
 package com.rifters.riftedreader.pagination
 
+import com.rifters.riftedreader.domain.pagination.ChapterIndex
+import com.rifters.riftedreader.domain.pagination.InPageIndex
 import com.rifters.riftedreader.domain.pagination.WindowIndex
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +18,8 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Two-phase, five-window buffer lifecycle manager for sliding-window pagination.
  * 
+ * **This is the authoritative runtime window manager for continuous pagination mode.**
+ * 
  * This manager implements the buffer lifecycle as shown in the reference diagram:
  * 
  * ## Phase 1: STARTUP
@@ -29,6 +33,17 @@ import java.util.concurrent.ConcurrentHashMap
  * - On forward progression: drop the leftmost window and append a new rightmost window
  * - On backward progression: drop the rightmost window and prepend a new leftmost window
  * 
+ * ## Ownership Model
+ * 
+ * WindowBufferManager is the **single source of truth** for:
+ * - Which windows exist and are cached (via windowCache)
+ * - The active window state (via activeWindow StateFlow)
+ * - The current reading position (via currentPosition StateFlow)
+ * - Buffer phase and lifecycle transitions
+ * 
+ * Other components should rely on this manager's StateFlows for window state, not maintain
+ * their own window tracking logic.
+ * 
  * ## Thread Safety
  * Uses Mutex for buffer operations and ConcurrentHashMap for cache access.
  * StateFlow for phase observation.
@@ -36,11 +51,15 @@ import java.util.concurrent.ConcurrentHashMap
  * @param windowAssembler The WindowAssembler used to create window HTML content
  * @param paginator The SlidingWindowPaginator for window count and range calculations
  * @param coroutineScope Scope for launching preload coroutines
+ * @param preloadConfig Configuration for preloading behavior (optional)
+ * 
+ * @see com.rifters.riftedreader.domain.pagination.StableWindowManager Conceptual ancestor (deprecated)
  */
 class WindowBufferManager(
     private val windowAssembler: WindowAssembler,
     private val paginator: SlidingWindowPaginator,
-    private val coroutineScope: CoroutineScope
+    private val coroutineScope: CoroutineScope,
+    private val preloadConfig: PreloadConfig = PreloadConfig()
 ) {
     
     companion object {
@@ -51,6 +70,9 @@ class WindowBufferManager(
         
         /** Center position in the buffer (0-indexed) */
         const val CENTER_POS = 2
+        
+        /** Threshold for considering progress at the forward boundary (nearly at end) */
+        const val FORWARD_BOUNDARY_THRESHOLD = 0.99
     }
     
     /**
@@ -64,9 +86,89 @@ class WindowBufferManager(
         STEADY
     }
     
+    /**
+     * Configuration for window preloading behavior.
+     * 
+     * @property forwardThreshold Progress (0.0-1.0) at which to trigger forward preloading
+     * @property backwardThreshold Progress (0.0-1.0) at which to trigger backward preloading
+     */
+    data class PreloadConfig(
+        val forwardThreshold: Double = 0.75,
+        val backwardThreshold: Double = 0.25
+    ) {
+        init {
+            require(forwardThreshold in 0.0..1.0) { 
+                "forwardThreshold must be between 0.0 and 1.0, got: $forwardThreshold" 
+            }
+            require(backwardThreshold in 0.0..1.0) { 
+                "backwardThreshold must be between 0.0 and 1.0, got: $backwardThreshold" 
+            }
+        }
+    }
+    
+    /**
+     * Represents the user's current position within a window.
+     * 
+     * This is the authoritative position state - UI components should observe
+     * this rather than maintaining their own position tracking.
+     * 
+     * @property windowIndex The current window index
+     * @property chapterIndex The current chapter index within the window
+     * @property inPageIndex The current page index within the chapter (0-based)
+     * @property progress Progress through the current window (0.0-1.0)
+     */
+    data class Position(
+        val windowIndex: WindowIndex,
+        val chapterIndex: ChapterIndex,
+        val inPageIndex: InPageIndex,
+        val progress: Double
+    ) {
+        init {
+            require(progress in 0.0..1.0) {
+                "progress must be between 0.0 and 1.0, got: $progress"
+            }
+        }
+        
+        /**
+         * Check if forward preload should be triggered based on progress.
+         */
+        fun shouldPreloadForward(threshold: Double): Boolean = progress >= threshold
+        
+        /**
+         * Check if backward preload should be triggered based on progress.
+         */
+        fun shouldPreloadBackward(threshold: Double): Boolean = progress <= threshold
+    }
+    
     // Current phase exposed as StateFlow
     private val _phase = MutableStateFlow(Phase.STARTUP)
     val phase: StateFlow<Phase> = _phase.asStateFlow()
+    
+    // Active window data exposed as StateFlow - UI can observe this
+    private val _activeWindow = MutableStateFlow<WindowData?>(null)
+    
+    /**
+     * The currently active window data.
+     * 
+     * This is the authoritative source for the active window state. UI components
+     * should observe this StateFlow rather than querying the cache directly.
+     */
+    val activeWindow: StateFlow<WindowData?> = _activeWindow.asStateFlow()
+    
+    // Current position exposed as StateFlow - UI can observe this
+    private val _currentPosition = MutableStateFlow<Position?>(null)
+    
+    /**
+     * The current reading position within the active window.
+     * 
+     * This is updated when:
+     * - JS reports page changes via onPageChanged
+     * - Window transitions occur
+     * - Position is explicitly updated via updatePosition()
+     * 
+     * UI components should observe this StateFlow for position updates.
+     */
+    val currentPosition: StateFlow<Position?> = _currentPosition.asStateFlow()
     
     // Buffer of window indices (ArrayDeque for efficient add/remove at both ends)
     private val buffer = ArrayDeque<WindowIndex>(BUFFER_SIZE)
@@ -134,6 +236,8 @@ class WindowBufferManager(
                 AppLogger.w(TAG, "[PAGINATION_DEBUG] Buffer is empty after initialization " +
                     "(totalWindows=$totalWindows) - book may have no content")
                 activeWindowIndex = 0
+                _activeWindow.value = null
+                _currentPosition.value = null
                 return@withLock
             }
             activeWindowIndex = buffer.first
@@ -143,6 +247,27 @@ class WindowBufferManager(
             
             // Preload all windows in the buffer
             preloadAllBufferedWindows()
+            
+            // Update active window StateFlow after preload is initiated
+            // The actual data will be available once preload completes
+            updateActiveWindowStateFlow()
+        }
+    }
+    
+    /**
+     * Update the active window StateFlow based on current activeWindowIndex.
+     * 
+     * This should be called whenever the active window changes.
+     */
+    private fun updateActiveWindowStateFlow() {
+        val windowData = windowCache[activeWindowIndex]
+        _activeWindow.value = windowData
+        
+        if (windowData != null) {
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] Updated _activeWindow: windowIndex=$activeWindowIndex, " +
+                "htmlLength=${windowData.html.length}")
+        } else {
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] Active window $activeWindowIndex not yet cached")
         }
     }
     
@@ -151,6 +276,8 @@ class WindowBufferManager(
      * 
      * In STARTUP phase, checks if the window index equals buffer[CENTER_POS].
      * If so, transitions to STEADY phase (one-time transition).
+     * 
+     * Also updates the activeWindow StateFlow with the current window data.
      * 
      * @param globalWindowIndex The global window index the user entered
      */
@@ -161,6 +288,9 @@ class WindowBufferManager(
             
             // Update active window
             activeWindowIndex = globalWindowIndex
+            
+            // Update active window StateFlow
+            updateActiveWindowStateFlow()
             
             // Check for STARTUP -> STEADY transition
             if (_phase.value == Phase.STARTUP && !hasEnteredSteadyState) {
@@ -344,7 +474,111 @@ class WindowBufferManager(
             activeWindowIndex = 0
             hasEnteredSteadyState = false
             _phase.value = Phase.STARTUP
+            _activeWindow.value = null
+            _currentPosition.value = null
         }
+    }
+    
+    /**
+     * Update the current reading position.
+     * 
+     * Called when JS reports page/chapter changes via onPageChanged callback.
+     * This updates the _currentPosition StateFlow and may trigger preloading
+     * if the user has progressed past the configured thresholds.
+     * 
+     * @param chapterIndex Current chapter being viewed
+     * @param inPageIndex Current page within the window (0-based)
+     * @param totalPagesInWindow Total pages in the current window (for progress calculation)
+     */
+    suspend fun updatePosition(
+        chapterIndex: ChapterIndex,
+        inPageIndex: InPageIndex,
+        totalPagesInWindow: Int
+    ) {
+        bufferMutex.withLock {
+            // Use explicit double division to ensure floating-point precision
+            val progress = if (totalPagesInWindow > 0) {
+                (inPageIndex.toDouble() / totalPagesInWindow.toDouble()).coerceIn(0.0, 1.0)
+            } else {
+                0.0
+            }
+            
+            val position = Position(
+                windowIndex = activeWindowIndex,
+                chapterIndex = chapterIndex,
+                inPageIndex = inPageIndex,
+                progress = progress
+            )
+            
+            _currentPosition.value = position
+            
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] updatePosition: window=$activeWindowIndex, " +
+                "chapter=$chapterIndex, inPage=$inPageIndex/$totalPagesInWindow, progress=${"%.2f".format(progress * 100)}%")
+            
+            // Check for preload triggers based on progress
+            if (_phase.value == Phase.STEADY) {
+                if (position.shouldPreloadForward(preloadConfig.forwardThreshold)) {
+                    AppLogger.d(TAG, "[PAGINATION_DEBUG] Progress ${"%.1f".format(progress * 100)}% >= " +
+                        "${"%.1f".format(preloadConfig.forwardThreshold * 100)}% - forward preload may be needed")
+                }
+                if (position.shouldPreloadBackward(preloadConfig.backwardThreshold)) {
+                    AppLogger.d(TAG, "[PAGINATION_DEBUG] Progress ${"%.1f".format(progress * 100)}% <= " +
+                        "${"%.1f".format(preloadConfig.backwardThreshold * 100)}% - backward preload may be needed")
+                }
+            }
+        }
+    }
+    
+    /**
+     * Check if the current position is at a window boundary.
+     * 
+     * This is useful for determining when to transition to the next/previous window.
+     * 
+     * @param direction The navigation direction to check
+     * @return true if at the boundary in the specified direction
+     */
+    fun isAtWindowBoundary(direction: NavigationDirection): Boolean {
+        val position = _currentPosition.value ?: return false
+        // Verify we have an active window
+        _activeWindow.value ?: return false
+        
+        return when (direction) {
+            NavigationDirection.FORWARD -> {
+                // At boundary if we're on the last page (nearly at end)
+                position.progress >= FORWARD_BOUNDARY_THRESHOLD
+            }
+            NavigationDirection.BACKWARD -> {
+                // At boundary if we're on the first page
+                position.inPageIndex == 0
+            }
+        }
+    }
+    
+    /**
+     * Check if there's a next window available.
+     * 
+     * @return true if there's a window after the current active window
+     */
+    fun hasNextWindow(): Boolean {
+        val totalWindows = paginator.getWindowCount()
+        return activeWindowIndex < totalWindows - 1
+    }
+    
+    /**
+     * Check if there's a previous window available.
+     * 
+     * @return true if there's a window before the current active window
+     */
+    fun hasPreviousWindow(): Boolean {
+        return activeWindowIndex > 0
+    }
+    
+    /**
+     * Navigation direction for boundary checks.
+     */
+    enum class NavigationDirection {
+        FORWARD,
+        BACKWARD
     }
     
     /**
@@ -414,6 +648,13 @@ class WindowBufferManager(
                     windowCache[windowIndex] = windowData
                     AppLogger.d(TAG, "[PAGINATION_DEBUG] preloadWindow: cached window $windowIndex " +
                         "(htmlLength=${windowData.html.length})")
+                    
+                    // If this is the active window, update the StateFlow
+                    if (windowIndex == activeWindowIndex && _activeWindow.value == null) {
+                        _activeWindow.value = windowData
+                        AppLogger.d(TAG, "[PAGINATION_DEBUG] preloadWindow: updated _activeWindow " +
+                            "for newly cached active window $windowIndex")
+                    }
                 } else {
                     AppLogger.w(TAG, "[PAGINATION_DEBUG] preloadWindow: assembler returned null " +
                         "for window $windowIndex")
