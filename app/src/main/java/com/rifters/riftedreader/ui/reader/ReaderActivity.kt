@@ -308,10 +308,13 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             val previousWindow = currentPagerPosition
                             currentPagerPosition = position
                             
+                            // Determine navigation direction for logging
+                            val direction = if (position > previousWindow) "NEXT" else "PREV"
+                            
                             AppLogger.d(
                                 "ReaderActivity",
-                                "RecyclerView.onPageSelected: position=$position (windowIndex) previousWindow=$previousWindow " +
-                                        "mode=$readerMode paginationMode=${viewModel.paginationMode} [PAGE_CHANGE_FROM_RECYCLERVIEW]"
+                                "WINDOW_ENTER: windowIndex=$position, previousWindow=$previousWindow, direction=$direction, " +
+                                        "mode=USER_NAVIGATION, paginationMode=${viewModel.paginationMode} [WINDOW_CHANGE]"
                             )
                             
                             if (readerMode == ReaderMode.PAGE && viewModel.currentWindowIndex.value != position) {
@@ -633,35 +636,59 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         if (readerMode == ReaderMode.PAGE) {
             when (keyCode) {
                 android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                    // Try to let the current fragment handle in-page navigation first.
-                    val currentPosition = viewModel.currentPage.value
-                    val fragTag = "f$currentPosition"
+                    // In CONTINUOUS mode, the RecyclerView is indexed by window index (not global page).
+                    // In CHAPTER_BASED mode, window index equals page index.
+                    val index = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                        viewModel.currentWindowIndex.value
+                    } else {
+                        viewModel.currentPage.value
+                    }
+                    val fragTag = "f$index"
                     val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
+                    
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "VOLUME_DOWN pressed: paginationMode=${viewModel.paginationMode}, index=$index, fragTag=$fragTag, fragFound=${frag != null} [HARDWARE_KEY_NAV]"
+                    )
+                    
                     if (frag?.handleHardwarePageKey(isNext = true) == true) {
                         // Fragment will handle (consumed)
                         return true
                     }
 
-                    // Fallback: navigate chapters
+                    // Fallback: navigate chapters/windows
                     AppLogger.d(
                         "ReaderActivity",
-                        "VOLUME_DOWN pressed in PAGE mode - navigating to next page [HARDWARE_KEY_NAV]"
+                        "VOLUME_DOWN: fragment did not handle, falling back to navigateToNextPage [HARDWARE_KEY_NAV]"
                     )
                     navigateToNextPage(animated = true)
                     // Return true to consume the event and prevent volume change
                     return true
                 }
                 android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
-                    val currentPosition = viewModel.currentPage.value
-                    val fragTag = "f$currentPosition"
+                    // In CONTINUOUS mode, the RecyclerView is indexed by window index (not global page).
+                    // In CHAPTER_BASED mode, window index equals page index.
+                    val index = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                        viewModel.currentWindowIndex.value
+                    } else {
+                        viewModel.currentPage.value
+                    }
+                    val fragTag = "f$index"
                     val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
+                    
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "VOLUME_UP pressed: paginationMode=${viewModel.paginationMode}, index=$index, fragTag=$fragTag, fragFound=${frag != null} [HARDWARE_KEY_NAV]"
+                    )
+                    
                     if (frag?.handleHardwarePageKey(isNext = false) == true) {
                         return true
                     }
 
+                    // Fallback: navigate chapters/windows
                     AppLogger.d(
                         "ReaderActivity",
-                        "VOLUME_UP pressed in PAGE mode - navigating to previous page [HARDWARE_KEY_NAV]"
+                        "VOLUME_UP: fragment did not handle, falling back to navigateToPreviousPage [HARDWARE_KEY_NAV]"
                     )
                     navigateToPreviousPage(animated = true)
                     return true

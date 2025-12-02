@@ -582,84 +582,12 @@ class ReaderPageFragment : Fragment() {
                             // Mark as intercepted to prevent multiple triggers
                             scrollIntercepted = true
                             
-                            // Launch coroutine to check page boundaries and navigate
+                            // Determine direction: positive cumulativeScrollX means next page
+                            val isNext = cumulativeScrollX > 0
+                            
+                            // Use unified edge-aware navigation helper
                             viewLifecycleOwner.lifecycleScope.launch {
-                                try {
-                                    val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
-                                    val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
-                                    val paginationMode = readerViewModel.paginationMode
-                                    
-                                    com.rifters.riftedreader.util.AppLogger.d(
-                                        "ReaderPageFragment", 
-                                        "Scroll-based navigation: page=$pageIndex currentPage=$currentPage/$pageCount, " +
-                                        "paginationMode=$paginationMode, isPaginatorReady=$isPaginatorInitialized, cumulativeX=$cumulativeScrollX"
-                                    )
-                                    
-                                    if (cumulativeScrollX > 0) {
-                                        // Scrolling right-to-left (next page)
-                                        if (currentPage < pageCount - 1) {
-                                            // Not at last page, navigate within chapter
-                                            com.rifters.riftedreader.util.AppLogger.userAction(
-                                                "ReaderPageFragment", 
-                                                "SCROLL_INTERCEPT: Navigating to next in-page (${currentPage + 1}/$pageCount) within chapter page $pageIndex [IN_PAGE_SCROLL]", 
-                                                "ui/webview/pagination"
-                                            )
-                                            WebViewPaginatorBridge.nextPage(binding.pageWebView)
-                                        } else {
-                                            // At last in-page, check if we should stream or fallback
-                                            if (paginationMode == PaginationMode.CONTINUOUS && isPaginatorInitialized) {
-                                                com.rifters.riftedreader.util.AppLogger.d(
-                                                    "ReaderPageFragment", 
-                                                    "SCROLL_EDGE: At last in-page ($currentPage/$pageCount), attempting chapter streaming [STREAM_ATTEMPT]"
-                                                )
-                                            } else {
-                                                com.rifters.riftedreader.util.AppLogger.d(
-                                                    "ReaderPageFragment", 
-                                                    "SCROLL_EDGE: At last in-page ($currentPage/$pageCount), falling back to RecyclerView (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
-                                                )
-                                            }
-                                            (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
-                                        }
-                                    } else {
-                                        // Scrolling left-to-right (previous page)
-                                        if (currentPage > 0) {
-                                            // Not at first page, navigate within chapter
-                                            com.rifters.riftedreader.util.AppLogger.userAction(
-                                                "ReaderPageFragment", 
-                                                "SCROLL_INTERCEPT: Navigating to previous in-page (${currentPage - 1}/$pageCount) within chapter page $pageIndex [IN_PAGE_SCROLL]", 
-                                                "ui/webview/pagination"
-                                            )
-                                            WebViewPaginatorBridge.prevPage(binding.pageWebView)
-                                        } else {
-                                            // At first in-page, check if we should stream or fallback
-                                            if (paginationMode == PaginationMode.CONTINUOUS && isPaginatorInitialized) {
-                                                com.rifters.riftedreader.util.AppLogger.d(
-                                                    "ReaderPageFragment", 
-                                                    "SCROLL_EDGE: At first in-page ($currentPage/$pageCount), attempting chapter streaming [STREAM_ATTEMPT]"
-                                                )
-                                            } else {
-                                                com.rifters.riftedreader.util.AppLogger.d(
-                                                    "ReaderPageFragment", 
-                                                    "SCROLL_EDGE: At first in-page ($currentPage/$pageCount), falling back to RecyclerView (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
-                                                )
-                                            }
-                                            (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
-                                        }
-                                    }
-                                } catch (e: Exception) {
-                                    // If anything goes wrong, fallback to activity navigation
-                                    com.rifters.riftedreader.util.AppLogger.e(
-                                        "ReaderPageFragment", 
-                                        "ERROR in scroll-based navigation for page $pageIndex: ${e.message} [FALLBACK_TO_ACTIVITY]", 
-                                        e
-                                    )
-                                    // Fallback navigation based on scroll direction
-                                    if (cumulativeScrollX > 0) {
-                                        (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
-                                    } else {
-                                        (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
-                                    }
-                                }
+                                handlePagedNavigation(isNext, "SCROLL")
                             }
                             
                             return true // Consumed the scroll gesture
@@ -697,85 +625,14 @@ class ReaderPageFragment : Fragment() {
                             "Detected horizontal fling: page=$pageIndex vx=$velocityX (threshold=$FLING_THRESHOLD)"
                         )
                         
-                        // Launch coroutine to check page boundaries
+                        // Determine direction: negative velocityX means fling left (next page)
+                        val isNext = velocityX < 0
+                        
+                        // Use unified edge-aware navigation helper
                         viewLifecycleOwner.lifecycleScope.launch {
-                            try {
-                                val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
-                                val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
-                                val paginationMode = readerViewModel.paginationMode
-                                
-                                com.rifters.riftedreader.util.AppLogger.d(
-                                    "ReaderPageFragment", 
-                                    "FLING_BASED navigation: page=$pageIndex currentPage=$currentPage/$pageCount, " +
-                                    "paginationMode=$paginationMode, isPaginatorReady=$isPaginatorInitialized, velocityX=$velocityX"
-                                )
-                                
-                                if (velocityX < 0) {
-                                    // Fling left (next page)
-                                    if (currentPage < pageCount - 1) {
-                                        // Not at last page, navigate within chapter
-                                        com.rifters.riftedreader.util.AppLogger.userAction(
-                                            "ReaderPageFragment", 
-                                            "FLING_INTERCEPT: Navigating to next in-page (${currentPage + 1}/$pageCount) within chapter page $pageIndex [IN_PAGE_SCROLL]", 
-                                            "ui/webview/pagination"
-                                        )
-                                        WebViewPaginatorBridge.nextPage(binding.pageWebView)
-                                        return@launch
-                                    }
-                                    // At last in-page, check if we should stream or fallback
-                                    if (paginationMode == PaginationMode.CONTINUOUS && isPaginatorInitialized) {
-                                        com.rifters.riftedreader.util.AppLogger.d(
-                                            "ReaderPageFragment", 
-                                            "FLING_EDGE: At last in-page ($currentPage/$pageCount), attempting chapter streaming [STREAM_ATTEMPT]"
-                                        )
-                                    } else {
-                                        com.rifters.riftedreader.util.AppLogger.d(
-                                            "ReaderPageFragment", 
-                                            "FLING_EDGE: At last in-page ($currentPage/$pageCount), falling back to RecyclerView (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
-                                        )
-                                    }
-                                    (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
-                                } else {
-                                    // Fling right (previous page)
-                                    if (currentPage > 0) {
-                                        // Not at first page, navigate within chapter
-                                        com.rifters.riftedreader.util.AppLogger.userAction(
-                                            "ReaderPageFragment", 
-                                            "FLING_INTERCEPT: Navigating to previous in-page (${currentPage - 1}/$pageCount) within chapter page $pageIndex [IN_PAGE_SCROLL]", 
-                                            "ui/webview/pagination"
-                                        )
-                                        WebViewPaginatorBridge.prevPage(binding.pageWebView)
-                                        return@launch
-                                    }
-                                    // At first in-page, check if we should stream or fallback
-                                    if (paginationMode == PaginationMode.CONTINUOUS && isPaginatorInitialized) {
-                                        com.rifters.riftedreader.util.AppLogger.d(
-                                            "ReaderPageFragment", 
-                                            "FLING_EDGE: At first in-page ($currentPage/$pageCount), attempting chapter streaming [STREAM_ATTEMPT]"
-                                        )
-                                    } else {
-                                        com.rifters.riftedreader.util.AppLogger.d(
-                                            "ReaderPageFragment", 
-                                            "FLING_EDGE: At first in-page ($currentPage/$pageCount), falling back to RecyclerView (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
-                                        )
-                                    }
-                                    (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
-                                }
-                            } catch (e: Exception) {
-                                // If anything goes wrong, fallback to activity navigation
-                                com.rifters.riftedreader.util.AppLogger.e(
-                                    "ReaderPageFragment", 
-                                    "ERROR in fling handling for page $pageIndex: ${e.message} [FALLBACK_TO_ACTIVITY]", 
-                                    e
-                                )
-                                // Fallback navigation based on fling direction
-                                if (velocityX < 0) {
-                                    (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
-                                } else {
-                                    (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
-                                }
-                            }
+                            handlePagedNavigation(isNext, "FLING")
                         }
+                        
                         return true // Consumed the horizontal fling
                     }
                     
@@ -2050,83 +1907,146 @@ class ReaderPageFragment : Fragment() {
 
         // Consume the key immediately to suppress volume change; resolve navigation asynchronously.
         viewLifecycleOwner.lifecycleScope.launch {
-            try {
-                val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
-                val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
-                val paginationMode = readerViewModel.paginationMode
-
-                com.rifters.riftedreader.util.AppLogger.d(
-                    "ReaderPageFragment",
-                    "HARDWARE_KEY navigation: page=$pageIndex currentPage=$currentPage/$pageCount, " +
-                    "paginationMode=$paginationMode, isPaginatorReady=$isPaginatorInitialized, isNext=$isNext"
-                )
-
-                if (isNext) {
-                    if (currentPage < pageCount - 1) {
-                        // Navigate in-page
-                        com.rifters.riftedreader.util.AppLogger.userAction(
-                            "ReaderPageFragment",
-                            "HARDWARE_INTERCEPT: volume -> next in-page (${currentPage + 1}/$pageCount) within page $pageIndex [IN_PAGE_SCROLL]",
-                            "ui/webview/pagination"
-                        )
-                        WebViewPaginatorBridge.nextPage(binding.pageWebView)
-                    } else {
-                        // At last in-page, check if we should stream or fallback
-                        if (paginationMode == PaginationMode.CONTINUOUS && isPaginatorInitialized) {
-                            com.rifters.riftedreader.util.AppLogger.d(
-                                "ReaderPageFragment",
-                                "HARDWARE_EDGE: at last in-page ($currentPage/$pageCount), attempting chapter streaming [STREAM_ATTEMPT]"
-                            )
-                            handleStreamingRequest(BoundaryDirection.NEXT, currentPage, pageCount)
-                        } else {
-                            com.rifters.riftedreader.util.AppLogger.d(
-                                "ReaderPageFragment",
-                                "HARDWARE_EDGE: at last in-page ($currentPage/$pageCount), falling back to RecyclerView (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
-                            )
-                            (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
-                        }
-                    }
-                } else {
-                    if (currentPage > 0) {
-                        com.rifters.riftedreader.util.AppLogger.userAction(
-                            "ReaderPageFragment",
-                            "HARDWARE_INTERCEPT: volume -> prev in-page (${currentPage - 1}/$pageCount) within page $pageIndex [IN_PAGE_SCROLL]",
-                            "ui/webview/pagination"
-                        )
-                        WebViewPaginatorBridge.prevPage(binding.pageWebView)
-                    } else {
-                        // At first in-page, check if we should stream or fallback
-                        if (paginationMode == PaginationMode.CONTINUOUS && isPaginatorInitialized) {
-                            com.rifters.riftedreader.util.AppLogger.d(
-                                "ReaderPageFragment",
-                                "HARDWARE_EDGE: at first in-page ($currentPage/$pageCount), attempting chapter streaming [STREAM_ATTEMPT]"
-                            )
-                            handleStreamingRequest(BoundaryDirection.PREVIOUS, currentPage, pageCount)
-                        } else {
-                            com.rifters.riftedreader.util.AppLogger.d(
-                                "ReaderPageFragment",
-                                "HARDWARE_EDGE: at first in-page ($currentPage/$pageCount), falling back to RecyclerView (mode=$paginationMode, ready=$isPaginatorInitialized) [VIEWPAGER_FALLBACK]"
-                            )
-                            (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                // If anything goes wrong, fallback to activity navigation
-                com.rifters.riftedreader.util.AppLogger.e(
-                    "ReaderPageFragment",
-                    "ERROR handling hardware page key for page $pageIndex: ${e.message} - falling back to RecyclerView",
-                    e
-                )
-                if (isNext) {
-                    (activity as? ReaderActivity)?.navigateToNextPage(animated = true)
-                } else {
-                    (activity as? ReaderActivity)?.navigateToPreviousChapterToLastPage(animated = true)
-                }
-            }
+            handlePagedNavigation(isNext, "HARDWARE_KEY")
         }
 
         return true
+    }
+    
+    /**
+     * Unified edge-aware navigation helper for PAGE + CONTINUOUS mode.
+     * 
+     * This method centralizes the logic for:
+     * 1. In-page navigation (when not at edge)
+     * 2. Edge detection and handover to window navigation
+     * 
+     * Checks paginator readiness and uses WebViewPaginatorBridge for page info.
+     * When at an edge, calls into ReaderActivity to move to the adjacent window.
+     * 
+     * @param isNext true for next/forward navigation, false for previous/backward
+     * @param source Logging tag to identify the navigation source (e.g., "HARDWARE_KEY", "FLING", "SCROLL")
+     * @return true if navigation was attempted (either in-page or edge handover), false if paginator not ready
+     */
+    private suspend fun handlePagedNavigation(isNext: Boolean, source: String): Boolean {
+        // Safety check: paginator must be ready
+        if (!isWebViewReady || !isPaginatorInitialized) {
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "$source navigation ignored: isWebViewReady=$isWebViewReady, isPaginatorInitialized=$isPaginatorInitialized [EDGE_AWARE_NAV]"
+            )
+            return false
+        }
+        
+        try {
+            val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
+            val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
+            val paginationMode = readerViewModel.paginationMode
+            val currentWindow = readerViewModel.currentWindowIndex.value
+            
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "$source navigation: windowIndex=$pageIndex, inPage=$currentPage/$pageCount, " +
+                "paginationMode=$paginationMode, currentWindow=$currentWindow, isNext=$isNext [EDGE_AWARE_NAV]"
+            )
+            
+            if (isNext) {
+                if (currentPage < pageCount - 1) {
+                    // Not at last in-page, navigate within WebView
+                    com.rifters.riftedreader.util.AppLogger.userAction(
+                        "ReaderPageFragment",
+                        "$source: next in-page (${currentPage + 1}/$pageCount) within window $pageIndex [IN_PAGE_NAV]",
+                        "ui/webview/pagination"
+                    )
+                    WebViewPaginatorBridge.nextPage(binding.pageWebView)
+                    return true
+                } else {
+                    // At last in-page, edge handover to next window
+                    com.rifters.riftedreader.util.AppLogger.d(
+                        "ReaderPageFragment",
+                        "EDGE_HIT: last in-page ($currentPage/$pageCount), requesting next window from window $pageIndex [EDGE_FORWARD]"
+                    )
+                    navigateToNextWindow()
+                    return true
+                }
+            } else {
+                if (currentPage > 0) {
+                    // Not at first in-page, navigate within WebView
+                    com.rifters.riftedreader.util.AppLogger.userAction(
+                        "ReaderPageFragment",
+                        "$source: prev in-page (${currentPage - 1}/$pageCount) within window $pageIndex [IN_PAGE_NAV]",
+                        "ui/webview/pagination"
+                    )
+                    WebViewPaginatorBridge.prevPage(binding.pageWebView)
+                    return true
+                } else {
+                    // At first in-page, edge handover to previous window with jump-to-last
+                    com.rifters.riftedreader.util.AppLogger.d(
+                        "ReaderPageFragment",
+                        "EDGE_HIT: first in-page ($currentPage/$pageCount), requesting previous window+last page from window $pageIndex [EDGE_BACKWARD]"
+                    )
+                    navigateToPreviousWindowLastPage()
+                    return true
+                }
+            }
+        } catch (e: Exception) {
+            com.rifters.riftedreader.util.AppLogger.e(
+                "ReaderPageFragment",
+                "ERROR in $source navigation for window $pageIndex: ${e.message} [EDGE_AWARE_NAV_ERROR]",
+                e
+            )
+            // Fallback: try activity navigation as a best-effort recovery
+            // Return true since we attempted navigation (activity methods handle their own errors)
+            if (isNext) {
+                navigateToNextWindow()
+            } else {
+                navigateToPreviousWindowLastPage()
+            }
+            return true
+        }
+    }
+    
+    /**
+     * Navigate to the next window via ReaderActivity.
+     * This is called when at the last in-page of the current window.
+     */
+    private fun navigateToNextWindow() {
+        val readerActivity = activity as? ReaderActivity
+        if (readerActivity == null) {
+            com.rifters.riftedreader.util.AppLogger.w(
+                "ReaderPageFragment",
+                "navigateToNextWindow: activity is null or not ReaderActivity"
+            )
+            return
+        }
+        
+        val currentWindow = readerViewModel.currentWindowIndex.value
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "WINDOW_EXIT: windowIndex=$currentWindow, direction=NEXT, target=${currentWindow + 1} [WINDOW_NAV]"
+        )
+        readerActivity.navigateToNextPage(animated = true)
+    }
+    
+    /**
+     * Navigate to the previous window and jump to its last internal page.
+     * This is called when at the first in-page of the current window and navigating backward.
+     */
+    private fun navigateToPreviousWindowLastPage() {
+        val readerActivity = activity as? ReaderActivity
+        if (readerActivity == null) {
+            com.rifters.riftedreader.util.AppLogger.w(
+                "ReaderPageFragment",
+                "navigateToPreviousWindowLastPage: activity is null or not ReaderActivity"
+            )
+            return
+        }
+        
+        val currentWindow = readerViewModel.currentWindowIndex.value
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "WINDOW_EXIT: windowIndex=$currentWindow, direction=PREV, target=${currentWindow - 1}, jumpToLast=true [WINDOW_NAV]"
+        )
+        readerActivity.navigateToPreviousChapterToLastPage(animated = true)
     }
     
     /**
