@@ -147,7 +147,7 @@ data class WindowState(
      * 
      * This method recalculates the startPage for each chapter based on cumulative
      * page counts. This is critical for accurate progress calculations in
-     * StableWindowManager.updatePosition().
+     * WindowBufferManager.updatePosition() (or the legacy StableWindowManager).
      * 
      * @param htmlContent The complete HTML for this window
      * @return Immutable WindowSnapshot
