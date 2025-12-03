@@ -1205,6 +1205,7 @@
     /**
      * Sync the currentPage state with the actual scroll position.
      * Called when user manually scrolls or when we need to read the real position.
+     * Uses Math.round() to handle sub-pixel scroll positions correctly.
      */
     function syncCurrentPageFromScroll() {
         if (!columnContainer || !isInitialized) {
@@ -1218,7 +1219,10 @@
             return;
         }
         
-        currentPage = Math.floor(scrollLeft / pageWidth);
+        // Use Math.round() instead of Math.floor() to handle sub-pixel positioning
+        // When scrollTo() snaps to page boundaries, scrollLeft might be pageWidth * 7.999
+        // which would floor to 7 instead of the intended page 8
+        currentPage = Math.round(scrollLeft / pageWidth);
     }
     
     /**
