@@ -970,7 +970,13 @@ class ReaderPageFragment : Fragment() {
                     val contentHtml = if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
                         // Get window HTML containing multiple chapters
                         // windowIndex is the RecyclerView position, directly used as window index
+                        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+                            "[WINDOW_HTML] Requesting window HTML for windowIndex=$windowIndex [BEFORE_CALL]"
+                        )
                         val windowPayload = readerViewModel.getWindowHtml(windowIndex)
+                        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+                            "[WINDOW_HTML] Received window payload: windowIndex=$windowIndex, payload=${if (windowPayload != null) "NOT_NULL" else "NULL"} [AFTER_CALL]"
+                        )
                         if (windowPayload != null) {
                             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
                                 "[PAGINATION_DEBUG] Using window HTML for windowIndex=$windowIndex: window=${windowPayload.windowIndex}, " +
@@ -979,7 +985,7 @@ class ReaderPageFragment : Fragment() {
                             )
                             windowPayload.html
                         } else {
-                            com.rifters.riftedreader.util.AppLogger.w("ReaderPageFragment", "[PAGINATION_DEBUG] Failed to get window HTML for windowIndex=$windowIndex, falling back to single chapter")
+                            com.rifters.riftedreader.util.AppLogger.w("ReaderPageFragment", "[WINDOW_HTML] NULL PAYLOAD: Failed to get window HTML for windowIndex=$windowIndex, falling back to single chapter")
                             html
                         }
                     } else {
