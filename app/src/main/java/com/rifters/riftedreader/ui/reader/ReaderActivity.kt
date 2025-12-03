@@ -1157,13 +1157,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             if (useRecyclerView) {
                 binding.contentScrollView.isVisible = false
                 binding.pageRecyclerView.isVisible = true
+                binding.pageRecyclerView.bringToFront()  // Ensure RecyclerView is on top
                 // RecyclerView touch handling is managed by gesture detection in fragments
-                AppLogger.d("ReaderActivity", "RecyclerView visible for paginationMode=${viewModel.paginationMode}, readerMode=$readerMode")
+                AppLogger.d("ReaderActivity", "RecyclerView visible (brought to front) for paginationMode=${viewModel.paginationMode}, readerMode=$readerMode")
                 viewModel.publishHighlight(viewModel.currentPage.value, currentHighlightRange)
             } else {
                 // Switching to SCROLL mode with CHAPTER_BASED pagination
                 binding.pageRecyclerView.isVisible = false
                 binding.contentScrollView.isVisible = true
+                binding.contentScrollView.bringToFront()  // Ensure ScrollView is on top
                 currentHighlightRange?.let { applyScrollHighlight(it) }
                 
                 // Reset WebView page tracking and restore slider to chapter navigation
