@@ -70,6 +70,12 @@ class ReaderPageFragment : Fragment() {
     // Track current in-page position to preserve during reloads
     private var currentInPageIndex: Int = 0
     
+    // Track window transitions to prevent inappropriate buffer shifts
+    // When entering a new window at page 0 via forward navigation, we should NOT shift backward
+    private var lastKnownWindowIndex: Int? = null
+    private var windowTransitionTimestamp: Long = 0
+    private val WINDOW_TRANSITION_COOLDOWN_MS = 300L
+    
     // Track if paginator has completed initialization (onPaginationReady callback received)
     // This prevents navigation logic from using stale/default values before paginator is ready
     private var isPaginatorInitialized: Boolean = false
@@ -1749,13 +1755,41 @@ class ReaderPageFragment : Fragment() {
                         
                         readerViewModel.updateWebViewPageState(newPage, totalPages)
                         
+                        // Detect window transitions to prevent inappropriate buffer shifts
+                        val currentWindowIndex = readerViewModel.windowBufferManager?.getActiveWindowIndex()
+                        val isWindowTransition = currentWindowIndex != null && 
+                                                lastKnownWindowIndex != null && 
+                                                lastKnownWindowIndex != currentWindowIndex
+                        
+                        if (isWindowTransition) {
+                            windowTransitionTimestamp = System.currentTimeMillis()
+                            com.rifters.riftedreader.util.AppLogger.d(
+                                "ReaderPageFragment",
+                                "[WINDOW_SHIFT] Window transition detected: " +
+                                "from $lastKnownWindowIndex to $currentWindowIndex, " +
+                                "entering cooldown period"
+                            )
+                        }
+                        lastKnownWindowIndex = currentWindowIndex
+                        
+                        // Calculate if cooldown period has elapsed since last window transition
+                        val timeSinceTransition = System.currentTimeMillis() - windowTransitionTimestamp
+                        val inCooldownPeriod = timeSinceTransition < WINDOW_TRANSITION_COOLDOWN_MS
+                        
                         // Notify WindowBufferManager of position for potential buffer shifts
                         // Only call if near boundaries to reduce unnecessary method invocations
                         // Buffer shift threshold is 2 pages, so check if within that range
-                        if (totalPages > 0 && newPage >= totalPages - 2) {
+                        // IMPORTANT: Skip shift checks during cooldown period after window transitions
+                        // to prevent shifting backward when entering a new window at page 0
+                        if (totalPages > 0 && newPage >= totalPages - 2 && !inCooldownPeriod) {
                             readerViewModel.maybeShiftForward(newPage, totalPages)
                         }
-                        if (newPage < 2) {
+                        if (newPage < 2 && !inCooldownPeriod) {
+                            com.rifters.riftedreader.util.AppLogger.d(
+                                "ReaderPageFragment",
+                                "[WINDOW_SHIFT] Near start (page $newPage), " +
+                                "inCooldown=$inCooldownPeriod, timeSince=${timeSinceTransition}ms"
+                            )
                             readerViewModel.maybeShiftBackward(newPage)
                         }
                     } catch (e: Exception) {
