@@ -1082,11 +1082,12 @@
             console.log('inpage_paginator: [STATE] Reflow complete - pageCount=' + pageCount + ', currentPage=' + currentPage);
             
             // CRITICAL: Reset and set isPaginationReady after reflow completes
-            // Use requestAnimationFrame to ensure layout is stable before notifying
+            // Use setTimeout instead of requestAnimationFrame because rAF doesn't fire
+            // when WebView is not visible (e.g., in offscreen RecyclerView fragments)
             isPaginationReady = false;
             console.log('inpage_paginator: [STATE] isPaginationReady temporarily set to false during reflow');
             
-            requestAnimationFrame(function() {
+            setTimeout(function() {
                 isPaginationReady = true;
                 console.log('inpage_paginator: [STATE] isPaginationReady set back to true after reflow layout');
                 
@@ -1098,7 +1099,7 @@
                     console.log('inpage_paginator: [CALLBACK] Calling AndroidBridge.onPaginationReady after reflow with pageCount=' + pageCount);
                     window.AndroidBridge.onPaginationReady(pageCount);
                 }
-            });
+            }, 0); // Execute ASAP but after current call stack
             
             return { success: true, pageCount: pageCount, currentPage: currentPage };
         } catch (e) {
