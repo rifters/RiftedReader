@@ -652,8 +652,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     }
 
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
-        // Handle hardware volume keys for page navigation in PAGE mode only
-        if (readerMode == ReaderMode.PAGE) {
+        // Handle hardware volume keys for page navigation in PAGE mode
+        // Also enabled for SCROLL mode when using CONTINUOUS pagination (window-based navigation)
+        val enableVolumeKeys = readerMode == ReaderMode.PAGE || 
+                              (readerMode == ReaderMode.SCROLL && viewModel.paginationMode == PaginationMode.CONTINUOUS)
+        
+        if (enableVolumeKeys) {
             when (keyCode) {
                 android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
                     // In CONTINUOUS mode, the RecyclerView is indexed by window index (not global page).
@@ -715,7 +719,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 }
             }
         }
-        // If not in PAGE mode or not a volume key, use default behavior
+        // If volume keys not enabled for current mode, use default behavior
         return super.onKeyDown(keyCode, event)
     }
 

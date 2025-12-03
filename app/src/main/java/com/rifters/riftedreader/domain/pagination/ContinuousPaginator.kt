@@ -377,10 +377,12 @@ class ContinuousPaginator(
         // Determine which chapters to unload
         val toUnload = loadedChapters.keys - windowIndices.toSet()
         
-        // SAFETY CHECK: Don't unload if we have fewer loaded chapters than would fill 3 windows.
-        // This prevents premature unloading during buffer initialization when multiple windows
-        // are being assembled in parallel.
-        val safeToUnload = loadedChapters.size >= (windowSize * 3)
+        // SAFETY CHECK: Don't unload if we have fewer loaded chapters than would fill 5 windows.
+        // This prevents premature unloading during buffer initialization when 5 windows (0-4)
+        // are being assembled in parallel. Each window needs 5 chapters, so we need 25 chapters
+        // loaded before it's safe to start unloading. WindowBufferManager will handle cleanup
+        // after all 5 buffer windows are cached.
+        val safeToUnload = loadedChapters.size >= (windowSize * 5)
         
         if (safeToUnload) {
             toUnload.forEach { chapterIndex ->
@@ -388,7 +390,7 @@ class ContinuousPaginator(
                 loadedChapters.remove(chapterIndex)
             }
         } else {
-            AppLogger.d(TAG, "Skipping unload during initialization: loadedChapters.size=${loadedChapters.size} < ${windowSize * 3}")
+            AppLogger.d(TAG, "Skipping unload during initialization: loadedChapters.size=${loadedChapters.size} < ${windowSize * 5}")
         }
         
         // Determine which chapters to load
