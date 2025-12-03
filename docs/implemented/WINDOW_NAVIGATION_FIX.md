@@ -372,6 +372,133 @@ Expected sequence for successful next window:
 - TOC navigation works
 - Existing features remain functional
 
+## Content Loading Separation Fix (2025-12-03)
+
+### Problem: Wrong Content Loading Mechanism in Continuous Mode
+
+After fixing window navigation, fragments for windowIndex=1+ were created but remained blank. Investigation revealed fragments were using the wrong content loading mechanism:
+
+**Issue**: All fragments (both continuous and chapter-based mode) used `observePageContent(pageIndex)`:
+```kotlin
+readerViewModel.observePageContent(pageIndex).collect { page ->
+    latestPageHtml = page.html
+    renderBaseContent()
+}
+```
+
+This pattern works in chapter-based mode where:
+- `pageIndex` = chapter index
+- ViewModel populates `_pages` map with `PageContent` entries
+- `observePageContent(chapterIndex)` returns the correct chapter's content
+
+But fails in continuous mode where:
+- `pageIndex` = window index (0, 1, 2...)
+- ViewModel's `_pages` map is keyed by chapter indices (0, 1, 2, 3, 4, 5...)
+- Fragments waiting for `PageContent` keyed by window index never receive updates
+- Example: Fragment for windowIndex=1 waits for `_pages[1]`, but window 1 contains chapters 5-9
+
+### Solution: Mode-Specific Content Loading
+
+Separated content loading logic based on pagination mode in `ReaderPageFragment.onViewCreated()`:
+
+#### Continuous Mode
+```kotlin
+if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+    // Directly render from window buffer
+    renderBaseContent()
+}
+```
+
+**Flow**: 
+1. Fragment created with windowIndex
+2. `renderBaseContent()` called immediately
+3. `getWindowHtml(windowIndex)` fetches from WindowBufferManager cache
+4. HTML loaded into WebView
+
+**Key**: No waiting for PageContent updates. Direct fetch from buffer.
+
+#### Chapter-Based Mode
+```kotlin
+else {
+    // Traditional PageContent observer
+    setupChapterBasedContentObserver()
+}
+```
+
+**Flow**:
+1. Fragment created with chapterIndex
+2. `setupChapterBasedContentObserver()` sets up Flow observer
+3. Waits for ViewModel to emit `PageContent` for that chapter
+4. When received, renders content
+
+**Key**: Still uses `_pages`, `pageContentCache`, and `observePageContent` as before.
+
+### Implementation Details
+
+**New Method**: `setupChapterBasedContentObserver()`
+```kotlin
+private fun setupChapterBasedContentObserver() {
+    viewLifecycleOwner.lifecycleScope.launch {
+        repeatOnLifecycle(Lifecycle.State.STARTED) {
+            readerViewModel.observePageContent(pageIndex).collect { page ->
+                latestPageText = page.text
+                latestPageHtml = page.html
+                renderBaseContent()
+            }
+        }
+    }
+}
+```
+
+**Modified**: `renderBaseContent()`
+```kotlin
+private fun renderBaseContent() {
+    val html = if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+        "CONTINUOUS_MODE_PLACEHOLDER"  // Will fetch from buffer
+    } else {
+        latestPageHtml  // From PageContent observer
+    }
+    
+    if (!html.isNullOrBlank()) {
+        val contentHtml = if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            val windowPayload = readerViewModel.getWindowHtml(windowIndex)
+            windowPayload?.html ?: html
+        } else {
+            html
+        }
+        // ... render contentHtml in WebView
+    }
+}
+```
+
+### WindowBufferManager Impact
+
+**No changes required**:
+- Still preloads 5 windows
+- Still shifts based on `maybeShiftForward/Backward` and `onWindowBecameVisible`
+- Still caches window HTML
+- Continuous mode fragments now actively consume the cached data via `getWindowHtml()`
+
+### Benefits
+
+1. **Correct Content Loading**: Continuous mode fragments get window HTML immediately
+2. **No Breaking Changes**: Chapter-based mode unchanged
+3. **Clear Separation**: Each mode has its own content loading path
+4. **Better Logging**: Tagged with `[CONTENT_LOAD]` and `[CHAPTER_CONTENT]`
+5. **Maintainability**: Easier to debug and modify each mode independently
+
+### Testing Verification
+
+**Continuous Mode**:
+- Fragment creation should show: `[CONTENT_LOAD] Continuous mode: directly rendering window X from buffer`
+- Should immediately see: `[PAGINATION_DEBUG] Using window HTML for windowIndex=X`
+- No waiting for PageContent updates
+
+**Chapter-Based Mode**:
+- Fragment creation should show: `[CONTENT_LOAD] Chapter-based mode: setting up PageContent observer for chapter X`
+- Should see: `[CHAPTER_CONTENT] Received PageContent for chapter X`
+- Traditional observer pattern maintained
+
 ## Known Limitations
 
 1. **Smooth Scroll Animation**: The fix uses smooth scrolling which takes time. Rapid navigation requests may queue up.
@@ -395,5 +522,7 @@ Expected sequence for successful next window:
 ---
 
 **Last Updated**: 2025-12-03
-**Implementation PR**: [To be added]
+**Commits**: 
+- fc66c28: Window navigation circular update fix
+- 53a3b92: Content loading separation fix
 **Testing Status**: Ready for testing
