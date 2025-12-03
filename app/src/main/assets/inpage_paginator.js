@@ -1179,8 +1179,8 @@
     
     /**
      * Get the current page index (0-based)
-     * CRITICAL: Returns the explicitly tracked currentPage state, not calculated from scrollLeft.
-     * This avoids race conditions where scrollTo() hasn't completed yet.
+     * CRITICAL: Syncs with DOM scroll position before returning, to avoid stale values
+     * when CSS reflows occur due to dynamic chapter loading.
      */
     function getCurrentPage() {
         if (!columnContainer) {
@@ -1194,9 +1194,11 @@
             return 0;
         }
         
-        // Return the explicitly tracked page
-        // This ensures getCurrentPage() returns the intended page immediately after goToPage(),
-        // even if the scrollTo() animation hasn't completed yet
+        // CRITICAL FIX: Always sync from DOM before returning
+        // This prevents returning stale values when CSS reflows reset scroll position
+        syncCurrentPageFromScroll();
+        
+        // Return the synced page
         return currentPage;
     }
     
