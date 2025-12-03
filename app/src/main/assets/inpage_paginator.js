@@ -1277,6 +1277,16 @@
         
         const behavior = smooth ? SCROLL_BEHAVIOR_SMOOTH : SCROLL_BEHAVIOR_AUTO;
         
+        // Log CSS state for debugging scroll issues
+        const computedStyle = window.getComputedStyle(columnContainer);
+        console.log('inpage_paginator: [SCROLL_DEBUG] columnContainer CSS:');
+        console.log('  - overflowX=' + computedStyle.overflowX);
+        console.log('  - scrollWidth=' + columnContainer.scrollWidth + ', clientWidth=' + columnContainer.clientWidth);
+        console.log('  - display=' + computedStyle.display);
+        console.log('  - position=' + computedStyle.position);
+        console.log('  - columnCount=' + computedStyle.columnCount);
+        console.log('  - columnWidth=' + computedStyle.columnWidth);
+        
         console.log('inpage_paginator: Attempting to scroll to page ' + safeIndex + ' (targetScrollLeft=' + targetScroll + '), current scrollLeft=' + columnContainer.scrollLeft);
         
         columnContainer.scrollTo({
