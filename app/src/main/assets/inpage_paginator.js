@@ -1284,11 +1284,30 @@
             behavior: behavior
         });
         
+        // Verify scroll happened (immediate check for auto, delayed for smooth)
+        setTimeout(function() {
+            const actualScrollLeft = columnContainer.scrollLeft;
+            console.log('inpage_paginator: After scrollTo - actualScrollLeft=' + actualScrollLeft + ', expected=' + targetScroll + ', delta=' + Math.abs(actualScrollLeft - targetScroll));
+            
+            // If scroll didn't happen, try direct property assignment
+            if (Math.abs(actualScrollLeft - targetScroll) > 10) {
+                console.warn('inpage_paginator: scrollTo failed, trying direct scrollLeft assignment');
+                columnContainer.scrollLeft = targetScroll;
+                
+                // Check again
+                setTimeout(function() {
+                    const finalScrollLeft = columnContainer.scrollLeft;
+                    console.log('inpage_paginator: After direct assignment - scrollLeft=' + finalScrollLeft);
+                }, 50);
+            }
+        }, behavior === SCROLL_BEHAVIOR_AUTO ? 50 : 350);
+        
         // Clear the flag after a delay to allow scroll to complete
         // Use a timeout longer than the smooth scroll animation (~300ms)
         setTimeout(function() {
             isProgrammaticScroll = false;
-            console.log('inpage_paginator: Programmatic scroll complete, re-enabling scroll sync');
+            const currentScrollLeft = columnContainer.scrollLeft;
+            console.log('inpage_paginator: Programmatic scroll complete, re-enabling scroll sync. Final scrollLeft=' + currentScrollLeft);
         }, 500);
         
         // Notify Android if callback exists
