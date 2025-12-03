@@ -368,11 +368,27 @@ class ContinuousPaginator(
         
         AppLogger.d(TAG, "Loading window: chapters ${windowIndices.first()}-${windowIndices.last()}")
         
+        // CRITICAL FIX: During initialization (when many windows are preloading),
+        // DO NOT unload chapters that may be needed by other windows being assembled.
+        // The WindowBufferManager will handle cleanup after initialization is complete.
+        // Only unload chapters if we're NOT in an initialization phase (detected by checking
+        // if we have a large number of loaded chapters relative to a single window).
+        
         // Determine which chapters to unload
         val toUnload = loadedChapters.keys - windowIndices.toSet()
-        toUnload.forEach { chapterIndex ->
-            AppLogger.d(TAG, "Unloading chapter $chapterIndex")
-            loadedChapters.remove(chapterIndex)
+        
+        // SAFETY CHECK: Don't unload if we have fewer loaded chapters than would fill 3 windows.
+        // This prevents premature unloading during buffer initialization when multiple windows
+        // are being assembled in parallel.
+        val safeToUnload = loadedChapters.size >= (windowSize * 3)
+        
+        if (safeToUnload) {
+            toUnload.forEach { chapterIndex ->
+                AppLogger.d(TAG, "Unloading chapter $chapterIndex")
+                loadedChapters.remove(chapterIndex)
+            }
+        } else {
+            AppLogger.d(TAG, "Skipping unload during initialization: loadedChapters.size=${loadedChapters.size} < ${windowSize * 3}")
         }
         
         // Determine which chapters to load
