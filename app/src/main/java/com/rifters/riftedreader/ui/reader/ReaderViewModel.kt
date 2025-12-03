@@ -146,7 +146,12 @@ class ReaderViewModel(
     
     // WindowBufferManager for two-phase buffer lifecycle in continuous mode
     // Manages 5-window buffer with STARTUP and STEADY phases
-    private var windowBufferManager: WindowBufferManager? = null
+    private var _windowBufferManager: WindowBufferManager? = null
+    
+    // Public accessor for fragments that need to check buffer state
+    val windowBufferManager: WindowBufferManager?
+        get() = _windowBufferManager
+    
     private var windowAssembler: DefaultWindowAssembler? = null
     
     // Cache for pre-wrapped HTML to enable fast access for windows 0-4 during initial load
@@ -612,7 +617,7 @@ class ReaderViewModel(
                 paginator = slidingWindowPaginator,
                 coroutineScope = viewModelScope
             )
-            windowBufferManager = bufferManager
+            _windowBufferManager = bufferManager
             
             // Initialize the buffer starting from the initial window
             bufferManager.initialize(initialWindowIndex)
@@ -628,7 +633,7 @@ class ReaderViewModel(
         } catch (e: Exception) {
             AppLogger.e("ReaderViewModel", "[WINDOW_BUFFER] Failed to initialize WindowBufferManager", e)
             // Buffer manager is optional enhancement, continue without it
-            windowBufferManager = null
+            _windowBufferManager = null
             windowAssembler = null
         }
     }
@@ -644,11 +649,11 @@ class ReaderViewModel(
      * @param windowIndex The global window index that became visible
      */
     fun onWindowBecameVisible(windowIndex: Int) {
-        if (!isContinuousMode || windowBufferManager == null) {
+        if (!isContinuousMode || _windowBufferManager == null) {
             return
         }
         
-        val bufferManager = windowBufferManager ?: return
+        val bufferManager = _windowBufferManager ?: return
         
         AppLogger.d("ReaderViewModel", "[WINDOW_BUFFER] onWindowBecameVisible: windowIndex=$windowIndex")
         
@@ -672,17 +677,16 @@ class ReaderViewModel(
      * @param totalPagesInWindow Total pages in the current window
      */
     fun maybeShiftForward(currentInPageIndex: Int, totalPagesInWindow: Int) {
-        val bufferManager = windowBufferManager
+        val bufferManager = _windowBufferManager
         if (!isContinuousMode || bufferManager == null) {
             return
         }
         
         // Check if we're at the last window (boundary check)
         val activeWindow = bufferManager.getActiveWindowIndex()
-        val totalWindows = continuousPaginator?.getTotalWindows() ?: 0
-        if (activeWindow >= totalWindows - 1) {
+        if (!bufferManager.hasNextWindow()) {
             AppLogger.d("ReaderViewModel", "[WINDOW_BUFFER] maybeShiftForward: " +
-                "skipping - already at Window $activeWindow (last window, total=$totalWindows)")
+                "skipping - already at Window $activeWindow (last window)")
             return
         }
         
@@ -717,16 +721,16 @@ class ReaderViewModel(
      * @param currentInPageIndex Current page within the window (0-based)
      */
     fun maybeShiftBackward(currentInPageIndex: Int) {
-        val bufferManager = windowBufferManager
+        val bufferManager = _windowBufferManager
         if (!isContinuousMode || bufferManager == null) {
             return
         }
         
         // Don't attempt to shift backward if we're already at Window 0 (first window)
         val activeWindow = bufferManager.getActiveWindowIndex()
-        if (activeWindow == 0) {
+        if (!bufferManager.hasPreviousWindow()) {
             AppLogger.d("ReaderViewModel", "[WINDOW_BUFFER] maybeShiftBackward: " +
-                "skipping - already at Window 0 (first window)")
+                "skipping - already at Window $activeWindow (first window)")
             return
         }
         
