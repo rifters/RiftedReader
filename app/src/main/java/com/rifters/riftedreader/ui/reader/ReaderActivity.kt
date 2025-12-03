@@ -66,6 +66,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private lateinit var snapHelper: PagerSnapHelper
     private var currentPagerPosition: Int = 0
     private var isUserScrolling: Boolean = false
+    // Flag to prevent circular navigation updates during programmatic scrolls
+    private var programmaticScrollInProgress: Boolean = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppLogger.event("ReaderActivity", "onCreate started", "ui/ReaderActivity/lifecycle")
@@ -294,6 +296,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     isUserScrolling = newState == RecyclerView.SCROLL_STATE_DRAGGING
                     
                     if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                        // Clear programmatic scroll flag when scroll settles
+                        val wasProgrammatic = programmaticScrollInProgress
+                        programmaticScrollInProgress = false
+                        
                         // Get the current snapped position
                         val snapView = snapHelper.findSnapView(this@ReaderActivity.layoutManager)
                         val position = if (snapView != null) {
@@ -303,6 +309,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             val firstVisible = this@ReaderActivity.layoutManager.findFirstVisibleItemPosition()
                             if (firstVisible != RecyclerView.NO_POSITION) firstVisible else currentPagerPosition
                         }
+                        
+                        AppLogger.d(
+                            "ReaderActivity",
+                            "RecyclerView settled: position=$position, currentPagerPosition=$currentPagerPosition, " +
+                            "wasProgrammatic=$wasProgrammatic, vmWindow=${viewModel.currentWindowIndex.value} [SCROLL_SETTLE]"
+                        )
                         
                         if (position >= 0 && position != currentPagerPosition) {
                             val previousWindow = currentPagerPosition
@@ -314,15 +326,23 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             AppLogger.d(
                                 "ReaderActivity",
                                 "WINDOW_ENTER: windowIndex=$position, previousWindow=$previousWindow, direction=$direction, " +
-                                        "mode=USER_NAVIGATION, paginationMode=${viewModel.paginationMode} [WINDOW_CHANGE]"
+                                        "mode=${if (wasProgrammatic) "PROGRAMMATIC" else "USER_GESTURE"}, " +
+                                        "paginationMode=${viewModel.paginationMode} [WINDOW_CHANGE]"
                             )
                             
-                            if (readerMode == ReaderMode.PAGE && viewModel.currentWindowIndex.value != position) {
+                            // Only update ViewModel if position changed AND not during programmatic scroll
+                            // (programmatic scrolls already updated ViewModel before scrolling)
+                            if (readerMode == ReaderMode.PAGE && viewModel.currentWindowIndex.value != position && !wasProgrammatic) {
                                 AppLogger.d(
                                     "ReaderActivity",
-                                    "Updating ViewModel window: $previousWindow -> $position (triggered by RecyclerView gesture/animation) [WINDOW_SWITCH_REASON]"
+                                    "Updating ViewModel window: $previousWindow -> $position (triggered by user gesture) [WINDOW_SWITCH_REASON]"
                                 )
                                 viewModel.goToWindow(position)
+                            } else if (wasProgrammatic) {
+                                AppLogger.d(
+                                    "ReaderActivity",
+                                    "Skipping ViewModel update (programmatic scroll) - ViewModel already at window ${viewModel.currentWindowIndex.value} [SCROLL_GUARD]"
+                                )
                             }
                             controlsManager.onUserInteraction()
                         }
@@ -790,18 +810,40 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
             val currentWindow = viewModel.currentWindowIndex.value
             val nextWindow = currentWindow + 1
+            val totalWindows = viewModel.windowCount.value
+            val adapterItemCount = pagerAdapter.itemCount
+            
             AppLogger.d(
                 "ReaderActivity",
-                "navigateToNextPage (window mode): currentWindow=$currentWindow -> nextWindow=$nextWindow mode=$readerMode " +
+                "navigateToNextPage (window mode): currentWindow=$currentWindow -> nextWindow=$nextWindow, " +
+                        "totalWindows=$totalWindows, adapterItemCount=$adapterItemCount, mode=$readerMode " +
                         "[WINDOW_SWITCH_REASON:USER_TAP_OR_BUTTON]"
             )
+            
+            // Validate target window is within bounds before attempting navigation
+            if (nextWindow >= totalWindows || nextWindow >= adapterItemCount) {
+                AppLogger.w(
+                    "ReaderActivity",
+                    "Cannot navigate to next window: nextWindow=$nextWindow exceeds bounds " +
+                    "(totalWindows=$totalWindows, adapterItemCount=$adapterItemCount) [NAV_BLOCKED]"
+                )
+                return
+            }
+            
             val moved = viewModel.nextWindow()
             if (readerMode == ReaderMode.PAGE && moved) {
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically setting RecyclerView to window $nextWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Programmatically scrolling RecyclerView to window $nextWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
                 )
+                // Set flag before scrolling to prevent circular update from OnScrollListener
+                programmaticScrollInProgress = true
                 setCurrentItem(nextWindow, animated)
+            } else if (!moved) {
+                AppLogger.w(
+                    "ReaderActivity",
+                    "ViewModel.nextWindow() returned false - navigation blocked [NAV_FAILED]"
+                )
             }
         } else {
             val currentIndex = viewModel.currentPage.value
@@ -827,18 +869,39 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
             val currentWindow = viewModel.currentWindowIndex.value
             val previousWindow = currentWindow - 1
+            val totalWindows = viewModel.windowCount.value
+            val adapterItemCount = pagerAdapter.itemCount
+            
             AppLogger.d(
                 "ReaderActivity",
-                "navigateToPreviousPage (window mode): currentWindow=$currentWindow -> previousWindow=$previousWindow mode=$readerMode " +
+                "navigateToPreviousPage (window mode): currentWindow=$currentWindow -> previousWindow=$previousWindow, " +
+                        "totalWindows=$totalWindows, adapterItemCount=$adapterItemCount, mode=$readerMode " +
                         "[WINDOW_SWITCH_REASON:USER_TAP_OR_BUTTON]"
             )
+            
+            // Validate target window is within bounds before attempting navigation
+            if (previousWindow < 0) {
+                AppLogger.w(
+                    "ReaderActivity",
+                    "Cannot navigate to previous window: previousWindow=$previousWindow is negative [NAV_BLOCKED]"
+                )
+                return
+            }
+            
             val moved = viewModel.previousWindow()
             if (readerMode == ReaderMode.PAGE && moved) {
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically setting RecyclerView to window $previousWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Programmatically scrolling RecyclerView to window $previousWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
                 )
+                // Set flag before scrolling to prevent circular update from OnScrollListener
+                programmaticScrollInProgress = true
                 setCurrentItem(previousWindow, animated)
+            } else if (!moved) {
+                AppLogger.w(
+                    "ReaderActivity",
+                    "ViewModel.previousWindow() returned false - navigation blocked [NAV_FAILED]"
+                )
             }
         } else {
             val currentIndex = viewModel.currentPage.value
@@ -867,20 +930,41 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
             val currentWindow = viewModel.currentWindowIndex.value
             val previousWindow = currentWindow - 1
+            val totalWindows = viewModel.windowCount.value
+            val adapterItemCount = pagerAdapter.itemCount
+            
             AppLogger.d(
                 "ReaderActivity",
-                "navigateToPreviousChapterToLastPage (window mode): currentWindow=$currentWindow -> previousWindow=$previousWindow mode=$readerMode " +
+                "navigateToPreviousChapterToLastPage (window mode): currentWindow=$currentWindow -> previousWindow=$previousWindow, " +
+                        "totalWindows=$totalWindows, adapterItemCount=$adapterItemCount, mode=$readerMode " +
                         "[WINDOW_SWITCH_REASON:BACKWARD_WINDOW_NAVIGATION]"
             )
+            
+            // Validate target window is within bounds before attempting navigation
+            if (previousWindow < 0) {
+                AppLogger.w(
+                    "ReaderActivity",
+                    "Cannot navigate to previous window with jump-to-last: previousWindow=$previousWindow is negative [NAV_BLOCKED]"
+                )
+                return
+            }
+            
             val moved = viewModel.previousWindow()
             if (readerMode == ReaderMode.PAGE && moved) {
                 // Set flag only after navigation succeeds to avoid race condition
                 viewModel.setJumpToLastPageFlag()
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically setting RecyclerView to window $previousWindow with jump-to-last-page flag [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Programmatically scrolling RecyclerView to window $previousWindow with jump-to-last-page flag [PROGRAMMATIC_WINDOW_CHANGE]"
                 )
+                // Set flag before scrolling to prevent circular update from OnScrollListener
+                programmaticScrollInProgress = true
                 setCurrentItem(previousWindow, animated)
+            } else if (!moved) {
+                AppLogger.w(
+                    "ReaderActivity",
+                    "ViewModel.previousWindow() returned false - backward navigation blocked [NAV_FAILED]"
+                )
             }
         } else {
             val currentIndex = viewModel.currentPage.value
@@ -1308,12 +1392,54 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private fun setCurrentItem(position: Int, smoothScroll: Boolean) {
         // Note: currentPagerPosition is updated in the OnScrollListener when scroll settles
         // to ensure consistency with actual scroll state
+        
+        val adapterItemCount = pagerAdapter.itemCount
+        val recyclerViewWidth = binding.pageRecyclerView.width
+        val recyclerViewHeight = binding.pageRecyclerView.height
+        
+        AppLogger.d(
+            "ReaderActivity",
+            "setCurrentItem: position=$position, smoothScroll=$smoothScroll, adapterItemCount=$adapterItemCount, " +
+            "recyclerViewSize=${recyclerViewWidth}x${recyclerViewHeight}, " +
+            "layoutManagerInitialized=${::layoutManager.isInitialized} [SCROLL_REQUEST]"
+        )
+        
+        // Validate position is within adapter bounds
+        if (position < 0 || position >= adapterItemCount) {
+            AppLogger.e(
+                "ReaderActivity",
+                "setCurrentItem ABORTED: position=$position out of bounds (itemCount=$adapterItemCount) [SCROLL_ERROR]"
+            )
+            // Clear flag if set
+            programmaticScrollInProgress = false
+            return
+        }
+        
+        // Warn if RecyclerView not measured yet
+        if (recyclerViewWidth == 0 || recyclerViewHeight == 0) {
+            AppLogger.w(
+                "ReaderActivity",
+                "setCurrentItem WARNING: RecyclerView not measured (${recyclerViewWidth}x${recyclerViewHeight}) - " +
+                "scroll may not work correctly [SCROLL_WARNING]"
+            )
+        }
+        
         if (smoothScroll) {
+            AppLogger.d(
+                "ReaderActivity",
+                "Initiating smooth scroll to position $position [SMOOTH_SCROLL_START]"
+            )
             binding.pageRecyclerView.smoothScrollToPosition(position)
         } else {
+            AppLogger.d(
+                "ReaderActivity",
+                "Initiating instant scroll to position $position [INSTANT_SCROLL]"
+            )
             layoutManager.scrollToPositionWithOffset(position, 0)
             // For non-smooth scrolls, update position immediately since there's no animation
             currentPagerPosition = position
+            // Also clear programmatic flag immediately for instant scrolls
+            programmaticScrollInProgress = false
         }
     }
     

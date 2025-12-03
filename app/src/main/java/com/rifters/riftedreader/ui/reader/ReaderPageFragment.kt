@@ -2014,15 +2014,33 @@ class ReaderPageFragment : Fragment() {
         if (readerActivity == null) {
             com.rifters.riftedreader.util.AppLogger.w(
                 "ReaderPageFragment",
-                "navigateToNextWindow: activity is null or not ReaderActivity"
+                "navigateToNextWindow: activity is null or not ReaderActivity [NAV_ERROR]"
             )
             return
         }
         
         val currentWindow = readerViewModel.currentWindowIndex.value
+        val totalWindows = readerViewModel.windowCount.value
+        val targetWindow = currentWindow + 1
+        
         com.rifters.riftedreader.util.AppLogger.d(
             "ReaderPageFragment",
-            "WINDOW_EXIT: windowIndex=$currentWindow, direction=NEXT, target=${currentWindow + 1} [WINDOW_NAV]"
+            "WINDOW_EXIT: windowIndex=$currentWindow, direction=NEXT, target=$targetWindow, " +
+            "totalWindows=$totalWindows [WINDOW_NAV]"
+        )
+        
+        // Validate target window exists before requesting navigation
+        if (targetWindow >= totalWindows) {
+            com.rifters.riftedreader.util.AppLogger.w(
+                "ReaderPageFragment",
+                "Cannot navigate to next window: target=$targetWindow >= totalWindows=$totalWindows [NAV_BLOCKED]"
+            )
+            return
+        }
+        
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "Calling ReaderActivity.navigateToNextPage() for window transition $currentWindow -> $targetWindow [HANDOFF_TO_ACTIVITY]"
         )
         readerActivity.navigateToNextPage(animated = true)
     }
@@ -2036,15 +2054,32 @@ class ReaderPageFragment : Fragment() {
         if (readerActivity == null) {
             com.rifters.riftedreader.util.AppLogger.w(
                 "ReaderPageFragment",
-                "navigateToPreviousWindowLastPage: activity is null or not ReaderActivity"
+                "navigateToPreviousWindowLastPage: activity is null or not ReaderActivity [NAV_ERROR]"
             )
             return
         }
         
         val currentWindow = readerViewModel.currentWindowIndex.value
+        val targetWindow = currentWindow - 1
+        
         com.rifters.riftedreader.util.AppLogger.d(
             "ReaderPageFragment",
-            "WINDOW_EXIT: windowIndex=$currentWindow, direction=PREV, target=${currentWindow - 1}, jumpToLast=true [WINDOW_NAV]"
+            "WINDOW_EXIT: windowIndex=$currentWindow, direction=PREV, target=$targetWindow, " +
+            "jumpToLast=true [WINDOW_NAV]"
+        )
+        
+        // Validate target window exists before requesting navigation
+        if (targetWindow < 0) {
+            com.rifters.riftedreader.util.AppLogger.w(
+                "ReaderPageFragment",
+                "Cannot navigate to previous window: target=$targetWindow is negative [NAV_BLOCKED]"
+            )
+            return
+        }
+        
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "Calling ReaderActivity.navigateToPreviousChapterToLastPage() for window transition $currentWindow -> $targetWindow [HANDOFF_TO_ACTIVITY]"
         )
         readerActivity.navigateToPreviousChapterToLastPage(animated = true)
     }

@@ -1219,21 +1219,44 @@ class ReaderViewModel(
      */
     fun goToWindow(windowIndex: Int): Boolean {
         val totalWindows = _windowCount.value
-        if (totalWindows <= 0 || windowIndex !in 0 until totalWindows) {
+        val previousWindow = _currentWindowIndex.value
+        
+        AppLogger.d("ReaderViewModel", 
+            "goToWindow called: windowIndex=$windowIndex, previousWindow=$previousWindow, " +
+            "totalWindows=$totalWindows, paginationMode=$paginationMode [WINDOW_NAV_REQUEST]")
+        
+        if (totalWindows <= 0) {
+            AppLogger.w("ReaderViewModel", 
+                "goToWindow BLOCKED: totalWindows=$totalWindows (no windows available) [WINDOW_NAV_BLOCKED]")
+            return false
+        }
+        
+        if (windowIndex !in 0 until totalWindows) {
+            AppLogger.w("ReaderViewModel", 
+                "goToWindow BLOCKED: windowIndex=$windowIndex out of range [0, $totalWindows) [WINDOW_NAV_BLOCKED]")
             return false
         }
         
         _currentWindowIndex.value = windowIndex
+        AppLogger.d("ReaderViewModel", 
+            "goToWindow: _currentWindowIndex updated from $previousWindow to $windowIndex [WINDOW_STATE_UPDATE]")
         
         if (isContinuousMode) {
             viewModelScope.launch {
-                val paginator = continuousPaginator ?: return@launch
+                val paginator = continuousPaginator
+                if (paginator == null) {
+                    AppLogger.e("ReaderViewModel", 
+                        "goToWindow ERROR: continuousPaginator is null in CONTINUOUS mode [PAGINATOR_NULL]")
+                    return@launch
+                }
+                
                 val windowInfo = paginator.getWindowInfo()
                 val totalChapters = windowInfo.totalChapters
                 
                 // Guard against empty book
                 if (totalChapters <= 0) {
-                    AppLogger.w("ReaderViewModel", "goToWindow: no chapters available")
+                    AppLogger.w("ReaderViewModel", 
+                        "goToWindow: no chapters available (totalChapters=0) [NO_CHAPTERS]")
                     return@launch
                 }
                 
@@ -1241,14 +1264,22 @@ class ReaderViewModel(
                 val firstChapter = slidingWindowManager.firstChapterInWindow(windowIndex)
                     .coerceIn(0, totalChapters - 1)
                 
+                AppLogger.d("ReaderViewModel", 
+                    "goToWindow: navigating to firstChapter=$firstChapter in window=$windowIndex " +
+                    "(totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow) [CHAPTER_NAV]")
+                
                 // Navigate to the first chapter in this window
                 val globalPage = paginator.navigateToChapter(firstChapter, 0)
                 updateForGlobalPage(globalPage)
                 
-                AppLogger.d("ReaderViewModel", "goToWindow: windowIndex=$windowIndex -> firstChapter=$firstChapter, globalPage=$globalPage")
+                AppLogger.d("ReaderViewModel", 
+                    "goToWindow SUCCESS: windowIndex=$windowIndex -> firstChapter=$firstChapter, " +
+                    "globalPage=$globalPage [WINDOW_NAV_SUCCESS]")
             }
         } else {
             // Chapter-based mode: window index equals chapter index
+            AppLogger.d("ReaderViewModel", 
+                "goToWindow: chapter-based mode, updating page to $windowIndex [CHAPTER_MODE]")
             updateCurrentPage(windowIndex)
         }
         

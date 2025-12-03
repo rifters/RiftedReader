@@ -116,14 +116,16 @@ class ReaderPagerAdapter(
         if (existingFragment != null && existingFragment.isAdded) {
             // Fragment already exists and is added, no need to recreate
             AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment REUSED: " +
-                "position=$position, fragmentTag=$fragmentTag")
+                "position=$position, fragmentTag=$fragmentTag, isAdded=${existingFragment.isAdded}, " +
+                "isVisible=${existingFragment.isVisible}")
             return
         }
         
         // Create new fragment for this position
         val fragment = ReaderPageFragment.newInstance(position)
         AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment CREATING: " +
-            "position=$position (windowIndex=$position), fragmentTag=$fragmentTag")
+            "position=$position (windowIndex=$position), fragmentTag=$fragmentTag, " +
+            "activeFragments=${activeFragments.size}")
         
         // Capture holder position for validation in the posted transaction
         val holderPosition = position
@@ -148,11 +150,14 @@ class ReaderPagerAdapter(
                     
                     AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment COMMITTED: " +
                         "position=$position, containerId=${holder.containerView.id}, " +
-                        "activeFragments=${activeFragments.size}")
+                        "activeFragments=${activeFragments.size}, fragmentTag=$fragmentTag [FRAGMENT_ADDED]")
                 } else {
-                    AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment SKIPPED (position changed): " +
-                        "original=$holderPosition, current=${holder.adapterPosition}")
+                    AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment SKIPPED (position changed): " +
+                        "original=$holderPosition, current=${holder.adapterPosition} [POSITION_CHANGED]")
                 }
+            } else {
+                AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment SKIPPED (activity finishing): " +
+                    "position=$holderPosition [ACTIVITY_FINISHING]")
             }
         }
     }
