@@ -677,6 +677,15 @@ class ReaderViewModel(
             return
         }
         
+        // Check if we're at the last window (boundary check)
+        val activeWindow = bufferManager.getActiveWindowIndex()
+        val totalWindows = continuousPaginator?.getTotalWindows() ?: 0
+        if (activeWindow >= totalWindows - 1) {
+            AppLogger.d("ReaderViewModel", "[WINDOW_BUFFER] maybeShiftForward: " +
+                "skipping - already at Window $activeWindow (last window, total=$totalWindows)")
+            return
+        }
+        
         // Shift forward when user is near the end of the current window
         // This ensures the next window is ready before they swipe
         val shouldShift = totalPagesInWindow > 0 && 
@@ -684,7 +693,7 @@ class ReaderViewModel(
         
         if (shouldShift && bufferManager.phase.value == WindowBufferManager.Phase.STEADY) {
             AppLogger.d("ReaderViewModel", "[WINDOW_BUFFER] maybeShiftForward: " +
-                "inPage=$currentInPageIndex/$totalPagesInWindow, triggering shift")
+                "activeWindow=$activeWindow, inPage=$currentInPageIndex/$totalPagesInWindow, triggering shift")
             
             viewModelScope.launch {
                 try {
@@ -713,13 +722,21 @@ class ReaderViewModel(
             return
         }
         
+        // Don't attempt to shift backward if we're already at Window 0 (first window)
+        val activeWindow = bufferManager.getActiveWindowIndex()
+        if (activeWindow == 0) {
+            AppLogger.d("ReaderViewModel", "[WINDOW_BUFFER] maybeShiftBackward: " +
+                "skipping - already at Window 0 (first window)")
+            return
+        }
+        
         // Shift backward when user is near the start of the current window
         // This ensures the previous window is ready before they swipe back
         val shouldShift = currentInPageIndex < bufferShiftThresholdPages
         
         if (shouldShift && bufferManager.phase.value == WindowBufferManager.Phase.STEADY) {
             AppLogger.d("ReaderViewModel", "[WINDOW_BUFFER] maybeShiftBackward: " +
-                "inPage=$currentInPageIndex, triggering shift")
+                "activeWindow=$activeWindow, inPage=$currentInPageIndex, triggering shift")
             
             viewModelScope.launch {
                 try {
