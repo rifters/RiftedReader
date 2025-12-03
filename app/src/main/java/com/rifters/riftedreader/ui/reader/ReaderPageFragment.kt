@@ -192,35 +192,6 @@ class ReaderPageFragment : Fragment() {
                     // Set font size, which will trigger a reflow
                     WebViewPaginatorBridge.setFontSize(binding.pageWebView, settings.textSizeSp.toInt())
                     
-                    // For WINDOW mode, load the window descriptor to tell JavaScript about the window structure
-                    if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
-                        viewLifecycleOwner.lifecycleScope.launch {
-                            try {
-                                val location = readerViewModel.getPageLocation(pageIndex)
-                                if (location != null) {
-                                    val descriptor = com.rifters.riftedreader.domain.pagination.WindowDescriptor(
-                                        windowIndex = location.windowIndex,
-                                        firstChapterIndex = location.windowFirstChapter,
-                                        lastChapterIndex = location.windowLastChapter,
-                                        entryChapterIndex = location.chapterIndex,
-                                        entryInPageIndex = location.inPageIndex
-                                    )
-                                    com.rifters.riftedreader.util.AppLogger.d(
-                                        "ReaderPageFragment",
-                                        "[WINDOW_LOAD] Loading window descriptor for window $pageIndex: chapters ${descriptor.firstChapterIndex}-${descriptor.lastChapterIndex}, entry=${descriptor.entryChapterIndex}:${descriptor.entryInPageIndex}"
-                                    )
-                                    WebViewPaginatorBridge.loadWindow(binding.pageWebView, descriptor)
-                                }
-                            } catch (e: Exception) {
-                                com.rifters.riftedreader.util.AppLogger.e(
-                                    "ReaderPageFragment",
-                                    "[WINDOW_LOAD] Error loading window descriptor for window $pageIndex",
-                                    e
-                                )
-                            }
-                        }
-                    }
-                    
                     // After font size is set and reflow completes, restore to saved in-page position
                     // Use a longer delay to ensure paginator initialization and reflow complete
                     viewLifecycleOwner.lifecycleScope.launch {
