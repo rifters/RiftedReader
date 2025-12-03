@@ -76,6 +76,7 @@
     let chapterSegments = [];
     let initialChapterIndex = 0;
     let currentPage = 0; // CRITICAL: Track current page explicitly to avoid async scrollTo issues
+    let isProgrammaticScroll = false; // Prevent scroll event from overwriting currentPage during goToPage()
     
     // ISSUE 4 FIX: Track last known page count for returning during reflow when isPaginationReady=false
     let lastKnownPageCount = -1;
@@ -1212,6 +1213,12 @@
             return;
         }
         
+        // Don't sync during programmatic scrolling - goToPage() already set currentPage
+        if (isProgrammaticScroll) {
+            console.log('inpage_paginator: syncCurrentPageFromScroll - skipping during programmatic scroll');
+            return;
+        }
+        
         const scrollLeft = columnContainer.scrollLeft;
         const pageWidth = viewportWidth || window.innerWidth;
         
@@ -1222,7 +1229,11 @@
         // Use Math.round() instead of Math.floor() to handle sub-pixel positioning
         // When scrollTo() snaps to page boundaries, scrollLeft might be pageWidth * 7.999
         // which would floor to 7 instead of the intended page 8
-        currentPage = Math.round(scrollLeft / pageWidth);
+        const newPage = Math.round(scrollLeft / pageWidth);
+        if (newPage !== currentPage) {
+            console.log('inpage_paginator: syncCurrentPageFromScroll - updating currentPage from ' + currentPage + ' to ' + newPage);
+            currentPage = newPage;
+        }
     }
     
     /**
@@ -1261,12 +1272,24 @@
         currentPage = safeIndex;
         console.log('inpage_paginator: goToPage internal state - prevPage=' + prevPage + ', newPage=' + currentPage);
         
+        // Set flag to prevent scroll event from overwriting currentPage
+        isProgrammaticScroll = true;
+        
         const behavior = smooth ? SCROLL_BEHAVIOR_SMOOTH : SCROLL_BEHAVIOR_AUTO;
+        
+        console.log('inpage_paginator: Attempting to scroll to page ' + safeIndex + ' (targetScrollLeft=' + targetScroll + '), current scrollLeft=' + columnContainer.scrollLeft);
         
         columnContainer.scrollTo({
             left: targetScroll,
             behavior: behavior
         });
+        
+        // Clear the flag after a delay to allow scroll to complete
+        // Use a timeout longer than the smooth scroll animation (~300ms)
+        setTimeout(function() {
+            isProgrammaticScroll = false;
+            console.log('inpage_paginator: Programmatic scroll complete, re-enabling scroll sync');
+        }, 500);
         
         // Notify Android if callback exists
         if (window.AndroidBridge && window.AndroidBridge.onPageChanged) {
