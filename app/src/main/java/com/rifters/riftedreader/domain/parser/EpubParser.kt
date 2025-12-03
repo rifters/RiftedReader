@@ -258,7 +258,11 @@ class EpubParser : BookParser {
                     )
                     
                     // Clean up old chapter caches to prevent disk bloat
-                    cleanOldChapterCaches(file, page)
+                    // Use keepRange=30 to accommodate 5-window sliding buffer:
+                    // - 5 windows (2 before + active + 2 after) × 5 chapters/window = 25 chapters
+                    // - From any chapter N, need roughly [N-12, N+12] range for steady state
+                    // - keepRange=30 provides safety margin for pre-cache and TOC jumps
+                    cleanOldChapterCaches(file, page, keepRange = 30)
                 }
                 
                 images.forEach { img ->
@@ -882,13 +886,42 @@ class EpubParser : BookParser {
         val chapterCacheDir = getChapterImageCacheDir(bookFile, page)
         val cachedImageFile = File(chapterCacheDir, sanitizedFileName)
         
+        DiagnosticLogger.d(
+            DiagnosticLogger.Category.PARSER,
+            "[IMAGE_CACHE] Attempting to cache: chapter=$page, file=$sanitizedFileName, " +
+            "dir=${chapterCacheDir.absolutePath}, dirExists=${chapterCacheDir.exists()}"
+        )
+        
         return try {
+            // Ensure directory exists
+            if (!chapterCacheDir.exists()) {
+                val dirCreated = chapterCacheDir.mkdirs()
+                DiagnosticLogger.d(
+                    DiagnosticLogger.Category.PARSER,
+                    "[IMAGE_CACHE] Created cache directory: success=$dirCreated, path=${chapterCacheDir.absolutePath}"
+                )
+            }
+            
             FileOutputStream(cachedImageFile).use { output ->
                 output.write(imageBytes)
             }
             
+            val fileExists = cachedImageFile.exists()
+            val fileSize = if (fileExists) cachedImageFile.length() else 0
+            
+            DiagnosticLogger.d(
+                DiagnosticLogger.Category.PARSER,
+                "[IMAGE_CACHE] Wrote image: path=${cachedImageFile.absolutePath}, " +
+                "exists=$fileExists, size=$fileSize bytes"
+            )
+            
             val imageCacheRoot = EpubImageAssetHelper.getImageCacheRoot(bookFile)
             val assetUrl = EpubImageAssetHelper.toAssetUrl(cachedImageFile.absolutePath, imageCacheRoot)
+            
+            DiagnosticLogger.d(
+                DiagnosticLogger.Category.PARSER,
+                "[IMAGE_CACHE] Generated asset URL: $assetUrl"
+            )
             
             if (img.tagName() == "img") {
                 img.attr("src", assetUrl)
