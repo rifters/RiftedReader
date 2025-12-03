@@ -1150,14 +1150,18 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
     private fun updateReaderModeUi() {
         binding.root.post {
-            if (readerMode == ReaderMode.PAGE) {
+            // In CONTINUOUS pagination mode, always use RecyclerView (for sliding windows)
+            // In CHAPTER_BASED mode, use RecyclerView in PAGE mode, ScrollView in SCROLL mode
+            val useRecyclerView = viewModel.paginationMode == PaginationMode.CONTINUOUS || readerMode == ReaderMode.PAGE
+            
+            if (useRecyclerView) {
                 binding.contentScrollView.isVisible = false
                 binding.pageRecyclerView.isVisible = true
                 // RecyclerView touch handling is managed by gesture detection in fragments
-                AppLogger.d("ReaderActivity", "RecyclerView visible for PAGE mode")
+                AppLogger.d("ReaderActivity", "RecyclerView visible for paginationMode=${viewModel.paginationMode}, readerMode=$readerMode")
                 viewModel.publishHighlight(viewModel.currentPage.value, currentHighlightRange)
             } else {
-                // Switching to SCROLL mode
+                // Switching to SCROLL mode with CHAPTER_BASED pagination
                 binding.pageRecyclerView.isVisible = false
                 binding.contentScrollView.isVisible = true
                 currentHighlightRange?.let { applyScrollHighlight(it) }

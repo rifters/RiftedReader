@@ -1937,12 +1937,19 @@ class ReaderPageFragment : Fragment() {
         if (!isWebViewReady || binding.pageWebView.visibility != View.VISIBLE || !isPaginatorInitialized) {
             com.rifters.riftedreader.util.AppLogger.d(
                 "ReaderPageFragment",
-                "handleHardwarePageKey ignored: isWebViewReady=$isWebViewReady, visibility=${binding.pageWebView.visibility}, isPaginatorInitialized=$isPaginatorInitialized"
+                "handleHardwarePageKey BLOCKED: windowIndex=$pageIndex, isWebViewReady=$isWebViewReady, " +
+                "webViewVisibility=${binding.pageWebView.visibility} (VISIBLE=${View.VISIBLE}), " +
+                "isPaginatorInitialized=$isPaginatorInitialized, readerMode=${(activity as? ReaderActivity)?.readerMode}, " +
+                "paginationMode=${readerViewModel.paginationMode} [EDGE_DEBUG]"
             )
             return false
         }
 
         // Consume the key immediately to suppress volume change; resolve navigation asynchronously.
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "handleHardwarePageKey ACCEPTED: windowIndex=$pageIndex, launching navigation for isNext=$isNext [EDGE_DEBUG]"
+        )
         viewLifecycleOwner.lifecycleScope.launch {
             handlePagedNavigation(isNext, "HARDWARE_KEY")
         }
