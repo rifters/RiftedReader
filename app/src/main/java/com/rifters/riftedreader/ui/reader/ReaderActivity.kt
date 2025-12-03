@@ -58,7 +58,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var sentenceBoundaries: List<IntRange> = emptyList()
     private var highlightedSentenceIndex: Int = -1
     private var currentHighlightRange: IntRange? = null
-    private var readerMode: ReaderMode = ReaderMode.SCROLL
+    internal var readerMode: ReaderMode = ReaderMode.SCROLL
     private var autoContinueTts: Boolean = false
     private var pendingTtsResume: Boolean = false
     private var usingWebViewSlider: Boolean = false
