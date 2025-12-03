@@ -885,10 +885,13 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             }
             
             val moved = viewModel.nextWindow()
-            if (readerMode == ReaderMode.PAGE && moved) {
+            if (moved) {
+                // In CONTINUOUS mode, always update RecyclerView position regardless of readerMode
+                // PAGE mode: RecyclerView shows one window at a time
+                // SCROLL mode: RecyclerView still manages windows, just scrolls vertically within them
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically scrolling RecyclerView to window $nextWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Programmatically scrolling RecyclerView to window $nextWindow (user navigation), readerMode=$readerMode [PROGRAMMATIC_WINDOW_CHANGE]"
                 )
                 // Set flag before scrolling to prevent circular update from OnScrollListener
                 programmaticScrollInProgress = true
@@ -943,10 +946,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             }
             
             val moved = viewModel.previousWindow()
-            if (readerMode == ReaderMode.PAGE && moved) {
+            if (moved) {
+                // In CONTINUOUS mode, always update RecyclerView position regardless of readerMode
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically scrolling RecyclerView to window $previousWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Programmatically scrolling RecyclerView to window $previousWindow (user navigation), readerMode=$readerMode [PROGRAMMATIC_WINDOW_CHANGE]"
                 )
                 // Set flag before scrolling to prevent circular update from OnScrollListener
                 programmaticScrollInProgress = true
@@ -1004,12 +1008,13 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             }
             
             val moved = viewModel.previousWindow()
-            if (readerMode == ReaderMode.PAGE && moved) {
+            if (moved) {
+                // In CONTINUOUS mode, always update RecyclerView position regardless of readerMode
                 // Set flag only after navigation succeeds to avoid race condition
                 viewModel.setJumpToLastPageFlag()
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically scrolling RecyclerView to window $previousWindow with jump-to-last-page flag [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Programmatically scrolling RecyclerView to window $previousWindow with jump-to-last-page flag, readerMode=$readerMode [PROGRAMMATIC_WINDOW_CHANGE]"
                 )
                 // Set flag before scrolling to prevent circular update from OnScrollListener
                 programmaticScrollInProgress = true
