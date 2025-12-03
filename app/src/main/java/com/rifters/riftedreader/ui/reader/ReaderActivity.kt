@@ -788,10 +788,64 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             ReaderTapAction.BACK -> finish()
             ReaderTapAction.TOGGLE_CONTROLS -> controlsManager.toggleControls()
             ReaderTapAction.NEXT_PAGE -> {
+                // In PAGE mode with CONTINUOUS pagination, delegate to fragment for edge-aware navigation
+                if (readerMode == ReaderMode.PAGE) {
+                    val index = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                        viewModel.currentWindowIndex.value
+                    } else {
+                        viewModel.currentPage.value
+                    }
+                    val fragTag = "f$index"
+                    val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
+                    
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "TAP_ZONE NEXT_PAGE: paginationMode=${viewModel.paginationMode}, index=$index, fragTag=$fragTag, fragFound=${frag != null} [TAP_ZONE_NAV]"
+                    )
+                    
+                    if (frag?.handleHardwarePageKey(isNext = true) == true) {
+                        // Fragment will handle edge-aware navigation
+                        controlsManager.onUserInteraction()
+                        return
+                    }
+                    
+                    // Fallback: direct navigation
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "TAP_ZONE NEXT_PAGE: fragment did not handle, falling back to navigateToNextPage [TAP_ZONE_NAV]"
+                    )
+                }
                 navigateToNextPage()
                 controlsManager.onUserInteraction()
             }
             ReaderTapAction.PREVIOUS_PAGE -> {
+                // In PAGE mode with CONTINUOUS pagination, delegate to fragment for edge-aware navigation
+                if (readerMode == ReaderMode.PAGE) {
+                    val index = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                        viewModel.currentWindowIndex.value
+                    } else {
+                        viewModel.currentPage.value
+                    }
+                    val fragTag = "f$index"
+                    val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
+                    
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "TAP_ZONE PREVIOUS_PAGE: paginationMode=${viewModel.paginationMode}, index=$index, fragTag=$fragTag, fragFound=${frag != null} [TAP_ZONE_NAV]"
+                    )
+                    
+                    if (frag?.handleHardwarePageKey(isNext = false) == true) {
+                        // Fragment will handle edge-aware navigation
+                        controlsManager.onUserInteraction()
+                        return
+                    }
+                    
+                    // Fallback: direct navigation
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "TAP_ZONE PREVIOUS_PAGE: fragment did not handle, falling back to navigateToPreviousPage [TAP_ZONE_NAV]"
+                    )
+                }
                 navigateToPreviousPage()
                 controlsManager.onUserInteraction()
             }

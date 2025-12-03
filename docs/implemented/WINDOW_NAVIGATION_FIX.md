@@ -372,6 +372,312 @@ Expected sequence for successful next window:
 - TOC navigation works
 - Existing features remain functional
 
+## Edge-Aware In-Page to Window Navigation (2025-12-03)
+
+### Unified Navigation System
+
+The reader implements a comprehensive edge-aware navigation system that seamlessly transitions from in-page WebView pagination to outer RecyclerView window pagination in PAGE + CONTINUOUS mode.
+
+### Navigation Flow Architecture
+
+#### 1. Input Sources
+All navigation inputs are unified through `ReaderPageFragment.handlePagedNavigation()`:
+
+**Hardware Keys (Volume Up/Down)**:
+```
+User presses volume key
+  ↓
+ReaderActivity.onKeyDown()
+  ↓
+Resolves correct fragment by index (windowIndex in CONTINUOUS, pageIndex in CHAPTER_BASED)
+  ↓
+ReaderPageFragment.handleHardwarePageKey(isNext)
+  ↓
+Launches coroutine → handlePagedNavigation(isNext, "HARDWARE_KEY")
+```
+
+**Swipe Gestures**:
+```
+User swipes horizontally
+  ↓
+GestureDetector.onScroll() accumulates distance
+  ↓
+Threshold exceeded (25% of viewport)
+  ↓
+handlePagedNavigation(isNext, "SCROLL")
+```
+
+**Fling Gestures**:
+```
+User flings horizontally
+  ↓
+GestureDetector.onFling() checks velocity
+  ↓
+Velocity > 1000px/s threshold
+  ↓
+handlePagedNavigation(isNext, "FLING")
+```
+
+**Tap Zones**:
+```
+User taps configured zone (e.g., right edge)
+  ↓
+ReaderActivity.performTapAction(NEXT_PAGE / PREVIOUS_PAGE)
+  ↓
+In PAGE mode: Delegates to ReaderPageFragment.handleHardwarePageKey(isNext)
+  ↓
+handlePagedNavigation(isNext, "TAP_ZONE")
+```
+
+#### 2. Unified Edge Detection: `handlePagedNavigation()`
+
+This central method in `ReaderPageFragment` handles all navigation logic:
+
+```kotlin
+private suspend fun handlePagedNavigation(isNext: Boolean, source: String): Boolean {
+    // 1. Safety checks
+    if (!isWebViewReady || !isPaginatorInitialized) return false
+    
+    // 2. Query paginator state
+    val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
+    val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
+    
+    // 3. Edge detection and routing
+    if (isNext) {
+        if (currentPage < pageCount - 1) {
+            // IN-PAGE: Navigate within WebView
+            WebViewPaginatorBridge.nextPage(binding.pageWebView)
+            return true
+        } else {
+            // EDGE: Hand over to window navigation
+            navigateToNextWindow()
+            return true
+        }
+    } else {
+        if (currentPage > 0) {
+            // IN-PAGE: Navigate within WebView
+            WebViewPaginatorBridge.prevPage(binding.pageWebView)
+            return true
+        } else {
+            // EDGE: Hand over to window navigation with jump-to-last
+            navigateToPreviousWindowLastPage()
+            return true
+        }
+    }
+}
+```
+
+#### 3. Window Navigation Handover
+
+**Forward Edge (Last In-Page → Next Window)**:
+```
+ReaderPageFragment.navigateToNextWindow()
+  ↓
+Validates target window exists
+  ↓
+Logs WINDOW_EXIT and HANDOFF_TO_ACTIVITY
+  ↓
+ReaderActivity.navigateToNextPage(animated=true)
+  ↓
+viewModel.nextWindow() updates state
+  ↓
+setCurrentItem(nextWindow, animated) scrolls RecyclerView
+  ↓
+OnScrollListener sees programmaticScrollInProgress=true, skips circular update
+  ↓
+Adapter creates fragment for new window
+  ↓
+New fragment loads with currentInPageIndex=0
+```
+
+**Backward Edge (First In-Page → Previous Window + Jump-to-Last)**:
+```
+ReaderPageFragment.navigateToPreviousWindowLastPage()
+  ↓
+Validates target window exists
+  ↓
+Logs WINDOW_EXIT with jumpToLast=true
+  ↓
+ReaderActivity.navigateToPreviousChapterToLastPage(animated=true)
+  ↓
+viewModel.previousWindow() updates state
+  ↓
+viewModel.setJumpToLastPageFlag() sets flag
+  ↓
+setCurrentItem(previousWindow, animated) scrolls RecyclerView
+  ↓
+OnScrollListener sees programmaticScrollInProgress=true, skips circular update
+  ↓
+Adapter creates/reuses fragment for previous window
+  ↓
+Fragment detects shouldJumpToLastPage flag in onPageFinished
+  ↓
+Waits for paginator ready
+  ↓
+WebViewPaginatorBridge.goToPage(lastPage, smooth=false)
+```
+
+### Key Implementation Details
+
+#### 1. Fragment Resolution
+In `ReaderActivity.onKeyDown()` and `performTapAction()`:
+```kotlin
+val index = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+    viewModel.currentWindowIndex.value  // Window index for sliding windows
+} else {
+    viewModel.currentPage.value         // Chapter/page index for chapter-based
+}
+val fragTag = "f$index"
+val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
+```
+
+This ensures hardware keys and tap zones always talk to the correct fragment.
+
+#### 2. Paginator Readiness Checks
+Navigation is only attempted when:
+- `isWebViewReady == true` (WebView has loaded content)
+- `isPaginatorInitialized == true` (JavaScript paginator has fired `onPaginationReady`)
+- `binding.pageWebView.visibility == View.VISIBLE` (WebView is visible in PAGE mode)
+
+This prevents navigation attempts on stale/uninitialized state.
+
+#### 3. Circular Update Prevention
+The `programmaticScrollInProgress` flag in `ReaderActivity` prevents circular updates:
+```kotlin
+// Before programmatic scroll
+programmaticScrollInProgress = true
+setCurrentItem(targetWindow, animated)
+
+// In OnScrollListener
+if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+    val wasProgrammatic = programmaticScrollInProgress
+    programmaticScrollInProgress = false
+    
+    if (!wasProgrammatic) {
+        viewModel.goToWindow(position)  // Only update for user gestures
+    }
+}
+```
+
+#### 4. Tap Zone Integration
+Tap zones now delegate to fragments in PAGE mode:
+```kotlin
+ReaderTapAction.NEXT_PAGE -> {
+    if (readerMode == ReaderMode.PAGE) {
+        if (frag?.handleHardwarePageKey(isNext = true) == true) {
+            // Fragment handles with edge awareness
+            return
+        }
+    }
+    // Fallback: direct window/page navigation
+    navigateToNextPage()
+}
+```
+
+This ensures tap zones behave identically to hardware keys and gestures.
+
+### Log Tags for Debugging
+
+| Tag | Meaning | Location |
+|-----|---------|----------|
+| `[HARDWARE_KEY_NAV]` | Hardware key (volume) pressed | ReaderActivity.onKeyDown() |
+| `[TAP_ZONE_NAV]` | Tap zone triggered | ReaderActivity.performTapAction() |
+| `[EDGE_AWARE_NAV]` | Unified navigation entry point | ReaderPageFragment.handlePagedNavigation() |
+| `[IN_PAGE_NAV]` | Navigation within current window | ReaderPageFragment.handlePagedNavigation() |
+| `[EDGE_FORWARD]` | Hit last in-page, moving to next window | ReaderPageFragment.handlePagedNavigation() |
+| `[EDGE_BACKWARD]` | Hit first in-page, moving to prev window | ReaderPageFragment.handlePagedNavigation() |
+| `[WINDOW_EXIT]` | Exiting window to adjacent window | ReaderPageFragment.navigateToNextWindow() / navigateToPreviousWindowLastPage() |
+| `[HANDOFF_TO_ACTIVITY]` | Calling ReaderActivity navigation methods | ReaderPageFragment edge handlers |
+| `[WINDOW_SWITCH_REASON]` | Why window switch occurred | ReaderActivity navigation methods |
+| `[PROGRAMMATIC_WINDOW_CHANGE]` | RecyclerView scroll initiated by code | ReaderActivity.navigateToNextPage() / navigateToPreviousPage() |
+| `[SCROLL_GUARD]` | Circular update prevented | ReaderActivity OnScrollListener |
+| `[NAV_BLOCKED]` | Navigation blocked due to validation | All navigation methods |
+
+### Expected Log Sequence
+
+**Forward navigation at edge (e.g., hardware key at last in-page)**:
+```
+[HARDWARE_KEY_NAV] VOLUME_DOWN pressed: paginationMode=CONTINUOUS, index=0
+[EDGE_AWARE_NAV] HARDWARE_KEY navigation: windowIndex=0, inPage=8/9, isNext=true
+[EDGE_FORWARD] EDGE_HIT: last in-page (8/9), requesting next window from window 0
+[WINDOW_EXIT] windowIndex=0, direction=NEXT, target=1
+[HANDOFF_TO_ACTIVITY] Calling ReaderActivity.navigateToNextPage()
+[WINDOW_SWITCH_REASON:USER_TAP_OR_BUTTON] currentWindow=0 -> nextWindow=1
+[WINDOW_STATE_UPDATE] _currentWindowIndex updated from 0 to 1
+[PROGRAMMATIC_WINDOW_CHANGE] Programmatically scrolling RecyclerView to window 1
+[SCROLL_REQUEST] setCurrentItem: position=1
+[FRAGMENT_ADDED] Fragment COMMITTED: position=1
+[SCROLL_SETTLE] RecyclerView settled: position=1, wasProgrammatic=true
+[SCROLL_GUARD] Skipping ViewModel update (programmatic scroll)
+[CONTENT_LOAD] Continuous mode: directly rendering window 1 from buffer
+[PAGINATION_DEBUG] Using window HTML for windowIndex=1
+```
+
+**In-page navigation (not at edge)**:
+```
+[HARDWARE_KEY_NAV] VOLUME_DOWN pressed: paginationMode=CONTINUOUS, index=0
+[EDGE_AWARE_NAV] HARDWARE_KEY navigation: windowIndex=0, inPage=4/9, isNext=true
+[IN_PAGE_NAV] HARDWARE_KEY: next in-page (5/9) within window 0
+```
+
+**Backward navigation with jump-to-last**:
+```
+[HARDWARE_KEY_NAV] VOLUME_UP pressed: paginationMode=CONTINUOUS, index=1
+[EDGE_AWARE_NAV] HARDWARE_KEY navigation: windowIndex=1, inPage=0/9, isNext=false
+[EDGE_BACKWARD] EDGE_HIT: first in-page (0/9), requesting previous window+last page from window 1
+[WINDOW_EXIT] windowIndex=1, direction=PREV, target=0, jumpToLast=true
+[HANDOFF_TO_ACTIVITY] Calling ReaderActivity.navigateToPreviousChapterToLastPage()
+[WINDOW_SWITCH_REASON:BACKWARD_WINDOW_NAVIGATION] currentWindow=1 -> previousWindow=0
+[WINDOW_STATE_UPDATE] _currentWindowIndex updated from 1 to 0
+[PROGRAMMATIC_WINDOW_CHANGE] Programmatically scrolling RecyclerView to window 0 with jump-to-last-page flag
+[SCROLL_SETTLE] RecyclerView settled: position=0, wasProgrammatic=true
+[SCROLL_GUARD] Skipping ViewModel update (programmatic scroll)
+Detected shouldJumpToLastPage flag - will jump to last page after pagination
+Paginator ready after 100ms
+Restoring to saved in-page position: 8/9
+```
+
+### Testing Verification
+
+**Test Case 1: Forward hardware key navigation**
+1. Open book in PAGE + CONTINUOUS mode
+2. Navigate to last in-page of window 0 (page 8/9)
+3. Press volume down
+4. **Expected**: UI advances to window 1, page 0/9
+5. **Logs**: Should show `[EDGE_FORWARD]` → `[WINDOW_EXIT]` → `[FRAGMENT_ADDED]`
+
+**Test Case 2: Backward hardware key with jump**
+1. Be at window 1, page 0/9
+2. Press volume up
+3. **Expected**: UI goes to window 0, page 8/9 (last page)
+4. **Logs**: Should show `[EDGE_BACKWARD]` → jump-to-last sequence
+
+**Test Case 3: Swipe/fling gestures**
+1. At last in-page, swipe left (next)
+2. **Expected**: Same as hardware key forward
+3. **Logs**: Should show `[EDGE_AWARE_NAV] SCROLL navigation` or `FLING navigation`
+
+**Test Case 4: Tap zones**
+1. Configure right edge tap zone to NEXT_PAGE
+2. Tap at last in-page
+3. **Expected**: Same as hardware key forward
+4. **Logs**: Should show `[TAP_ZONE_NAV]` → `[EDGE_AWARE_NAV]`
+
+**Test Case 5: In-page navigation (not at edge)**
+1. At middle page (4/9) of window
+2. Press volume down or swipe
+3. **Expected**: Moves to next in-page (5/9), stays in same window
+4. **Logs**: Should show `[IN_PAGE_NAV]` without `[WINDOW_EXIT]`
+
+### Benefits of Unified Approach
+
+1. **Consistency**: All input methods (hardware, gestures, taps) behave identically
+2. **Edge Awareness**: Automatic detection and handover at window boundaries
+3. **Safety**: Multiple validation layers prevent invalid navigation
+4. **Debuggability**: Comprehensive logging with structured tags
+5. **Maintainability**: Single source of truth for navigation logic
+6. **Backward Compatibility**: Jump-to-last behavior preserved for backward navigation
+
 ## Content Loading Separation Fix (2025-12-03)
 
 ### Problem: Wrong Content Loading Mechanism in Continuous Mode
@@ -525,4 +831,6 @@ private fun renderBaseContent() {
 **Commits**: 
 - fc66c28: Window navigation circular update fix
 - 53a3b92: Content loading separation fix
-**Testing Status**: Ready for testing
+- e8903f1: Documentation update for content loading
+- [pending]: Tap zone edge-aware navigation + comprehensive documentation
+**Testing Status**: Ready for comprehensive testing with all input methods
