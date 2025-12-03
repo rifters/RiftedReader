@@ -310,37 +310,26 @@ class ReaderPageFragment : Fragment() {
             setupWebViewSwipeHandling()
         }
         
-        viewLifecycleOwner.lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                readerViewModel.observePageContent(pageIndex).collect { page ->
-                    if (page == PageContent.EMPTY && readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
-                        return@collect
-                    }
-                    latestPageText = page.text
-                    latestPageHtml = page.html
-
-                    // Clear chunks when content changes - they'll be rebuilt by prepareTtsChunks
-                    ttsChunks = emptyList()
-                    // Reset in-page position for new content
-                    currentInPageIndex = if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
-                        targetInPageIndex
-                    } else {
-                        0
-                    }
-                    pendingInitialInPageIndex = targetInPageIndex.takeIf {
-                        readerViewModel.paginationMode == PaginationMode.CONTINUOUS && it > 0
-                    }
-                    // Reset paginator initialization flag for new chapter content
-                    isPaginatorInitialized = false
-                    if (highlightedRange == null) {
-                        renderBaseContent()
-                    } else {
-                        applyHighlight(highlightedRange)
-                    }
-                }
-            }
+        // Separate content loading based on pagination mode
+        if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            // Continuous mode: directly render content from window buffer
+            // Fragment creation → renderBaseContent() → getWindowHtml(windowIndex) → buffer → HTML → WebView
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "[CONTENT_LOAD] Continuous mode: directly rendering window $windowIndex from buffer"
+            )
+            renderBaseContent()
+        } else {
+            // Chapter-based mode: use PageContent observables as before
+            // Still uses _pages, pageContentCache, and observePageContent
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "[CONTENT_LOAD] Chapter-based mode: setting up PageContent observer for chapter $windowIndex"
+            )
+            setupChapterBasedContentObserver()
         }
 
+        // Set up highlight observer (used by both modes)
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 readerViewModel.highlight.collect { highlight ->
@@ -505,6 +494,46 @@ class ReaderPageFragment : Fragment() {
             com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "Exception during WebView destruction for page $pageIndex", e)
         }
         _binding = null
+    }
+
+    /**
+     * Set up chapter-based content observer.
+     * Used in chapter-based pagination mode where each fragment corresponds to a single chapter.
+     * Still uses _pages, pageContentCache, and observePageContent.
+     */
+    private fun setupChapterBasedContentObserver() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                readerViewModel.observePageContent(pageIndex).collect { page ->
+                    // Skip empty pages in continuous mode (shouldn't happen here but safety check)
+                    if (page == PageContent.EMPTY && readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                        return@collect
+                    }
+                    
+                    com.rifters.riftedreader.util.AppLogger.d(
+                        "ReaderPageFragment",
+                        "[CHAPTER_CONTENT] Received PageContent for chapter $pageIndex: text=${page.text.length} chars, hasHtml=${page.html != null}"
+                    )
+                    
+                    latestPageText = page.text
+                    latestPageHtml = page.html
+
+                    // Clear chunks when content changes - they'll be rebuilt by prepareTtsChunks
+                    ttsChunks = emptyList()
+                    // Reset in-page position for new content (always 0 in chapter-based mode)
+                    currentInPageIndex = 0
+                    pendingInitialInPageIndex = null
+                    // Reset paginator initialization flag for new chapter content
+                    isPaginatorInitialized = false
+                    
+                    if (highlightedRange == null) {
+                        renderBaseContent()
+                    } else {
+                        applyHighlight(highlightedRange)
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -909,7 +938,15 @@ class ReaderPageFragment : Fragment() {
 
     private fun renderBaseContent() {
         if (_binding == null) return
-        val html = latestPageHtml
+        
+        // In continuous mode, we don't rely on latestPageHtml - we fetch directly from buffer
+        // In chapter-based mode, latestPageHtml is populated by observePageContent
+        val html = if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            // For continuous mode, we'll fetch from buffer later, so use a marker
+            "CONTINUOUS_MODE_PLACEHOLDER"
+        } else {
+            latestPageHtml
+        }
         
         // [PAGINATION_DEBUG] Log render request details
         com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
