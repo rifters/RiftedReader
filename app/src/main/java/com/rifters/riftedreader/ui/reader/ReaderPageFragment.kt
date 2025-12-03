@@ -735,17 +735,33 @@ class ReaderPageFragment : Fragment() {
             return
         }
 
+        // For CONTINUOUS mode, get window metadata which has the correct entry position
         viewLifecycleOwner.lifecycleScope.launch {
-            val location = readerViewModel.getPageLocation(pageIndex)
-            val chapterIndex = location?.chapterIndex ?: pageIndex
-            val inPage = location?.inPageIndex ?: 0
-            resolvedChapterIndex = chapterIndex
-            targetInPageIndex = inPage
-            pendingInitialInPageIndex = inPage.takeIf { it > 0 }
-            currentInPageIndex = inPage
-            if (isWebViewReady) {
-                applyPendingInitialInPage()
-                syncInitialChapterContext()
+            val windowPayload = readerViewModel.getWindowHtml(windowIndex)
+            if (windowPayload != null) {
+                // Use the window's entry chapter and page (where reading should start in this window)
+                val chapterIndex = windowPayload.chapterIndex
+                val inPage = windowPayload.inPageIndex
+                resolvedChapterIndex = chapterIndex
+                targetInPageIndex = inPage
+                pendingInitialInPageIndex = inPage.takeIf { it > 0 }
+                currentInPageIndex = inPage
+                com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
+                    "[WINDOW_INIT] Window $windowIndex initialized: chapter=$chapterIndex, inPage=$inPage"
+                )
+                if (isWebViewReady) {
+                    applyPendingInitialInPage()
+                    syncInitialChapterContext()
+                }
+            } else {
+                // Fallback if window payload unavailable
+                com.rifters.riftedreader.util.AppLogger.w("ReaderPageFragment",
+                    "[WINDOW_INIT] No window payload for window $windowIndex, using defaults"
+                )
+                resolvedChapterIndex = pageIndex
+                targetInPageIndex = 0
+                pendingInitialInPageIndex = null
+                currentInPageIndex = 0
             }
         }
     }
