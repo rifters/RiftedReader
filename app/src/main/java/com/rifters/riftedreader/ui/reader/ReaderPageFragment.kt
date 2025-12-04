@@ -385,6 +385,13 @@ class ReaderPageFragment : Fragment() {
                     binding.pageTextView.setTextColor(palette.textColor)
                     binding.pageWebView.setBackgroundColor(palette.backgroundColor)
                     
+                    // Apply debug window background overlay if enabled
+                    com.rifters.riftedreader.util.WindowRenderingDebug.applyWindowDebugBackground(
+                        windowIndex = windowIndex,
+                        rootView = binding.root,
+                        enabled = settings.debugWindowRenderingEnabled
+                    )
+                    
                     // Handle WebView content updates based on what changed
                     if (latestPageText.isNotEmpty() || !latestPageHtml.isNullOrEmpty()) {
                         if (!latestPageHtml.isNullOrEmpty() && fontSizeChanged && !themeChanged && !lineHeightChanged) {
@@ -999,6 +1006,20 @@ class ReaderPageFragment : Fragment() {
                         com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
                             "[WINDOW_HTML] Received window payload: windowIndex=$windowIndex, payload=${if (windowPayload != null) "NOT_NULL" else "NULL"} [AFTER_CALL]"
                         )
+                        
+                        // Debug: Log WebView state before loading HTML (if debug window rendering is enabled)
+                        com.rifters.riftedreader.util.WindowRenderingDebug.logWebViewState(
+                            tag = "ReaderPageFragment",
+                            windowIndex = windowIndex,
+                            webViewWidth = binding.pageWebView.width,
+                            webViewHeight = binding.pageWebView.height,
+                            webViewVisibility = binding.pageWebView.visibility,
+                            webViewAlpha = binding.pageWebView.alpha,
+                            htmlLength = windowPayload?.html?.length,
+                            isPayloadNull = windowPayload == null,
+                            enabled = settings.debugWindowRenderingEnabled
+                        )
+                        
                         if (windowPayload != null) {
                             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
                                 "[PAGINATION_DEBUG] Using window HTML for windowIndex=$windowIndex: window=${windowPayload.windowIndex}, " +
@@ -1019,12 +1040,36 @@ class ReaderPageFragment : Fragment() {
                         html
                     }
                     
+                    // Prepare debug window info if enabled (for HTML debug banner)
+                    val debugWindowInfo = if (settings.debugWindowRenderingEnabled && readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                        val windowPayload = readerViewModel.getWindowHtml(windowIndex)
+                        windowPayload?.let { payload ->
+                            val firstChapter = payload.chapterIndex
+                            val lastChapter = firstChapter + payload.windowSize - 1
+                            com.rifters.riftedreader.domain.reader.DebugWindowInfo(
+                                windowIndex = windowIndex,
+                                firstChapterIndex = firstChapter,
+                                lastChapterIndex = lastChapter.coerceAtMost(payload.totalChapters - 1)
+                            )
+                        }
+                    } else if (settings.debugWindowRenderingEnabled) {
+                        // Chapter-based mode: window = chapter
+                        com.rifters.riftedreader.domain.reader.DebugWindowInfo(
+                            windowIndex = windowIndex,
+                            firstChapterIndex = windowIndex,
+                            lastChapterIndex = windowIndex
+                        )
+                    } else {
+                        null
+                    }
+                    
                     // Wrap HTML with proper styling using ReaderHtmlWrapper
                     val config = com.rifters.riftedreader.domain.reader.ReaderHtmlConfig(
                         textSizePx = settings.textSizeSp,
                         lineHeightMultiplier = settings.lineHeightMultiplier,
                         palette = palette,
-                        enableDiagnostics = settings.paginationDiagnosticsEnabled
+                        enableDiagnostics = settings.paginationDiagnosticsEnabled,
+                        debugWindowInfo = debugWindowInfo
                     )
                     val wrappedHtml = com.rifters.riftedreader.domain.reader.ReaderHtmlWrapper.wrap(contentHtml, config)
                     

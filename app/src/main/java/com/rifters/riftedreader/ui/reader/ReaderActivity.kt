@@ -316,6 +316,19 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             "wasProgrammatic=$wasProgrammatic, vmWindow=${viewModel.currentWindowIndex.value} [SCROLL_SETTLE]"
                         )
                         
+                        // Debug: Log window navigation coherence (if debug window rendering is enabled)
+                        val debugSettings = viewModel.readerSettings.value
+                        com.rifters.riftedreader.util.WindowRenderingDebug.logWindowNavigationCoherence(
+                            tag = "ReaderActivity",
+                            eventType = "SCROLL_SETTLE",
+                            requestedWindow = if (wasProgrammatic) currentPagerPosition else null,
+                            settledPosition = position,
+                            viewModelWindowIndex = viewModel.currentWindowIndex.value,
+                            isProgrammatic = wasProgrammatic,
+                            additionalInfo = "paginationMode=${viewModel.paginationMode}",
+                            enabled = debugSettings.debugWindowRenderingEnabled
+                        )
+                        
                         if (position >= 0 && position != currentPagerPosition) {
                             val previousWindow = currentPagerPosition
                             currentPagerPosition = position
