@@ -77,9 +77,14 @@ object WindowRenderingDebug {
      * @param enabled Whether debug window rendering is enabled (from settings)
      */
     fun applyWindowDebugBackground(windowIndex: Int, rootView: View, enabled: Boolean) {
-        if (!BuildConfig.DEBUG || !enabled) {
-            // Clear any previously applied debug background
-            // (Use transparent to not interfere with normal theming)
+        if (!BuildConfig.DEBUG) {
+            // Never apply in release builds
+            return
+        }
+        
+        if (!enabled) {
+            // Clear any previously applied debug background when disabled
+            rootView.foreground = null
             return
         }
         
