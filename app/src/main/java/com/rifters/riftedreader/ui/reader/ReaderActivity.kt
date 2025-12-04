@@ -917,8 +917,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     "Programmatically scrolling RecyclerView to window $nextWindow (user navigation), readerMode=$readerMode [PROGRAMMATIC_WINDOW_CHANGE]"
                 )
                 // Set flag before scrolling to prevent circular update from OnScrollListener
-                programmaticScrollInProgress = true
-                setCurrentItem(nextWindow, animated)
+                //programmaticScrollInProgress = true
+                //setCurrentItem(nextWindow, animated)
             } else if (!moved) {
                 AppLogger.w(
                     "ReaderActivity",
@@ -976,8 +976,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     "Programmatically scrolling RecyclerView to window $previousWindow (user navigation), readerMode=$readerMode [PROGRAMMATIC_WINDOW_CHANGE]"
                 )
                 // Set flag before scrolling to prevent circular update from OnScrollListener
-                programmaticScrollInProgress = true
-                setCurrentItem(previousWindow, animated)
+                //programmaticScrollInProgress = true
+                //setCurrentItem(previousWindow, animated)
             } else if (!moved) {
                 AppLogger.w(
                     "ReaderActivity",
