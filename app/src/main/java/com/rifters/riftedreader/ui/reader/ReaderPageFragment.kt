@@ -1752,9 +1752,50 @@ class ReaderPageFragment : Fragment() {
                 
                 if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
                     viewLifecycleOwner.lifecycleScope.launch {
-                        val location = readerViewModel.getPageLocation(pageIndex)
-                        val chapterIndex = location?.chapterIndex ?: resolvedChapterIndex ?: pageIndex
-                        readerViewModel.updateChapterPaginationMetrics(chapterIndex, totalPages)
+                        try {
+                            // FIX #1: Update page counts for ALL chapters in loadedChapters JSON
+                            // instead of hardcoding to a single chapter
+                            val loadedChaptersJson = WebViewPaginatorBridge.getLoadedChapters(binding.pageWebView)
+                            
+                            com.rifters.riftedreader.util.AppLogger.d(
+                                "ReaderPageFragment",
+                                "[CHAPTER_METRICS] onPaginationReady: Updating chapter metrics from loadedChapters=$loadedChaptersJson"
+                            )
+                            
+                            // Parse the JSON array of loaded chapters
+                            try {
+                                val jsonArray = org.json.JSONArray(loadedChaptersJson)
+                                for (i in 0 until jsonArray.length()) {
+                                    val chapterObj = jsonArray.getJSONObject(i)
+                                    val chapterIndex = chapterObj.optInt("chapterIndex", -1)
+                                    val pageCount = chapterObj.optInt("pageCount", 1)
+                                    
+                                    if (chapterIndex >= 0 && pageCount > 0) {
+                                        com.rifters.riftedreader.util.AppLogger.d(
+                                            "ReaderPageFragment",
+                                            "[CHAPTER_METRICS] Updating chapter $chapterIndex: pageCount=$pageCount"
+                                        )
+                                        readerViewModel.updateChapterPaginationMetrics(chapterIndex, pageCount)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                com.rifters.riftedreader.util.AppLogger.e(
+                                    "ReaderPageFragment",
+                                    "[CHAPTER_METRICS] Error parsing loadedChapters JSON in onPaginationReady",
+                                    e
+                                )
+                                // Fallback: try to update at least the current chapter
+                                val location = readerViewModel.getPageLocation(pageIndex)
+                                val chapterIndex = location?.chapterIndex ?: resolvedChapterIndex ?: pageIndex
+                                readerViewModel.updateChapterPaginationMetrics(chapterIndex, totalPages)
+                            }
+                        } catch (e: Exception) {
+                            com.rifters.riftedreader.util.AppLogger.e(
+                                "ReaderPageFragment",
+                                "Error in onPaginationReady chapter metrics update",
+                                e
+                            )
+                        }
                     }
                 }
                 
@@ -2271,6 +2312,13 @@ class ReaderPageFragment : Fragment() {
             currentInPageIndex
         }
     }
+
+    /**
+     * Public accessors for checking fragment readiness state.
+     * Used by ReaderActivity to gate CONTENT_LOADED emissions.
+     */
+    fun isWebViewReady(): Boolean = isWebViewReady
+    fun isPaginatorInitialized(): Boolean = isPaginatorInitialized
 
     companion object {
         private const val ARG_PAGE_INDEX = "arg_page_index" // This is window index in continuous mode

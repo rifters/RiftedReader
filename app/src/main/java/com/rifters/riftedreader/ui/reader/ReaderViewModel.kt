@@ -546,6 +546,20 @@ class ReaderViewModel(
         
         for (windowIndex in 0 until windowsToPreWrap) {
             try {
+                // FIX #4: Check if this window's chapters are available before pre-wrapping
+                // If chapters aren't loaded yet, skip pre-wrapping and let on-demand loading handle it later
+                val windowInfo = paginator.getWindowInfo()
+                val chapterIndices = slidingWindowManager.chaptersInWindow(windowIndex, totalChapters)
+                val firstChapterInWindow = chapterIndices.firstOrNull()
+                
+                if (firstChapterInWindow != null && !windowInfo.loadedChapterIndices.contains(firstChapterInWindow)) {
+                    AppLogger.d("ReaderViewModel", 
+                        "[PAGINATION_DEBUG] Skipping pre-wrap for window $windowIndex - " +
+                        "chapters not yet loaded (need: ${chapterIndices.first()}-${chapterIndices.last()}, " +
+                        "have: ${windowInfo.loadedChapterIndices})")
+                    continue // Skip this window, pre-wrap only when we have chapters
+                }
+                
                 val html = windowHtmlProvider.getWindowHtml(bookId, windowIndex)
                 if (html != null) {
                     // Store in cache for fast access later

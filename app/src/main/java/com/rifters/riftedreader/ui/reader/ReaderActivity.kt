@@ -458,12 +458,46 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
                 launch {
                     viewModel.content.collect { pageContent ->
+                        // FIX #2: Gate CONTENT_LOADED on proper conditions
+                        // Only process when: (1) text is non-empty AND
+                        // (2) paginator is fully initialized AND  
+                        // (3) WebView is ready
+                        val fragmentRef = supportFragmentManager.findFragmentByTag("page_${viewModel.currentPage.value}")
+                        val fragment = (fragmentRef as? ReaderPageFragment)
+                        val isWebViewReady = fragment?.isWebViewReady() ?: false
+                        val isPaginatorInitialized = fragment?.isPaginatorInitialized() ?: false
+                        val textNonEmpty = pageContent.text.isNotBlank()
+                        
+                        // Log all relevant states for debugging content loading
+                        if (pageContent.text.isNotEmpty() || pageContent.html?.isNotBlank() == true) {
+                            AppLogger.d(
+                                "ReaderActivity",
+                                "[CONTENT_LOADED] Checking gates: page=${viewModel.currentPage.value} " +
+                                        "textLength=${pageContent.text.length} hasHtml=${!pageContent.html.isNullOrBlank()} " +
+                                        "isWebViewReady=$isWebViewReady isPaginatorInit=$isPaginatorInitialized " +
+                                        "textNonEmpty=$textNonEmpty pendingTtsResume=$pendingTtsResume"
+                            )
+                        }
+                        
+                        // Skip if conditions not met
+                        if (!isWebViewReady || !isPaginatorInitialized || !textNonEmpty) {
+                            if (pageContent.text.isNotBlank()) {
+                                AppLogger.d(
+                                    "ReaderActivity",
+                                    "[CONTENT_LOADED] SKIPPED - gates not met: " +
+                                    "webViewReady=$isWebViewReady paginatorInit=$isPaginatorInitialized textNonEmpty=$textNonEmpty"
+                                )
+                            }
+                            return@collect
+                        }
+                        
+                        // NOW emit [CONTENT_LOADED] - all gates passed
                         AppLogger.d(
                             "ReaderActivity",
-                            "[CONTENT_LOADED] page=${viewModel.currentPage.value} textLength=${pageContent.text.length} " +
-                                    "hasHtml=${!pageContent.html.isNullOrBlank()} pendingTtsResume=$pendingTtsResume " +
-                                    "autoContinueTts=$autoContinueTts"
+                            "[CONTENT_LOADED] EMITTED - page=${viewModel.currentPage.value} textLength=${pageContent.text.length} " +
+                                    "hasHtml=${!pageContent.html.isNullOrBlank()} All gates passed."
                         )
+                        
                         currentPageText = pageContent.text
                         currentPageHtml = pageContent.html
                         sentenceBoundaries = buildSentenceBoundaries(pageContent.text)

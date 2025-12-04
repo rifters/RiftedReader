@@ -564,20 +564,40 @@ class WindowBufferManager(
     /**
      * Check if there's a next window available.
      * 
+     * Checks both: (1) there's another window beyond current in the global window set,
+     * AND (2) the next window is not beyond what can be loaded.
+     * 
      * @return true if there's a window after the current active window
      */
     fun hasNextWindow(): Boolean {
         val totalWindows = paginator.getWindowCount()
-        return activeWindowIndex < totalWindows - 1
+        // FIX #3: Check both global boundary and buffer boundary
+        // Can only shift forward if: activeWindow < totalWindows-1 AND nextWindow not beyond buffer
+        val canShiftGlobally = activeWindowIndex < totalWindows - 1
+        val canShiftFromBuffer = buffer.isNotEmpty() && activeWindowIndex == buffer.last - 1
+        // If we're not at the last window in the buffer, next window exists
+        val hasNextInBuffer = buffer.isNotEmpty() && activeWindowIndex < buffer.last
+        
+        return canShiftGlobally && (canShiftFromBuffer || hasNextInBuffer)
     }
     
     /**
      * Check if there's a previous window available.
      * 
+     * Checks both: (1) there's a previous window (index > 0) AND 
+     * (2) the previous window is in the buffer or can be loaded.
+     * 
      * @return true if there's a window before the current active window
      */
     fun hasPreviousWindow(): Boolean {
-        return activeWindowIndex > 0
+        // FIX #3: Check both global boundary and buffer boundary
+        // Can only shift backward if: activeWindow > 0 AND prevWindow is available
+        val canShiftGlobally = activeWindowIndex > 0
+        val canShiftFromBuffer = buffer.isNotEmpty() && activeWindowIndex > buffer.first
+        // If we're not at the first window in the buffer, previous window exists
+        val hasPrevInBuffer = buffer.isNotEmpty() && activeWindowIndex > buffer.first
+        
+        return canShiftGlobally && (hasPrevInBuffer)
     }
     
     /**
