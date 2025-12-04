@@ -47,66 +47,96 @@ class ContinuousPaginatorWindowHtmlProvider(
             
             AppLogger.d(TAG, "[PAGINATION_DEBUG] Generating window HTML for window $windowIndex, chapters: ${chapterIndices.first()}-${chapterIndices.last()}")
             
-            // FIX: Check if the first chapter of this window is loaded in the paginator.
-            // If not, navigate to it first to load the window's chapters.
-            // This handles TOC jumps to windows that aren't in the pre-wrapped cache.
+            // FIX: Ensure ALL chapters in the window are loaded.
+            // The paginator loads a sliding window of 5 chapters centered around the navigation target.
+            // For a window with chapters 20-24, if we navigate to chapter 20, it might load 18-22,
+            // missing chapters 23-24. We need to ensure all chapters in the range are loaded.
             val firstChapterInWindow = chapterIndices.first()
+            val lastChapterInWindow = chapterIndices.last()
             val loadedChapters = windowInfo.loadedChapterIndices
             
-            if (!loadedChapters.contains(firstChapterInWindow)) {
-                AppLogger.d(TAG, "[PAGINATION_DEBUG] Window $windowIndex chapters not loaded (loaded: $loadedChapters), " +
-                    "triggering on-demand load for chapter $firstChapterInWindow")
+            // Check if ALL chapters in the window are loaded
+            val allChaptersLoaded = chapterIndices.all { it in loadedChapters }
+            
+            if (!allChaptersLoaded) {
+                val missingChapters = chapterIndices.filter { it !in loadedChapters }
+                AppLogger.d(TAG, "[PAGINATION_DEBUG] Window $windowIndex has missing chapters: $missingChapters " +
+                    "(loaded: $loadedChapters, needed: $chapterIndices)")
                 
-                // Navigate to the first chapter in the window to trigger loading
-                // Wrap in try-catch to handle potential navigation failures gracefully
+                // FIX: The paginator loads a 5-chapter window CENTERED around the navigation target.
+                // For window 4 with chapters 20-24, navigating to chapter 20 loads 18-22 (centered at 20).
+                // Instead, we must navigate to the MIDDLE chapter of our desired range.
+                // For chapters 20-24, the middle is 22, which will load 20-24 (centered at 22). ✓
+                
                 try {
-                    paginator.navigateToChapter(firstChapterInWindow, 0)
+                    // Calculate the middle chapter of the requested window range
+                    val middleChapterInWindow = chapterIndices[chapterIndices.size / 2]
                     
-                    // Verify navigation was successful by checking loaded chapters after navigation
+                    AppLogger.d(TAG, "[PAGINATION_DEBUG] Loading window chapters $firstChapterInWindow-$lastChapterInWindow: " +
+                        "navigating to MIDDLE chapter $middleChapterInWindow (this will load a 5-chapter window centered at $middleChapterInWindow)")
+                    
+                    // Navigate to the middle chapter - this will load a window centered around it
+                    paginator.navigateToChapter(middleChapterInWindow, 0)
+                    
+                    // Verify all chapters are now loaded
                     val updatedWindowInfo = paginator.getWindowInfo()
                     val nowLoadedChapters = updatedWindowInfo.loadedChapterIndices
                     
-                    if (nowLoadedChapters.contains(firstChapterInWindow)) {
+                    val nowAllLoaded = chapterIndices.all { it in nowLoadedChapters }
+                    
+                    if (nowAllLoaded) {
                         AppLogger.d(TAG, "[PAGINATION_DEBUG] On-demand load successful for window $windowIndex " +
-                            "(chapters ${chapterIndices.first()}-${chapterIndices.last()}), now loaded: $nowLoadedChapters")
+                            "(chapters $firstChapterInWindow-$lastChapterInWindow), now loaded: $nowLoadedChapters")
                     } else {
-                        AppLogger.w(TAG, "[PAGINATION_DEBUG] On-demand load may have failed for window $windowIndex - " +
-                            "chapter $firstChapterInWindow still not in loaded chapters: $nowLoadedChapters")
+                        val stillMissing = chapterIndices.filter { it !in nowLoadedChapters }
+                        AppLogger.w(TAG, "[PAGINATION_DEBUG] On-demand load incomplete for window $windowIndex - " +
+                            "still missing chapters: $stillMissing (loaded: $nowLoadedChapters, needed: $chapterIndices)")
                     }
                 } catch (e: Exception) {
-                    AppLogger.e(TAG, "[PAGINATION_DEBUG] Navigation failed for on-demand load of window $windowIndex " +
-                        "(chapter $firstChapterInWindow): ${e.message}", e)
+                    AppLogger.e(TAG, "[PAGINATION_DEBUG] Navigation failed for on-demand load of window $windowIndex: ${e.message}", e)
                     // Continue anyway - we'll try to get whatever content we can
                 }
+            } else {
+                AppLogger.d(TAG, "[PAGINATION_DEBUG] All chapters for window $windowIndex already loaded: $loadedChapters")
             }
             
             // Collect chapter content from paginator
+            AppLogger.d(TAG, "[HTML_BUILD] Starting chapter collection for window $windowIndex, chapters: $chapterIndices")
+            
             val chapterContents = mutableMapOf<Int, PageContent>()
             var missingChapters = 0
             
             for (chapterIndex in chapterIndices) {
+                AppLogger.d(TAG, "[HTML_BUILD] Attempting to fetch chapter $chapterIndex...")
+                
                 val globalPageIndex = paginator.getGlobalIndexForChapterPage(chapterIndex, 0)
                 if (globalPageIndex == null) {
-                    AppLogger.w(TAG, "[PAGINATION_DEBUG] Could not get global page index for chapter $chapterIndex")
+                    AppLogger.w(TAG, "[HTML_BUILD] Could not get global page index for chapter $chapterIndex - MISSING")
                     missingChapters++
                     continue
                 }
                 
+                AppLogger.d(TAG, "[HTML_BUILD] Chapter $chapterIndex -> globalPageIndex=$globalPageIndex, fetching content...")
+                
                 val pageContent = paginator.getPageContent(globalPageIndex)
                 if (pageContent == null) {
-                    AppLogger.w(TAG, "[PAGINATION_DEBUG] No content available for chapter $chapterIndex " +
-                        "(may need to navigate to this chapter first)")
+                    AppLogger.w(TAG, "[HTML_BUILD] No content available for chapter $chapterIndex (globalPageIndex=$globalPageIndex) - MISSING")
                     missingChapters++
                     continue
                 }
                 
                 chapterContents[chapterIndex] = pageContent
+                AppLogger.d(TAG, "[HTML_BUILD] Chapter $chapterIndex content FETCHED successfully (htmlLength=${pageContent.html?.length ?: 0}, textLength=${pageContent.text.length})")
             }
+            
+            AppLogger.d(TAG, "[HTML_BUILD] Chapter collection complete for window $windowIndex: " +
+                "collected=${chapterContents.keys.sorted()}, missing=$missingChapters, " +
+                "totalRequested=${chapterIndices.size}")
             
             // If we still have missing chapters, log a warning
             if (missingChapters > 0) {
-                AppLogger.w(TAG, "[PAGINATION_DEBUG] $missingChapters chapters missing in window $windowIndex " +
-                    "after navigation attempt. Loaded: ${chapterContents.keys}")
+                AppLogger.w(TAG, "[HTML_BUILD] $missingChapters chapters missing in window $windowIndex " +
+                    "after navigation attempt. Loaded: ${chapterContents.keys}, Expected: $chapterIndices")
             }
             
             // If no chapters could be loaded, return null
@@ -177,37 +207,53 @@ class ContinuousPaginatorWindowHtmlProvider(
     ): String? {
         val htmlBuilder = StringBuilder()
         var sectionsAdded = 0
+        val addedChapterIndices = mutableListOf<Int>()
+        
+        AppLogger.d(TAG, "[HTML_BUILD] buildWindowHtml START: windowIndex=$windowIndex, " +
+            "requestedChapters=${chapterIndices}, availableChapters=${chapterContents.keys.sorted()}")
         
         // Start window-root container
         htmlBuilder.append("<div id=\"window-root\" data-window-index=\"$windowIndex\">\n")
         
         for (chapterIndex in chapterIndices) {
-            val pageContent = chapterContents[chapterIndex] ?: continue
+            val pageContent = chapterContents[chapterIndex]
+            
+            if (pageContent == null) {
+                AppLogger.w(TAG, "[HTML_BUILD] Chapter $chapterIndex NOT FOUND in chapterContents map - SKIPPING")
+                continue
+            }
             
             // Extract HTML or convert text to HTML
             val chapterHtml = pageContent.html ?: wrapTextAsHtml(pageContent.text)
             
             if (chapterHtml.isBlank()) {
-                AppLogger.w(TAG, "Empty content for chapter $chapterIndex")
+                AppLogger.w(TAG, "[HTML_BUILD] Chapter $chapterIndex has EMPTY content - SKIPPING")
                 continue
             }
             
             // Wrap in section with chapter ID for navigation
             appendChapterSection(htmlBuilder, chapterIndex, chapterHtml)
             sectionsAdded++
+            addedChapterIndices.add(chapterIndex)
+            
+            AppLogger.d(TAG, "[HTML_BUILD] Chapter $chapterIndex ADDED to window HTML (htmlLength=${chapterHtml.length})")
         }
         
         // Close window-root container
         htmlBuilder.append("</div>\n")
         
+        AppLogger.d(TAG, "[HTML_BUILD] buildWindowHtml COMPLETE: windowIndex=$windowIndex, " +
+            "sectionsAdded=$sectionsAdded, addedChapters=$addedChapterIndices")
+        
         // Return null if no chapter sections were added
         if (sectionsAdded == 0) {
-            AppLogger.w(TAG, "Generated empty HTML for window $windowIndex (no chapter sections)")
+            AppLogger.w(TAG, "[HTML_BUILD] Generated EMPTY HTML for window $windowIndex (no chapter sections)")
             return null
         }
         
         val combinedHtml = htmlBuilder.toString()
-        AppLogger.d(TAG, "Successfully generated window HTML for window $windowIndex: ${combinedHtml.length} characters, $sectionsAdded sections")
+        AppLogger.d(TAG, "[HTML_BUILD] Final window HTML for window $windowIndex: ${combinedHtml.length} characters, " +
+            "$sectionsAdded sections, chapters=$addedChapterIndices")
         
         return combinedHtml
     }
