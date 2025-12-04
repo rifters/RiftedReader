@@ -10,7 +10,22 @@ data class ReaderHtmlConfig(
     val textSizePx: Float,
     val lineHeightMultiplier: Float,
     val palette: ReaderThemePalette,
-    val enableDiagnostics: Boolean = false
+    val enableDiagnostics: Boolean = false,
+    /**
+     * Debug window rendering configuration.
+     * When set, enables a visual debug banner in the HTML showing window index and chapter range.
+     * Only active in debug builds.
+     */
+    val debugWindowInfo: DebugWindowInfo? = null
+)
+
+/**
+ * Debug information for window rendering instrumentation.
+ */
+data class DebugWindowInfo(
+    val windowIndex: Int,
+    val firstChapterIndex: Int,
+    val lastChapterIndex: Int
 )
 
 /**
@@ -59,6 +74,16 @@ object ReaderHtmlWrapper {
             </script>
             """
         } else ""
+        
+        // Debug banner for window rendering instrumentation (only in debug builds)
+        val debugBanner = config.debugWindowInfo?.let { info ->
+            com.rifters.riftedreader.util.WindowRenderingDebug.generateHtmlDebugBanner(
+                windowIndex = info.windowIndex,
+                firstChapterIndex = info.firstChapterIndex,
+                lastChapterIndex = info.lastChapterIndex,
+                enabled = true // Already guarded by config.debugWindowInfo being non-null
+            )
+        } ?: ""
         
         // TTS initialization script - ensures #tts-root exists and emits ttsReady event
         // ISSUE 2 FIX: Create #tts-root immediately on DOMContentLoaded, NOT after paginator readiness
@@ -231,6 +256,7 @@ object ReaderHtmlWrapper {
                 <script src="${EpubImageAssetHelper.PAGINATOR_SCRIPT_URL}"></script>
             </head>
             <body>
+                $debugBanner
                 <!-- TTS root container for TTS DOM operations -->
                 <div id="tts-root" aria-hidden="true"></div>
                 $contentHtml

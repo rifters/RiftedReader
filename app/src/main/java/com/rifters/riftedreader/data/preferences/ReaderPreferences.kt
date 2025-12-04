@@ -39,7 +39,18 @@ data class ReaderSettings(
     val paginationMode: PaginationMode = PaginationMode.CONTINUOUS,
     val continuousStreamingEnabled: Boolean = true,
     val paginationDiagnosticsEnabled: Boolean = false,
-    val chapterVisibility: ChapterVisibilitySettings = ChapterVisibilitySettings.DEFAULT
+    val chapterVisibility: ChapterVisibilitySettings = ChapterVisibilitySettings.DEFAULT,
+    /**
+     * Debug flag to enable visual and logging instrumentation for window rendering.
+     * When enabled:
+     * - Each window gets a distinct background color overlay for visual identification
+     * - WebView visibility/state logging is enhanced before HTML loads
+     * - Window navigation coherence logs are more detailed
+     * - Optional HTML debug banner shows window index and chapter range
+     * 
+     * Only active in debug builds. Default is false.
+     */
+    val debugWindowRenderingEnabled: Boolean = false
 )
 
 enum class ReaderTheme {
@@ -82,6 +93,7 @@ class ReaderPreferences(context: Context) {
             .getOrDefault(PaginationMode.CONTINUOUS)
         val streamingEnabled = prefs.getBoolean(KEY_CONTINUOUS_STREAMING, true)
         val diagnosticsEnabled = prefs.getBoolean(KEY_PAGINATION_DIAGNOSTICS, false)
+        val debugWindowRendering = prefs.getBoolean(KEY_DEBUG_WINDOW_RENDERING, false)
         
         // Read chapter visibility settings
         val includeCover = prefs.getBoolean(KEY_INCLUDE_COVER, false)
@@ -101,7 +113,8 @@ class ReaderPreferences(context: Context) {
             paginationMode = paginationMode,
             continuousStreamingEnabled = streamingEnabled,
             paginationDiagnosticsEnabled = diagnosticsEnabled,
-            chapterVisibility = chapterVisibility
+            chapterVisibility = chapterVisibility,
+            debugWindowRenderingEnabled = debugWindowRendering
         )
     }
 
@@ -114,6 +127,7 @@ class ReaderPreferences(context: Context) {
             putString(KEY_PAGINATION_MODE, settings.paginationMode.name)
             putBoolean(KEY_CONTINUOUS_STREAMING, settings.continuousStreamingEnabled)
             putBoolean(KEY_PAGINATION_DIAGNOSTICS, settings.paginationDiagnosticsEnabled)
+            putBoolean(KEY_DEBUG_WINDOW_RENDERING, settings.debugWindowRenderingEnabled)
             
             // Save chapter visibility settings
             putBoolean(KEY_INCLUDE_COVER, settings.chapterVisibility.includeCover)
@@ -166,6 +180,7 @@ class ReaderPreferences(context: Context) {
         private const val KEY_PAGINATION_MODE = "pagination_mode"
         private const val KEY_CONTINUOUS_STREAMING = "continuous_streaming_enabled"
         private const val KEY_PAGINATION_DIAGNOSTICS = "pagination_diagnostics_enabled"
+        private const val KEY_DEBUG_WINDOW_RENDERING = "debug_window_rendering_enabled"
         private const val KEY_TAP_ACTIONS = "reader_tap_actions"
         
         // Chapter visibility settings keys
