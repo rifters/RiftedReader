@@ -458,15 +458,18 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
      * Only performs the sync once at startup, for CONTINUOUS pagination mode.
      */
     private fun syncRecyclerViewToInitialBufferWindow() {
+        // Early exit: only sync for continuous mode
+        // Check mode before launching coroutine to avoid unnecessary waiting
+        if (viewModel.paginationMode != PaginationMode.CONTINUOUS) {
+            AppLogger.d("ReaderActivity", "[BUFFER_SYNC] Skipping sync: not in CONTINUOUS mode")
+            return
+        }
+        
         // Observer to sync RecyclerView once windowCount becomes available
         // Use first { } to properly terminate collection after finding valid window count
         lifecycleScope.launch {
             try {
                 viewModel.windowCount.first { windowCount ->
-                    // Skip if not in continuous mode
-                    if (viewModel.paginationMode != PaginationMode.CONTINUOUS) {
-                        return@first true // Complete immediately for non-continuous mode
-                    }
                     // Wait for window count to be available
                     windowCount > 0
                 }
@@ -476,6 +479,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 if (initialBufferSyncCompleted) return@launch
                 
                 // Post to ensure RecyclerView is laid out and adapter has items
+                // Note: performInitialBufferSync() has its own guard check for initialBufferSyncCompleted
+                // to handle any race conditions from the post { } delay
                 binding.pageRecyclerView.post {
                     performInitialBufferSync()
                 }
@@ -535,8 +540,14 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         // Perform the scroll (non-animated for instant positioning)
         setCurrentItem(initialWindow, false)
         
-        // Notify WindowBufferManager that this window became visible
-        // This triggers phase transition checks for STARTUP -> STEADY
+        // Notify WindowBufferManager that this window became visible.
+        // This is intentionally called during initialization to trigger phase transition
+        // from STARTUP to STEADY. Unlike user-driven navigation (which triggers this via
+        // scroll listener), we need to explicitly call it here because:
+        // 1. The scroll is instant (no scroll animation = no scroll listener callback)
+        // 2. We need phase transition to occur for the buffer lifecycle to work correctly
+        // Note: This call is idempotent - calling it multiple times for the same window
+        // doesn't cause problems since WindowBufferManager tracks state internally.
         viewModel.onWindowBecameVisible(initialWindow)
         
         // Log buffer state for debugging
