@@ -40,7 +40,10 @@ import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
 import com.rifters.riftedreader.ui.reader.ReaderThemePaletteResolver
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import com.rifters.riftedreader.util.AppLogger
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import com.rifters.riftedreader.BuildConfig
 
@@ -69,6 +72,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var isUserScrolling: Boolean = false
     // Flag to prevent circular navigation updates during programmatic scrolls
     private var programmaticScrollInProgress: Boolean = false
+    // Flag to track if initial buffer-to-UI sync has been performed
+    private var initialBufferSyncCompleted: Boolean = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppLogger.event("ReaderActivity", "onCreate started", "ui/ReaderActivity/lifecycle")
@@ -438,6 +443,168 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         // Ensure controls are available briefly after layout to provide context to the reader.
         binding.root.doOnLayout {
             controlsManager.showControls()
+        }
+        
+        // Sync RecyclerView to initial buffer window on startup
+        // This ensures the visible window matches where WindowBufferManager is initialized
+        // to prevent phase transition stalls and band sliding failures
+        syncRecyclerViewToInitialBufferWindow()
+    }
+    
+    /**
+     * Sync RecyclerView to the initial buffer window on startup.
+     * 
+     * This ensures the visible window matches where WindowBufferManager is initialized,
+     * preventing phase transition stalls ("not win5" bug) and band sliding failures.
+     * 
+     * Only performs the sync once at startup, for CONTINUOUS pagination mode.
+     */
+    private fun syncRecyclerViewToInitialBufferWindow() {
+        // Early exit: only sync for continuous mode
+        // Check mode before launching coroutine to avoid unnecessary waiting
+        if (viewModel.paginationMode != PaginationMode.CONTINUOUS) {
+            AppLogger.d("ReaderActivity", "[BUFFER_SYNC] Skipping sync: not in CONTINUOUS mode")
+            return
+        }
+        
+        // Observer to sync RecyclerView once windowCount becomes available
+        // Use first { } with timeout to properly terminate collection after finding valid window count
+        lifecycleScope.launch {
+            try {
+                // Timeout after 10 seconds to avoid hanging indefinitely
+                // Book parsing typically completes within seconds, 10s is generous for edge cases
+                withTimeout(10_000L) {
+                    viewModel.windowCount.first { windowCount ->
+                        // Wait for window count to be available
+                        windowCount > 0
+                    }
+                }
+                
+                // Guard: double-check conditions before sync (mode could have changed)
+                if (viewModel.paginationMode != PaginationMode.CONTINUOUS) return@launch
+                if (initialBufferSyncCompleted) return@launch
+                
+                // Post to ensure RecyclerView is laid out and adapter has items
+                // Note: performInitialBufferSync() has its own guard check for initialBufferSyncCompleted
+                // to handle any race conditions from the post { } delay
+                binding.pageRecyclerView.post {
+                    performInitialBufferSync()
+                }
+            } catch (e: TimeoutCancellationException) {
+                AppLogger.w("ReaderActivity", 
+                    "[BUFFER_SYNC] Timed out waiting for window count - book may have failed to load")
+            } catch (e: Exception) {
+                AppLogger.e("ReaderActivity", "[BUFFER_SYNC] Error during initial sync", e)
+            }
+        }
+    }
+    
+    /**
+     * Perform the actual initial buffer sync.
+     * 
+     * Scrolls RecyclerView to the initial window index from ViewModel,
+     * ensuring UI and buffer state are aligned on startup.
+     */
+    private fun performInitialBufferSync() {
+        // Guard: only sync once
+        if (initialBufferSyncCompleted) return
+        
+        // Guard: only for continuous mode
+        if (viewModel.paginationMode != PaginationMode.CONTINUOUS) return
+        
+        val initialWindow = viewModel.currentWindowIndex.value
+        val adapterItemCount = pagerAdapter.itemCount
+        
+        // Validate adapter has items
+        if (adapterItemCount <= 0) {
+            AppLogger.w(
+                "ReaderActivity",
+                "[BUFFER_SYNC] Deferred initial sync: adapter has no items yet " +
+                "(windowCount=${viewModel.windowCount.value})"
+            )
+            return
+        }
+        
+        // Validate initial window is within adapter bounds
+        if (initialWindow < 0 || initialWindow >= adapterItemCount) {
+            AppLogger.e(
+                "ReaderActivity",
+                "[BUFFER_SYNC] Initial window $initialWindow out of bounds " +
+                "(adapterItemCount=$adapterItemCount) - defaulting to 0"
+            )
+            currentPagerPosition = 0
+            // Scroll to position 0 to ensure consistency between tracked position and UI
+            setCurrentItem(0, false)
+            initialBufferSyncCompleted = true
+            return
+        }
+        
+        // Set position before scrolling for consistency
+        currentPagerPosition = initialWindow
+        
+        AppLogger.d(
+            "ReaderActivity",
+            "[BUFFER_SYNC] Syncing RecyclerView to initial buffer window $initialWindow " +
+            "(adapterItemCount=$adapterItemCount, paginationMode=${viewModel.paginationMode})"
+        )
+        
+        // Perform the scroll (non-animated for instant positioning)
+        setCurrentItem(initialWindow, false)
+        
+        // Notify WindowBufferManager that this window became visible.
+        // This is intentionally called during initialization to trigger phase transition
+        // from STARTUP to STEADY. Unlike user-driven navigation (which triggers this via
+        // scroll listener), we need to explicitly call it here because:
+        // 1. The scroll is instant (no scroll animation = no scroll listener callback)
+        // 2. We need phase transition to occur for the buffer lifecycle to work correctly
+        // Note: This call is idempotent - calling it multiple times for the same window
+        // doesn't cause problems since WindowBufferManager tracks state internally.
+        viewModel.onWindowBecameVisible(initialWindow)
+        
+        // Log buffer state for debugging
+        logBufferSyncDiagnostics(initialWindow)
+        
+        // Mark sync as completed after all sync operations are done
+        // This prevents race conditions with scroll listeners that check the flag
+        initialBufferSyncCompleted = true
+    }
+    
+    /**
+     * Log diagnostics after initial buffer sync for debugging phase transitions.
+     * 
+     * This includes a defensive warning if the visible window doesn't match
+     * the buffer band, which would indicate a misalignment issue.
+     */
+    private fun logBufferSyncDiagnostics(syncedWindow: Int) {
+        val bufferManager = viewModel.windowBufferManager
+        if (bufferManager == null) {
+            AppLogger.w(
+                "ReaderActivity",
+                "[BUFFER_SYNC] WindowBufferManager not initialized - cannot validate buffer state"
+            )
+            return
+        }
+        
+        val bufferedWindows = bufferManager.getBufferedWindows()
+        val centerWindow = bufferManager.getCenterWindowIndex()
+        val currentPhase = bufferManager.phase.value
+        
+        // Check if synced window is in buffer
+        val isInBuffer = bufferedWindows.contains(syncedWindow)
+        
+        if (!isInBuffer) {
+            AppLogger.w(
+                "ReaderActivity",
+                "[BUFFER_SYNC] WARNING: Visible window $syncedWindow is NOT in buffer band " +
+                "$bufferedWindows. This may cause phase transition issues. " +
+                "(centerWindow=$centerWindow, phase=$currentPhase)"
+            )
+        } else {
+            AppLogger.d(
+                "ReaderActivity",
+                "[BUFFER_SYNC] Initial sync complete: visibleWindow=$syncedWindow, " +
+                "buffer=$bufferedWindows, centerWindow=$centerWindow, phase=$currentPhase"
+            )
         }
     }
     
