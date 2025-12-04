@@ -1751,7 +1751,18 @@ class ReaderPageFragment : Fragment() {
                 )
                 
                 if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
-                    viewLifecycleOwner.lifecycleScope.launch {
+                    // Check if view still exists - fragment may be destroyed after callback scheduled
+                    val viewLifecycleOwnerOrNull = try {
+                        viewLifecycleOwner
+                    } catch (e: IllegalStateException) {
+                        com.rifters.riftedreader.util.AppLogger.w(
+                            "ReaderPageFragment",
+                            "[PAGINATION_DEBUG] Fragment view destroyed, skipping onPaginationReady metrics update"
+                        )
+                        null
+                    }
+                    
+                    viewLifecycleOwnerOrNull?.lifecycleScope?.launch {
                         try {
                             // FIX #1: Update page counts for ALL chapters in loadedChapters JSON
                             // instead of hardcoding to a single chapter
@@ -1808,21 +1819,30 @@ class ReaderPageFragment : Fragment() {
                 }
                 
                 // Update ViewModel with initial pagination state
-                viewLifecycleOwner.lifecycleScope.launch {
-                    try {
-                        val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
-                        // Initialize tracked position if it's the first pagination
-                        if (currentInPageIndex == 0) {
-                            currentInPageIndex = currentPage
+                // Check if view still exists before accessing lifecycle
+                try {
+                    val vlo = viewLifecycleOwner
+                    vlo.lifecycleScope.launch {
+                        try {
+                            val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
+                            // Initialize tracked position if it's the first pagination
+                            if (currentInPageIndex == 0) {
+                                currentInPageIndex = currentPage
+                            }
+                            readerViewModel.updateWebViewPageState(currentPage, totalPages)
+                        } catch (e: Exception) {
+                            com.rifters.riftedreader.util.AppLogger.e(
+                                "ReaderPageFragment",
+                                "Error getting current page in onPaginationReady",
+                                e
+                            )
                         }
-                        readerViewModel.updateWebViewPageState(currentPage, totalPages)
-                    } catch (e: Exception) {
-                        com.rifters.riftedreader.util.AppLogger.e(
-                            "ReaderPageFragment",
-                            "Error getting current page in onPaginationReady",
-                            e
-                        )
                     }
+                } catch (e: IllegalStateException) {
+                    com.rifters.riftedreader.util.AppLogger.w(
+                        "ReaderPageFragment",
+                        "[PAGINATION_DEBUG] Fragment view destroyed, skipping onPaginationReady page state update"
+                    )
                 }
             }
         }
