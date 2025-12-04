@@ -40,8 +40,10 @@ import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
 import com.rifters.riftedreader.ui.reader.ReaderThemePaletteResolver
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import com.rifters.riftedreader.util.AppLogger
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import com.rifters.riftedreader.BuildConfig
 
@@ -466,12 +468,16 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         }
         
         // Observer to sync RecyclerView once windowCount becomes available
-        // Use first { } to properly terminate collection after finding valid window count
+        // Use first { } with timeout to properly terminate collection after finding valid window count
         lifecycleScope.launch {
             try {
-                viewModel.windowCount.first { windowCount ->
-                    // Wait for window count to be available
-                    windowCount > 0
+                // Timeout after 10 seconds to avoid hanging indefinitely
+                // Book parsing typically completes within seconds, 10s is generous for edge cases
+                withTimeout(10_000L) {
+                    viewModel.windowCount.first { windowCount ->
+                        // Wait for window count to be available
+                        windowCount > 0
+                    }
                 }
                 
                 // Guard: double-check conditions before sync (mode could have changed)
@@ -484,6 +490,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 binding.pageRecyclerView.post {
                     performInitialBufferSync()
                 }
+            } catch (e: TimeoutCancellationException) {
+                AppLogger.w("ReaderActivity", 
+                    "[BUFFER_SYNC] Timed out waiting for window count - book may have failed to load")
             } catch (e: Exception) {
                 AppLogger.e("ReaderActivity", "[BUFFER_SYNC] Error during initial sync", e)
             }
@@ -524,6 +533,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 "(adapterItemCount=$adapterItemCount) - defaulting to 0"
             )
             currentPagerPosition = 0
+            // Scroll to position 0 to ensure consistency between tracked position and UI
+            setCurrentItem(0, false)
             initialBufferSyncCompleted = true
             return
         }
