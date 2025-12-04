@@ -50,7 +50,7 @@ data class ReaderSettings(
      * 
      * Only active in debug builds. Default is false.
      */
-    val debugWindowRenderingEnabled: Boolean = BuildConfig.DEBUG
+    val debugWindowRenderingEnabled: Boolean = false
 )
 
 enum class ReaderTheme {
