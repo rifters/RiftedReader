@@ -198,7 +198,7 @@ class WindowBufferManager(
      */
     suspend fun initialize(startWindow: WindowIndex) {
         bufferMutex.withLock {
-            AppLogger.d(TAG, "[PAGINATION_DEBUG] initialize: startWindow=$startWindow")
+            AppLogger.d(TAG, "[BUFFER_INIT] ENTRY: initialize(startWindow=$startWindow)")
             
             // Clear any existing state
             buffer.clear()
@@ -207,6 +207,7 @@ class WindowBufferManager(
             _phase.value = Phase.STARTUP
             
             val totalWindows = paginator.getWindowCount()
+            AppLogger.d(TAG, "[BUFFER_INIT] Initializing buffer: totalWindows=$totalWindows")
             
             // Calculate valid window bounds (window indices are 0-based)
             val maxValidWindowIndex = (totalWindows - 1).coerceAtLeast(0)
@@ -251,6 +252,7 @@ class WindowBufferManager(
             // Update active window StateFlow after preload is initiated
             // The actual data will be available once preload completes
             updateActiveWindowStateFlow()
+            AppLogger.d(TAG, "[BUFFER_INIT] EXIT: Buffer initialization complete")
         }
     }
     
@@ -283,8 +285,11 @@ class WindowBufferManager(
      */
     suspend fun onEnteredWindow(globalWindowIndex: WindowIndex) {
         bufferMutex.withLock {
+            AppLogger.d(TAG, "[WINDOW_ENTRY] ENTRY: onEnteredWindow(globalWindowIndex=$globalWindowIndex)")
             AppLogger.d(TAG, "[PAGINATION_DEBUG] onEnteredWindow: globalWindowIndex=$globalWindowIndex, " +
                 "currentPhase=${_phase.value}, buffer=${buffer.toList()}")
+            AppLogger.d(TAG, "[WINDOW_ENTRY] Current state: phase=${_phase.value}, buffer=${buffer.toList()}, " +
+                "activeWindow=$activeWindowIndex, centerWindow=${getCenterWindowIndex()}")
             
             // Update active window
             activeWindowIndex = globalWindowIndex
@@ -296,18 +301,23 @@ class WindowBufferManager(
             if (_phase.value == Phase.STARTUP && !hasEnteredSteadyState) {
                 val centerWindowIndex = getCenterWindowIndex()
                 AppLogger.d(TAG, "[PHASE_TRANS_DEBUG] Checking transition: centerWindow=$centerWindowIndex, globalWindow=$globalWindowIndex, match=${centerWindowIndex == globalWindowIndex}")
+                AppLogger.d(TAG, "[WINDOW_ENTRY] Phase transition check: STARTUP->STEADY candidate at window=$globalWindowIndex (center=$centerWindowIndex)")
                 if (centerWindowIndex != null && globalWindowIndex == centerWindowIndex) {
                     val oldPhase = _phase.value
                     hasEnteredSteadyState = true
                     _phase.value = Phase.STEADY
+                    AppLogger.d(TAG, "[WINDOW_ENTRY] *** PHASE FLIPPED: STARTUP -> STEADY at window $globalWindowIndex ***")
                     AppLogger.d(TAG, "[CONVEYOR] *** PHASE TRANSITION STARTUP -> STEADY ***\n" +
                         "  Entered center window ($globalWindowIndex) of buffer\n" +
                         "  buffer=${buffer.toList()}\n" +
                         "  activeWindow=$globalWindowIndex\n" +
                         "  Now entering steady state with 2 windows ahead and 2 behind")
+                } else if (_phase.value == Phase.STARTUP) {
+                    AppLogger.d(TAG, "[WINDOW_ENTRY] Still in STARTUP phase: window=$globalWindowIndex is not center (center=$centerWindowIndex)")
                 }
             }
             
+            AppLogger.d(TAG, "[WINDOW_ENTRY] EXIT: onEnteredWindow complete, phase now=${_phase.value}")
             AppLogger.d(TAG, "[PAGINATION_DEBUG] After onEnteredWindow: phase=${_phase.value}")
         }
     }
@@ -357,7 +367,10 @@ class WindowBufferManager(
                 "  cacheSize=${windowCache.size} (after drop)")
             
             // Preload the newly appended window
+            AppLogger.d(TAG, "[BUFFER_SHIFT] *** SHIFT FORWARD: window=$nextWindowIndex appended ***")
+            AppLogger.d(TAG, "[BUFFER_SHIFT] Preloading newly appended window $nextWindowIndex")
             preloadWindow(nextWindowIndex)
+            AppLogger.d(TAG, "[BUFFER_SHIFT] Shift forward complete: buffer now ${buffer.toList()}")
             
             return true
         }

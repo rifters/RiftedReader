@@ -460,6 +460,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
      * Only performs the sync once at startup, for CONTINUOUS pagination mode.
      */
     private fun syncRecyclerViewToInitialBufferWindow() {
+        AppLogger.d("ReaderActivity", "[BUFFER_SYNC] ENTRY: syncRecyclerViewToInitialBufferWindow() called")
         // Early exit: only sync for continuous mode
         // Check mode before launching coroutine to avoid unnecessary waiting
         if (viewModel.paginationMode != PaginationMode.CONTINUOUS) {
@@ -506,14 +507,22 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
      * ensuring UI and buffer state are aligned on startup.
      */
     private fun performInitialBufferSync() {
+        AppLogger.d("ReaderActivity", "[BUFFER_SYNC] ENTRY: performInitialBufferSync() called")
         // Guard: only sync once
-        if (initialBufferSyncCompleted) return
+        if (initialBufferSyncCompleted) {
+            AppLogger.d("ReaderActivity", "[BUFFER_SYNC] EXIT: Sync already completed")
+            return
+        }
         
         // Guard: only for continuous mode
-        if (viewModel.paginationMode != PaginationMode.CONTINUOUS) return
+        if (viewModel.paginationMode != PaginationMode.CONTINUOUS) {
+            AppLogger.d("ReaderActivity", "[BUFFER_SYNC] EXIT: Not in CONTINUOUS mode")
+            return
+        }
         
         val initialWindow = viewModel.currentWindowIndex.value
         val adapterItemCount = pagerAdapter.itemCount
+        AppLogger.d("ReaderActivity", "[BUFFER_SYNC] Sync parameters: currentWindowIndex=$initialWindow, adapterItemCount=$adapterItemCount")
         
         // Validate adapter has items
         if (adapterItemCount <= 0) {
@@ -549,6 +558,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         )
         
         // Perform the scroll (non-animated for instant positioning)
+        AppLogger.d("ReaderActivity", "[BUFFER_SYNC] Scrolling to initial window: $initialWindow")
         setCurrentItem(initialWindow, false)
         
         // Notify WindowBufferManager that this window became visible.
@@ -559,6 +569,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         // 2. We need phase transition to occur for the buffer lifecycle to work correctly
         // Note: This call is idempotent - calling it multiple times for the same window
         // doesn't cause problems since WindowBufferManager tracks state internally.
+        AppLogger.d("ReaderActivity", "[BUFFER_SYNC] Notifying ViewModel: onWindowBecameVisible($initialWindow)")
         viewModel.onWindowBecameVisible(initialWindow)
         
         // Log buffer state for debugging
@@ -567,6 +578,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         // Mark sync as completed after all sync operations are done
         // This prevents race conditions with scroll listeners that check the flag
         initialBufferSyncCompleted = true
+        AppLogger.d("ReaderActivity", "[BUFFER_SYNC] EXIT: Initial buffer sync completed")
     }
     
     /**
@@ -588,6 +600,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         val bufferedWindows = bufferManager.getBufferedWindows()
         val centerWindow = bufferManager.getCenterWindowIndex()
         val currentPhase = bufferManager.phase.value
+        
+        AppLogger.d(
+            "ReaderActivity",
+            "[BUFFER_SYNC] Diagnostics after sync: syncedWindow=$syncedWindow, " +
+            "bufferedWindows=$bufferedWindows, centerWindow=$centerWindow, phase=$currentPhase"
+        )
         
         // Check if synced window is in buffer
         val isInBuffer = bufferedWindows.contains(syncedWindow)

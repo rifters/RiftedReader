@@ -671,14 +671,20 @@ class ReaderViewModel(
         
         val bufferManager = _windowBufferManager ?: return
         
+        AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] ENTRY: onWindowBecameVisible($windowIndex)")
+        AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] State before: buffer=${bufferManager.getBufferedWindows()}, " +
+            "centerWindow=${bufferManager.getCenterWindowIndex()}, phase=${bufferManager.phase.value}")
         AppLogger.d("ReaderViewModel", "[CONVEYOR] onWindowBecameVisible: windowIndex=$windowIndex, " +
             "currentBuffer=${bufferManager.getBufferedWindows()}, phase=${bufferManager.phase.value}")
         
         viewModelScope.launch {
             try {
                 bufferManager.onEnteredWindow(windowIndex)
+                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] After onEnteredWindow: phase=${bufferManager.phase.value}, " +
+                    "buffer=${bufferManager.getBufferedWindows()}, activeWindow=${bufferManager.getActiveWindowIndex()}")
                 AppLogger.d("ReaderViewModel", "[CONVEYOR] After onEnteredWindow: phase=${bufferManager.phase.value}, " +
                     "buffer=${bufferManager.getBufferedWindows()}, debug=${bufferManager.getDebugInfo()}")
+                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] EXIT: onWindowBecameVisible($windowIndex) completed")
             } catch (e: Exception) {
                 AppLogger.e("ReaderViewModel", "[CONVEYOR] Error in onWindowBecameVisible", e)
             }
