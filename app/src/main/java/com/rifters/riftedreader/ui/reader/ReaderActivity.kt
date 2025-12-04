@@ -96,7 +96,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         tapActions = readerPreferences.tapActions.value
         val bookFile = File(bookPath)
         val parser = ParserFactory.getParser(bookFile)
-
+        if (BuildConfig.DEBUG) {
+            // TEMP: force-enable window rendering debug tools in debug builds
+            readerPreferences.updateSettings { settings ->
+                settings.copy(debugWindowRenderingEnabled = true)
+            }
+        }
         if (parser == null) {
             AppLogger.e("ReaderActivity", "No parser found for book: $bookPath")
             finish()
