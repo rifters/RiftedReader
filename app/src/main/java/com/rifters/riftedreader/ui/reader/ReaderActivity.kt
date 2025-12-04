@@ -40,6 +40,7 @@ import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
 import com.rifters.riftedreader.ui.reader.ReaderThemePaletteResolver
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import com.rifters.riftedreader.util.AppLogger
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 import com.rifters.riftedreader.BuildConfig
@@ -458,17 +459,28 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
      */
     private fun syncRecyclerViewToInitialBufferWindow() {
         // Observer to sync RecyclerView once windowCount becomes available
+        // Use first { } to properly terminate collection after finding valid window count
         lifecycleScope.launch {
-            viewModel.windowCount.collect { windowCount ->
-                // Skip if already synced, not in continuous mode, or no windows yet
-                if (initialBufferSyncCompleted) return@collect
-                if (viewModel.paginationMode != PaginationMode.CONTINUOUS) return@collect
-                if (windowCount <= 0) return@collect
+            try {
+                viewModel.windowCount.first { windowCount ->
+                    // Skip if not in continuous mode
+                    if (viewModel.paginationMode != PaginationMode.CONTINUOUS) {
+                        return@first true // Complete immediately for non-continuous mode
+                    }
+                    // Wait for window count to be available
+                    windowCount > 0
+                }
+                
+                // Guard: double-check conditions before sync (mode could have changed)
+                if (viewModel.paginationMode != PaginationMode.CONTINUOUS) return@launch
+                if (initialBufferSyncCompleted) return@launch
                 
                 // Post to ensure RecyclerView is laid out and adapter has items
                 binding.pageRecyclerView.post {
                     performInitialBufferSync()
                 }
+            } catch (e: Exception) {
+                AppLogger.e("ReaderActivity", "[BUFFER_SYNC] Error during initial sync", e)
             }
         }
     }
@@ -511,8 +523,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             return
         }
         
-        // Mark sync as completed before scrolling to prevent re-entry
-        initialBufferSyncCompleted = true
+        // Set position before scrolling for consistency
         currentPagerPosition = initialWindow
         
         AppLogger.d(
@@ -530,6 +541,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         
         // Log buffer state for debugging
         logBufferSyncDiagnostics(initialWindow)
+        
+        // Mark sync as completed after all sync operations are done
+        // This prevents race conditions with scroll listeners that check the flag
+        initialBufferSyncCompleted = true
     }
     
     /**
