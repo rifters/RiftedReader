@@ -42,6 +42,7 @@ import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.launch
 import java.io.File
+import com.rifters.riftedreader.BuildConfig
 
 class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     
