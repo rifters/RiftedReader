@@ -69,6 +69,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var isUserScrolling: Boolean = false
     // Flag to prevent circular navigation updates during programmatic scrolls
     private var programmaticScrollInProgress: Boolean = false
+    // Flag to track if initial buffer-to-UI sync has been performed
+    private var initialBufferSyncCompleted: Boolean = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppLogger.event("ReaderActivity", "onCreate started", "ui/ReaderActivity/lifecycle")
@@ -438,6 +440,134 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         // Ensure controls are available briefly after layout to provide context to the reader.
         binding.root.doOnLayout {
             controlsManager.showControls()
+        }
+        
+        // Sync RecyclerView to initial buffer window on startup
+        // This ensures the visible window matches where WindowBufferManager is initialized
+        // to prevent phase transition stalls and band sliding failures
+        syncRecyclerViewToInitialBufferWindow()
+    }
+    
+    /**
+     * Sync RecyclerView to the initial buffer window on startup.
+     * 
+     * This ensures the visible window matches where WindowBufferManager is initialized,
+     * preventing phase transition stalls ("not win5" bug) and band sliding failures.
+     * 
+     * Only performs the sync once at startup, for CONTINUOUS pagination mode.
+     */
+    private fun syncRecyclerViewToInitialBufferWindow() {
+        // Observer to sync RecyclerView once windowCount becomes available
+        lifecycleScope.launch {
+            viewModel.windowCount.collect { windowCount ->
+                // Skip if already synced, not in continuous mode, or no windows yet
+                if (initialBufferSyncCompleted) return@collect
+                if (viewModel.paginationMode != PaginationMode.CONTINUOUS) return@collect
+                if (windowCount <= 0) return@collect
+                
+                // Post to ensure RecyclerView is laid out and adapter has items
+                binding.pageRecyclerView.post {
+                    performInitialBufferSync()
+                }
+            }
+        }
+    }
+    
+    /**
+     * Perform the actual initial buffer sync.
+     * 
+     * Scrolls RecyclerView to the initial window index from ViewModel,
+     * ensuring UI and buffer state are aligned on startup.
+     */
+    private fun performInitialBufferSync() {
+        // Guard: only sync once
+        if (initialBufferSyncCompleted) return
+        
+        // Guard: only for continuous mode
+        if (viewModel.paginationMode != PaginationMode.CONTINUOUS) return
+        
+        val initialWindow = viewModel.currentWindowIndex.value
+        val adapterItemCount = pagerAdapter.itemCount
+        
+        // Validate adapter has items
+        if (adapterItemCount <= 0) {
+            AppLogger.w(
+                "ReaderActivity",
+                "[BUFFER_SYNC] Deferred initial sync: adapter has no items yet " +
+                "(windowCount=${viewModel.windowCount.value})"
+            )
+            return
+        }
+        
+        // Validate initial window is within adapter bounds
+        if (initialWindow < 0 || initialWindow >= adapterItemCount) {
+            AppLogger.e(
+                "ReaderActivity",
+                "[BUFFER_SYNC] Initial window $initialWindow out of bounds " +
+                "(adapterItemCount=$adapterItemCount) - defaulting to 0"
+            )
+            currentPagerPosition = 0
+            initialBufferSyncCompleted = true
+            return
+        }
+        
+        // Mark sync as completed before scrolling to prevent re-entry
+        initialBufferSyncCompleted = true
+        currentPagerPosition = initialWindow
+        
+        AppLogger.d(
+            "ReaderActivity",
+            "[BUFFER_SYNC] Syncing RecyclerView to initial buffer window $initialWindow " +
+            "(adapterItemCount=$adapterItemCount, paginationMode=${viewModel.paginationMode})"
+        )
+        
+        // Perform the scroll (non-animated for instant positioning)
+        setCurrentItem(initialWindow, false)
+        
+        // Notify WindowBufferManager that this window became visible
+        // This triggers phase transition checks for STARTUP -> STEADY
+        viewModel.onWindowBecameVisible(initialWindow)
+        
+        // Log buffer state for debugging
+        logBufferSyncDiagnostics(initialWindow)
+    }
+    
+    /**
+     * Log diagnostics after initial buffer sync for debugging phase transitions.
+     * 
+     * This includes a defensive warning if the visible window doesn't match
+     * the buffer band, which would indicate a misalignment issue.
+     */
+    private fun logBufferSyncDiagnostics(syncedWindow: Int) {
+        val bufferManager = viewModel.windowBufferManager
+        if (bufferManager == null) {
+            AppLogger.w(
+                "ReaderActivity",
+                "[BUFFER_SYNC] WindowBufferManager not initialized - cannot validate buffer state"
+            )
+            return
+        }
+        
+        val bufferedWindows = bufferManager.getBufferedWindows()
+        val centerWindow = bufferManager.getCenterWindowIndex()
+        val currentPhase = bufferManager.phase.value
+        
+        // Check if synced window is in buffer
+        val isInBuffer = bufferedWindows.contains(syncedWindow)
+        
+        if (!isInBuffer) {
+            AppLogger.w(
+                "ReaderActivity",
+                "[BUFFER_SYNC] WARNING: Visible window $syncedWindow is NOT in buffer band " +
+                "$bufferedWindows. This may cause phase transition issues. " +
+                "(centerWindow=$centerWindow, phase=$currentPhase)"
+            )
+        } else {
+            AppLogger.d(
+                "ReaderActivity",
+                "[BUFFER_SYNC] Initial sync complete: visibleWindow=$syncedWindow, " +
+                "buffer=$bufferedWindows, centerWindow=$centerWindow, phase=$currentPhase"
+            )
         }
     }
     
