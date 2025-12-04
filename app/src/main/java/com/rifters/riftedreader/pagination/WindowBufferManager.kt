@@ -295,6 +295,7 @@ class WindowBufferManager(
             // Check for STARTUP -> STEADY transition
             if (_phase.value == Phase.STARTUP && !hasEnteredSteadyState) {
                 val centerWindowIndex = getCenterWindowIndex()
+                AppLogger.d(TAG, "[PHASE_TRANS_DEBUG] Checking transition: centerWindow=$centerWindowIndex, globalWindow=$globalWindowIndex, match=${centerWindowIndex == globalWindowIndex}")
                 if (centerWindowIndex != null && globalWindowIndex == centerWindowIndex) {
                     val oldPhase = _phase.value
                     hasEnteredSteadyState = true

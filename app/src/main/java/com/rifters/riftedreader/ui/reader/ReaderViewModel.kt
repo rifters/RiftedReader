@@ -681,6 +681,9 @@ class ReaderViewModel(
      * @param totalPagesInWindow Total pages in the current window
      */
     fun maybeShiftForward(currentInPageIndex: Int, totalPagesInWindow: Int) {
+        val phaseCheck = _windowBufferManager?.phase?.value
+        AppLogger.d("ReaderViewModel", "[PHASE_CHECK_BEFORE_SHIFT] maybeShiftForward ENTRY: currentPage=$currentInPageIndex/$totalPagesInWindow, phase=$phaseCheck")
+
         val bufferManager = _windowBufferManager
         if (!isContinuousMode || bufferManager == null) {
             return

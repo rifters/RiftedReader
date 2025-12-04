@@ -1826,19 +1826,30 @@ class ReaderPageFragment : Fragment() {
                         // Buffer shift threshold is 2 pages, so check if within that range
                         // IMPORTANT: Skip shift checks during cooldown period after window transitions
                         // to prevent shifting backward when entering a new window at page 0
+                        val currentPhase = readerViewModel.windowBufferManager?.phase?.value
+                        val activeWindow = readerViewModel.windowBufferManager?.getActiveWindowIndex()
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "[EDGE_CHECK] page=$newPage/$totalPages, phase=$currentPhase, window=$activeWindow, cooldown=$inCooldownPeriod"
+                        )
+                        
                         if (totalPages > 0 && newPage >= totalPages - 2 && !inCooldownPeriod) {
                             com.rifters.riftedreader.util.AppLogger.d(
                                 "ReaderPageFragment",
-                                "[CONVEYOR] Near window END: page $newPage/$totalPages, " +
-                                "cooldown=$inCooldownPeriod (${timeSinceTransition}ms elapsed)"
+                                "[CONVEYOR] Near window END: page $newPage/$totalPages - CALLING maybeShiftForward()"
                             )
                             readerViewModel.maybeShiftForward(newPage, totalPages)
+                        } else if (totalPages > 0 && newPage >= totalPages - 2) {
+                            com.rifters.riftedreader.util.AppLogger.d(
+                                "ReaderPageFragment",
+                                "[CONVEYOR] BLOCKED: Near END but IN_COOLDOWN: page=$newPage/$totalPages"
+                            )
                         }
+                        
                         if (newPage < 2 && !inCooldownPeriod) {
                             com.rifters.riftedreader.util.AppLogger.d(
                                 "ReaderPageFragment",
-                                "[CONVEYOR] Near window START: page $newPage/$totalPages, " +
-                                "cooldown=$inCooldownPeriod (${timeSinceTransition}ms elapsed)"
+                                "[CONVEYOR] Near window START: page $newPage/$totalPages - CALLING maybeShiftBackward()"
                             )
                             readerViewModel.maybeShiftBackward(newPage)
                         }
