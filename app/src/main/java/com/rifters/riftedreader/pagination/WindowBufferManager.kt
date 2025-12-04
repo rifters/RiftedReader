@@ -296,10 +296,14 @@ class WindowBufferManager(
             if (_phase.value == Phase.STARTUP && !hasEnteredSteadyState) {
                 val centerWindowIndex = getCenterWindowIndex()
                 if (centerWindowIndex != null && globalWindowIndex == centerWindowIndex) {
-                    AppLogger.d(TAG, "[PAGINATION_DEBUG] Transitioning to STEADY phase: " +
-                        "entered window $globalWindowIndex equals buffer[CENTER_POS]=$centerWindowIndex")
+                    val oldPhase = _phase.value
                     hasEnteredSteadyState = true
                     _phase.value = Phase.STEADY
+                    AppLogger.d(TAG, "[CONVEYOR] *** PHASE TRANSITION STARTUP -> STEADY ***\n" +
+                        "  Entered center window ($globalWindowIndex) of buffer\n" +
+                        "  buffer=${buffer.toList()}\n" +
+                        "  activeWindow=$globalWindowIndex\n" +
+                        "  Now entering steady state with 2 windows ahead and 2 behind")
                 }
             }
             
@@ -317,21 +321,19 @@ class WindowBufferManager(
      */
     suspend fun shiftForward(): Boolean {
         bufferMutex.withLock {
-            AppLogger.d(TAG, "[PAGINATION_DEBUG] shiftForward: buffer=${buffer.toList()}, " +
-                "activeWindow=$activeWindowIndex")
-            
             if (buffer.isEmpty()) {
-                AppLogger.w(TAG, "[PAGINATION_DEBUG] shiftForward: buffer is empty")
+                AppLogger.w(TAG, "[CONVEYOR] shiftForward: buffer is empty")
                 return false
             }
             
             val totalWindows = paginator.getWindowCount()
             val lastBufferedWindow = buffer.last
+            val oldBuffer = buffer.toList()
             
             // Check if we can append a new window
             val nextWindowIndex = lastBufferedWindow + 1
             if (nextWindowIndex >= totalWindows) {
-                AppLogger.d(TAG, "[PAGINATION_DEBUG] shiftForward: at end boundary, " +
+                AppLogger.d(TAG, "[CONVEYOR] shiftForward: at end boundary, " +
                     "lastBuffered=$lastBufferedWindow, totalWindows=$totalWindows")
                 return false
             }
@@ -341,14 +343,17 @@ class WindowBufferManager(
             
             // Remove dropped window from cache
             val removed = windowCache.remove(droppedWindow)
-            AppLogger.d(TAG, "[PAGINATION_DEBUG] shiftForward: dropped window $droppedWindow " +
-                "(cached=${removed != null})")
             
             // Append new rightmost window
             buffer.addLast(nextWindowIndex)
             
-            AppLogger.d(TAG, "[PAGINATION_DEBUG] shiftForward complete: buffer=${buffer.toList()}, " +
-                "appended=$nextWindowIndex")
+            AppLogger.d(TAG, "[CONVEYOR] *** SHIFT FORWARD ***\n" +
+                "  oldBuffer=$oldBuffer\n" +
+                "  newBuffer=${buffer.toList()}\n" +
+                "  droppedWindow=$droppedWindow (was in cache: ${removed != null})\n" +
+                "  newlyCreated=$nextWindowIndex (preloading...)\n" +
+                "  activeWindow=$activeWindowIndex\n" +
+                "  cacheSize=${windowCache.size} (after drop)")
             
             // Preload the newly appended window
             preloadWindow(nextWindowIndex)
@@ -367,20 +372,18 @@ class WindowBufferManager(
      */
     suspend fun shiftBackward(): Boolean {
         bufferMutex.withLock {
-            AppLogger.d(TAG, "[PAGINATION_DEBUG] shiftBackward: buffer=${buffer.toList()}, " +
-                "activeWindow=$activeWindowIndex")
-            
             if (buffer.isEmpty()) {
-                AppLogger.w(TAG, "[PAGINATION_DEBUG] shiftBackward: buffer is empty")
+                AppLogger.w(TAG, "[CONVEYOR] shiftBackward: buffer is empty")
                 return false
             }
             
             val firstBufferedWindow = buffer.first
+            val oldBuffer = buffer.toList()
             
             // Check if we can prepend a new window
             val prevWindowIndex = firstBufferedWindow - 1
             if (prevWindowIndex < 0) {
-                AppLogger.d(TAG, "[PAGINATION_DEBUG] shiftBackward: at start boundary, " +
+                AppLogger.d(TAG, "[CONVEYOR] shiftBackward: at start boundary, " +
                     "firstBuffered=$firstBufferedWindow")
                 return false
             }
@@ -390,14 +393,17 @@ class WindowBufferManager(
             
             // Remove dropped window from cache
             val removed = windowCache.remove(droppedWindow)
-            AppLogger.d(TAG, "[PAGINATION_DEBUG] shiftBackward: dropped window $droppedWindow " +
-                "(cached=${removed != null})")
             
             // Prepend new leftmost window
             buffer.addFirst(prevWindowIndex)
             
-            AppLogger.d(TAG, "[PAGINATION_DEBUG] shiftBackward complete: buffer=${buffer.toList()}, " +
-                "prepended=$prevWindowIndex")
+            AppLogger.d(TAG, "[CONVEYOR] *** SHIFT BACKWARD ***\n" +
+                "  oldBuffer=$oldBuffer\n" +
+                "  newBuffer=${buffer.toList()}\n" +
+                "  droppedWindow=$droppedWindow (was in cache: ${removed != null})\n" +
+                "  newlyCreated=$prevWindowIndex (preloading...)\n" +
+                "  activeWindow=$activeWindowIndex\n" +
+                "  cacheSize=${windowCache.size} (after drop)")
             
             // Preload the newly prepended window
             preloadWindow(prevWindowIndex)

@@ -369,6 +369,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         // Notify WindowBufferManager that this window became visible
                         // This triggers phase transition checks and potential buffer shifts
                         if (position >= 0) {
+                            AppLogger.d(
+                                "ReaderActivity",
+                                "[CONVEYOR] Window $position became visible - checking buffer state"
+                            )
                             viewModel.onWindowBecameVisible(position)
                         }
                     }

@@ -1234,6 +1234,13 @@
         if (newPage !== currentPage) {
             console.log('inpage_paginator: syncCurrentPageFromScroll - updating currentPage from ' + currentPage + ' to ' + newPage);
             currentPage = newPage;
+            
+            // CRITICAL: Notify Android of page change during manual scrolling
+            // This enables edge detection and window buffer shifting during normal reading
+            if (window.AndroidBridge && window.AndroidBridge.onPageChanged) {
+                console.log('inpage_paginator: syncCurrentPageFromScroll - Calling AndroidBridge.onPageChanged with page=' + newPage);
+                window.AndroidBridge.onPageChanged(newPage);
+            }
         }
     }
     

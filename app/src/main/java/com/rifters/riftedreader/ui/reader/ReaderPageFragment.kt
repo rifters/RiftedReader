@@ -1827,13 +1827,18 @@ class ReaderPageFragment : Fragment() {
                         // IMPORTANT: Skip shift checks during cooldown period after window transitions
                         // to prevent shifting backward when entering a new window at page 0
                         if (totalPages > 0 && newPage >= totalPages - 2 && !inCooldownPeriod) {
+                            com.rifters.riftedreader.util.AppLogger.d(
+                                "ReaderPageFragment",
+                                "[CONVEYOR] Near window END: page $newPage/$totalPages, " +
+                                "cooldown=$inCooldownPeriod (${timeSinceTransition}ms elapsed)"
+                            )
                             readerViewModel.maybeShiftForward(newPage, totalPages)
                         }
                         if (newPage < 2 && !inCooldownPeriod) {
                             com.rifters.riftedreader.util.AppLogger.d(
                                 "ReaderPageFragment",
-                                "[WINDOW_SHIFT] Near start (page $newPage), " +
-                                "inCooldown=$inCooldownPeriod, timeSince=${timeSinceTransition}ms"
+                                "[CONVEYOR] Near window START: page $newPage/$totalPages, " +
+                                "cooldown=$inCooldownPeriod (${timeSinceTransition}ms elapsed)"
                             )
                             readerViewModel.maybeShiftBackward(newPage)
                         }
