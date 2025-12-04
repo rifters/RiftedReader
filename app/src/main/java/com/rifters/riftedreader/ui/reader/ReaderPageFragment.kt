@@ -1763,8 +1763,16 @@ class ReaderPageFragment : Fragment() {
                             )
                             
                             // Parse the JSON array of loaded chapters
+                            // Note: loadedChaptersJson comes from JSON.stringify() which has escaped quotes
                             try {
-                                val jsonArray = org.json.JSONArray(loadedChaptersJson)
+                                // Unescape the JSON string if it contains escaped quotes
+                                val unescapedJson = if (loadedChaptersJson.contains("\\\"")) {
+                                    loadedChaptersJson.replace("\\\"", "\"")
+                                } else {
+                                    loadedChaptersJson
+                                }
+                                
+                                val jsonArray = org.json.JSONArray(unescapedJson)
                                 for (i in 0 until jsonArray.length()) {
                                     val chapterObj = jsonArray.getJSONObject(i)
                                     val chapterIndex = chapterObj.optInt("chapterIndex", -1)
@@ -1781,7 +1789,7 @@ class ReaderPageFragment : Fragment() {
                             } catch (e: Exception) {
                                 com.rifters.riftedreader.util.AppLogger.e(
                                     "ReaderPageFragment",
-                                    "[CHAPTER_METRICS] Error parsing loadedChapters JSON in onPaginationReady",
+                                    "[CHAPTER_METRICS] Error parsing loadedChapters JSON in onPaginationReady: $loadedChaptersJson",
                                     e
                                 )
                                 // Fallback: try to update at least the current chapter
