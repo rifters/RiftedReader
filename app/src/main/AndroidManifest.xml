@@ -41,6 +41,13 @@
             android:name=".ui.reader.ReaderActivity"
             android:exported="false"
             android:theme="@style/Theme.RiftedReader.Reader" />
+        
+        <!-- Debug activity for testing the isolated conveyor belt system -->
+        <activity
+            android:name=".ui.reader.conveyor.ConveyorDebugActivity"
+            android:exported="true"
+            android:label="Conveyor Debug"
+            android:theme="@style/Theme.RiftedReader" />
 
         <service
             android:name=".domain.tts.TTSService"
