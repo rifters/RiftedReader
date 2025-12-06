@@ -361,11 +361,17 @@
         const currentProgress = state.currentPage / Math.max(1, state.pageCount - 1);
         
         if (currentProgress >= BOUNDARY_THRESHOLD && lastBoundaryDirection !== 'FORWARD') {
-            callAndroidBridge('onBoundaryReached', { direction: 'FORWARD' });
+            // Call onBoundaryReached with direction, currentPage, totalPages (NOT JSON)
+            if (window.AndroidBridge && typeof window.AndroidBridge.onBoundaryReached === 'function') {
+                window.AndroidBridge.onBoundaryReached('NEXT', state.currentPage, state.pageCount);
+            }
             lastBoundaryDirection = 'FORWARD';
             log('BOUNDARY', 'Reached FORWARD boundary');
         } else if (currentProgress <= (1 - BOUNDARY_THRESHOLD) && lastBoundaryDirection !== 'BACKWARD') {
-            callAndroidBridge('onBoundaryReached', { direction: 'BACKWARD' });
+            // Call onBoundaryReached with direction, currentPage, totalPages (NOT JSON)
+            if (window.AndroidBridge && typeof window.AndroidBridge.onBoundaryReached === 'function') {
+                window.AndroidBridge.onBoundaryReached('PREVIOUS', state.currentPage, state.pageCount);
+            }
             lastBoundaryDirection = 'BACKWARD';
             log('BOUNDARY', 'Reached BACKWARD boundary');
         } else if (currentProgress > (1 - BOUNDARY_THRESHOLD) && currentProgress < BOUNDARY_THRESHOLD) {
