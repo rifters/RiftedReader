@@ -351,6 +351,54 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     // ========================================================================
+    // Auto-Shift Logic Helpers
+    // ========================================================================
+    
+    /**
+     * Determine if buffer should shift forward after navigating to a window.
+     * 
+     * @param windowIndex The window we just navigated to
+     * @return true if forward shift is appropriate
+     */
+    private fun shouldShiftForwardAfterNavigation(windowIndex: Int): Boolean {
+        if (_phase.value != ConveyorPhase.STEADY) return false
+        
+        val bufferList = buffer.toList()
+        val positionInBuffer = bufferList.indexOf(windowIndex)
+        
+        // Shift forward if we're past center but not at edge
+        if (positionInBuffer < CENTER_POS || positionInBuffer >= bufferList.size - 1) {
+            return false
+        }
+        
+        // Only shift if we can maintain centering (next window exists)
+        val nextWindowIndex = bufferList.last() + 1
+        return nextWindowIndex < _totalWindows.value
+    }
+    
+    /**
+     * Determine if buffer should shift backward after navigating to a window.
+     * 
+     * @param windowIndex The window we just navigated to
+     * @return true if backward shift is appropriate
+     */
+    private fun shouldShiftBackwardAfterNavigation(windowIndex: Int): Boolean {
+        if (_phase.value != ConveyorPhase.STEADY) return false
+        
+        val bufferList = buffer.toList()
+        val positionInBuffer = bufferList.indexOf(windowIndex)
+        
+        // Shift backward if we're before or at center but not at edge
+        if (positionInBuffer > CENTER_POS || positionInBuffer <= 0) {
+            return false
+        }
+        
+        // Only shift if we can maintain centering (previous window exists)
+        val prevWindowIndex = bufferList.first() - 1
+        return prevWindowIndex >= 0
+    }
+    
+    // ========================================================================
     // Simulation Methods (for Debug Activity)
     // ========================================================================
     
@@ -368,17 +416,9 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         if (next < total) {
             onWindowEntered(next)
             
-            // Auto-shift if in steady state and approaching edge
-            if (_phase.value == ConveyorPhase.STEADY) {
-                val bufferList = buffer.toList()
-                val positionInBuffer = bufferList.indexOf(next)
-                // Shift forward if we're past center
-                if (positionInBuffer >= CENTER_POS && positionInBuffer < bufferList.size - 1) {
-                    // Only shift if we can maintain centering
-                    if (bufferList.last() + 1 < total) {
-                        shiftForward()
-                    }
-                }
+            // Auto-shift if appropriate
+            if (shouldShiftForwardAfterNavigation(next)) {
+                shiftForward()
             }
         } else {
             log("SIMULATE_NEXT_BLOCKED", "Already at last window")
@@ -398,17 +438,9 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         if (prev >= 0) {
             onWindowEntered(prev)
             
-            // Auto-shift if in steady state
-            if (_phase.value == ConveyorPhase.STEADY) {
-                val bufferList = buffer.toList()
-                val positionInBuffer = bufferList.indexOf(prev)
-                // Shift backward if we're before center
-                if (positionInBuffer <= CENTER_POS && positionInBuffer > 0) {
-                    // Only shift if we can maintain centering
-                    if (bufferList.first() - 1 >= 0) {
-                        shiftBackward()
-                    }
-                }
+            // Auto-shift if appropriate
+            if (shouldShiftBackwardAfterNavigation(prev)) {
+                shiftBackward()
             }
         } else {
             log("SIMULATE_PREV_BLOCKED", "Already at first window")

@@ -176,29 +176,30 @@ class ConveyorBeltIntegrationBridge(
     private fun logStateComparison(label: String) {
         val wbm = readerViewModel.windowBufferManager
         
-        val oldPhase = wbm?.phase?.value?.name ?: "NULL"
-        val oldActive = wbm?.getActiveWindowIndex() ?: -1
+        // Use descriptive strings for unavailable values
+        val oldPhase = wbm?.phase?.value?.name ?: "NOT_AVAILABLE"
+        val oldActive = wbm?.getActiveWindowIndex()
         val oldBuffer = wbm?.getBufferedWindows() ?: emptyList()
-        val oldCenter = wbm?.getCenterWindowIndex() ?: -1
+        val oldCenter = wbm?.getCenterWindowIndex()
         
         val newPhase = conveyorViewModel.phase.value.name
         val newActive = conveyorViewModel.activeWindow.value
         val newBuffer = conveyorViewModel.bufferContents.value
-        val newCenter = conveyorViewModel.getCenterWindow() ?: -1
+        val newCenter = conveyorViewModel.getCenterWindow()
         
         log("STATE_COMPARISON_$label", buildString {
             appendLine("=== STATE COMPARISON ===")
             appendLine("[OLD WindowBufferManager]")
             appendLine("  phase=$oldPhase")
-            appendLine("  activeWindow=$oldActive")
+            appendLine("  activeWindow=${oldActive ?: "NOT_INITIALIZED"}")
             appendLine("  buffer=$oldBuffer")
-            appendLine("  center=$oldCenter")
+            appendLine("  center=${oldCenter ?: "NOT_AVAILABLE"}")
             appendLine()
             appendLine("[NEW Isolated System]")
             appendLine("  phase=$newPhase")
             appendLine("  activeWindow=$newActive")
             appendLine("  buffer=$newBuffer")
-            appendLine("  center=$newCenter")
+            appendLine("  center=${newCenter ?: "NOT_AVAILABLE"}")
             appendLine()
             appendLine("[DIFFERENCES]")
             if (oldPhase != newPhase) appendLine("  ❌ Phase: $oldPhase vs $newPhase")
