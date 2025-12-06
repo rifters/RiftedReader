@@ -204,6 +204,7 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     fun clearEventLog() {
+        _eventLog.value = emptyList()
         log("CLEAR_LOG", "Event log cleared")
     }
     

@@ -184,21 +184,26 @@ class ConveyorBeltSystemViewModelTest {
     
     @Test
     fun `simulatePreviousWindow goes back active window`() {
-        viewModel.initialize(startWindow = 3, totalWindowCount = 10)
+        viewModel.initialize(startWindow = 1, totalWindowCount = 10)
         
         viewModel.simulatePreviousWindow()
-        assertEquals(2, viewModel.activeWindow.value)
+        assertEquals(0, viewModel.activeWindow.value)
     }
     
     @Test
     fun `simulateNextWindow triggers phase transition when reaching center`() {
         viewModel.initialize(startWindow = 0, totalWindowCount = 10)
         
-        // Navigate to center (window 2)
+        // Navigate through startup to trigger transition at window 3
         viewModel.simulateNextWindow() // 0 -> 1
-        viewModel.simulateNextWindow() // 1 -> 2 (center!)
+        assertEquals(ConveyorPhase.STARTUP, viewModel.phase.value)
         
+        viewModel.simulateNextWindow() // 1 -> 2 (unlocks shifts)
+        assertEquals(ConveyorPhase.STARTUP, viewModel.phase.value)
+        
+        viewModel.simulateNextWindow() // 2 -> 3 (triggers STEADY!)
         assertEquals(ConveyorPhase.STEADY, viewModel.phase.value)
+        assertEquals(3, viewModel.activeWindow.value)
     }
     
     // ========================================================================
@@ -231,7 +236,8 @@ class ConveyorBeltSystemViewModelTest {
     fun `reinitialize resets all state`() {
         // First initialization
         viewModel.initialize(startWindow = 0, totalWindowCount = 10)
-        viewModel.onWindowEntered(2) // Transition to STEADY
+        viewModel.onWindowEntered(2) // Unlock shifts
+        viewModel.onWindowEntered(3) // Transition to STEADY
         assertEquals(ConveyorPhase.STEADY, viewModel.phase.value)
         
         // Reinitialize
