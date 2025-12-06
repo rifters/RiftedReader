@@ -850,6 +850,9 @@ class ReaderPageFragment : Fragment() {
         )
         
         WebViewPaginatorBridge.configure(binding.pageWebView, paginatorConfig)
+        
+        // CRITICAL: Initialize the paginator to set up columns and calculate page count
+        WebViewPaginatorBridge.initialize(binding.pageWebView)
     }
 
     private fun applyHighlight(range: IntRange?) {

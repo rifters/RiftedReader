@@ -78,6 +78,24 @@ object WebViewPaginatorBridge {
     }
     
     /**
+     * Initialize the paginator after HTML is loaded.
+     * 
+     * Must be called after HTML content is loaded into the WebView.
+     * This sets up the column layout and calculates page count.
+     * 
+     * @param webView The WebView containing the HTML
+     */
+    fun initialize(webView: WebView) {
+        AppLogger.d("WebViewPaginatorBridge", "initialize: calling window.minimalPaginator.initialize()")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.minimalPaginator) { window.minimalPaginator.initialize(); }",
+                null
+            )
+        }
+    }
+    
+    /**
      * Evaluate a JavaScript expression and return the result as an Int.
      * Must be called from a coroutine as it suspends until the result is available.
      * 

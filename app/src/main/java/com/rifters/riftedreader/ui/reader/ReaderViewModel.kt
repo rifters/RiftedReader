@@ -1349,8 +1349,16 @@ class ReaderViewModel(
         }
         
         _currentWindowIndex.value = windowIndex
-        AppLogger.d("ReaderViewModel", 
+        AppLogger.d("ReaderViewModel",
             "goToWindow: _currentWindowIndex updated from $previousWindow to $windowIndex [WINDOW_STATE_UPDATE]")
+        
+        // CRITICAL: Preload the window HTML when navigating to a new window
+        // This ensures the HTML is available when the fragment calls getWindowHtml()
+        if (isContinuousMode && windowBufferManager != null) {
+            AppLogger.d("ReaderViewModel", 
+                "goToWindow: triggering window preload for windowIndex=$windowIndex [PRELOAD_TRIGGER]")
+            windowBufferManager!!.preloadWindow(windowIndex)
+        }
         
         if (isContinuousMode) {
             viewModelScope.launch {
