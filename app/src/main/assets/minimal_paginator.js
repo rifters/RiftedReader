@@ -174,6 +174,11 @@
         // Sync state with Android bridge after page change
         syncPaginationState();
         
+        // Also call onPageChanged for compatibility with Kotlin navigation logic
+        if (window.AndroidBridge && typeof window.AndroidBridge.onPageChanged === 'function') {
+            window.AndroidBridge.onPageChanged(validIndex);
+        }
+        
         checkBoundary();
         log('NAV', `goToPage(${pageIndex}) -> ${validIndex}`);
     }
