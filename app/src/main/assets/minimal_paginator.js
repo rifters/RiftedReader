@@ -115,6 +115,9 @@
             state.isPaginationReady = state.pageCount > 0;
             state.currentPage = 0;
             
+            // Sync pagination state with Android bridge (for synchronized access)
+            syncPaginationState();
+            
             if (state.isPaginationReady) {
                 log('INIT_SUCCESS', `pageCount=${state.pageCount}, charOffsets=${charOffsets.length}`);
                 callAndroidBridge('onPaginationReady', { pageCount: state.pageCount });
@@ -167,6 +170,9 @@
             top: 0,
             behavior: smooth ? 'smooth' : 'auto'
         });
+        
+        // Sync state with Android bridge after page change
+        syncPaginationState();
         
         checkBoundary();
         log('NAV', `goToPage(${pageIndex}) -> ${validIndex}`);
@@ -359,6 +365,25 @@
             log('BOUNDARY', 'Reached BACKWARD boundary');
         } else if (currentProgress > (1 - BOUNDARY_THRESHOLD) && currentProgress < BOUNDARY_THRESHOLD) {
             lastBoundaryDirection = null;
+        }
+    }
+    
+    /**
+     * Sync pagination state with Android for synchronized access.
+     * Called by Kotlin code via WebViewPaginatorBridge._syncPaginationState()
+     * This allows Kotlin to read page state synchronously without async callbacks.
+     */
+    function syncPaginationState() {
+        try {
+            if (window.AndroidBridge && typeof window.AndroidBridge._syncPaginationState === 'function') {
+                window.AndroidBridge._syncPaginationState(
+                    state.pageCount,
+                    state.currentPage
+                );
+                log('SYNC', `Synced with Android: pageCount=${state.pageCount}, currentPage=${state.currentPage}`);
+            }
+        } catch (e) {
+            log('SYNC_ERROR', `Failed to sync: ${e.message}`);
         }
     }
     

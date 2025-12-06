@@ -2093,7 +2093,7 @@ class ReaderPageFragment : Fragment() {
      * 1. In-page navigation (when not at edge)
      * 2. Edge detection and handover to window navigation
      * 
-     * Checks paginator readiness and uses WebViewPaginatorBridge for page info.
+     * Checks paginator readiness and uses cached page info from WebViewPaginatorBridge.
      * When at an edge, calls into ReaderActivity to move to the adjacent window.
      * 
      * @param isNext true for next/forward navigation, false for previous/backward
@@ -2111,6 +2111,7 @@ class ReaderPageFragment : Fragment() {
         }
         
         try {
+            // Get page info from cached values (synchronized with JS)
             val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
             val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
             val paginationMode = readerViewModel.paginationMode

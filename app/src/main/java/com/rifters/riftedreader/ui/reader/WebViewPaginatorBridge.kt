@@ -36,6 +36,11 @@ object WebViewPaginatorBridge {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val gson = Gson()
     
+    // Synchronized cache - read directly from JS state without async callbacks
+    // Updated in real-time by minimal_paginator.js via _syncPaginationState()
+    private var cachedPageCount: Int = -1
+    private var cachedCurrentPage: Int = 0
+    
     /**
      * Check if the paginator is initialized and ready for operations.
      * 
@@ -151,34 +156,42 @@ object WebViewPaginatorBridge {
     
     /**
      * Get total page count in current window.
+     * Returns cached value - synchronized with minimal_paginator.js state.
+     * No async callback - reads directly from paginator state.
      * 
-     * @param webView The WebView to query
+     * @param webView The WebView to query (not used, reads cached state)
      * @return Page count, or -1 if not ready
      */
-    suspend fun getPageCount(webView: WebView): Int {
-        return try {
-            val count = evaluateInt(webView, "window.minimalPaginator.getPageCount()")
-            AppLogger.d("WebViewPaginatorBridge", "getPageCount: $count")
-            count
-        } catch (e: Exception) {
-            AppLogger.e("WebViewPaginatorBridge", "Error getting page count", e)
-            -1
-        }
+    fun getPageCount(webView: WebView): Int {
+        return cachedPageCount
     }
     
     /**
      * Get currently displayed page index.
+     * Returns cached value - synchronized with minimal_paginator.js state.
+     * No async callback - reads directly from paginator state.
      * 
-     * @param webView The WebView to query
+     * @param webView The WebView to query (not used, reads cached state)
      * @return Current page (0-indexed), or 0 if not ready
      */
-    suspend fun getCurrentPage(webView: WebView): Int {
-        return try {
-            evaluateInt(webView, "window.minimalPaginator.getCurrentPage()")
-        } catch (e: Exception) {
-            AppLogger.e("WebViewPaginatorBridge", "Error getting current page", e)
-            0
-        }
+    fun getCurrentPage(webView: WebView): Int {
+        return cachedCurrentPage
+    }
+    
+    /**
+     * Internal method called by JavaScript to sync page state.
+     * Called by minimal_paginator.js whenever pagination state changes.
+     * This allows Kotlin to read page info synchronously without async callbacks.
+     * DO NOT call from Kotlin code directly.
+     */
+    @Suppress("unused")
+    fun _syncPaginationState(pageCount: Int, currentPage: Int) {
+        cachedPageCount = pageCount
+        cachedCurrentPage = currentPage
+        AppLogger.d(
+            "WebViewPaginatorBridge",
+            "_syncPaginationState: pageCount=$pageCount, currentPage=$currentPage [SYNC]"
+        )
     }
     
     /**
