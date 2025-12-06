@@ -1019,6 +1019,57 @@ class ReaderViewModel(
         }
     }
 
+    /**
+     * Character offset tracking for stable position persistence across font changes and reflows.
+     * Maps window index to character offset for that position.
+     */
+    private val characterOffsetMap = mutableMapOf<Int, Int>()
+
+    /**
+     * Update reading position with character offset.
+     * Called after navigation to capture the current position with stable offset info.
+     * 
+     * @param windowIndex The window/page index
+     * @param pageInWindow The in-page index within the window
+     * @param characterOffset The character offset from the JavaScript paginator
+     */
+    fun updateReadingPosition(windowIndex: Int, pageInWindow: Int, characterOffset: Int) {
+        characterOffsetMap[windowIndex] = characterOffset
+        AppLogger.d(
+            "ReaderViewModel",
+            "[CHARACTER_OFFSET] Updated position: windowIndex=$windowIndex, pageInWindow=$pageInWindow, offset=$characterOffset"
+        )
+    }
+
+    /**
+     * Get saved character offset for a window.
+     * Used to restore reading position when returning to a window.
+     * 
+     * @param windowIndex The window index to look up
+     * @return The saved character offset, or 0 if not found
+     */
+    fun getSavedCharacterOffset(windowIndex: Int): Int {
+        val offset = characterOffsetMap[windowIndex] ?: 0
+        if (offset > 0) {
+            AppLogger.d(
+                "ReaderViewModel",
+                "[CHARACTER_OFFSET] Retrieved offset for windowIndex=$windowIndex: offset=$offset"
+            )
+        }
+        return offset
+    }
+
+    /**
+     * Clear character offset for a window (useful after window reload).
+     */
+    fun clearCharacterOffset(windowIndex: Int) {
+        characterOffsetMap.remove(windowIndex)
+        AppLogger.d(
+            "ReaderViewModel",
+            "[CHARACTER_OFFSET] Cleared offset for windowIndex=$windowIndex"
+        )
+    }
+
     suspend fun navigateToChapter(chapterIndex: Int, inPageIndex: Int = 0): Int? {
         return if (isContinuousMode) {
             val paginator = continuousPaginator ?: return null
