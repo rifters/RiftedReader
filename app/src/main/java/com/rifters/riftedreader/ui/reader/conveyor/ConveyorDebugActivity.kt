@@ -126,14 +126,14 @@ class ConveyorDebugActivity : AppCompatActivity() {
                 
                 // Observe buffer contents
                 launch {
-                    viewModel.bufferContents.collectLatest { buffer ->
+                    viewModel.buffer.collectLatest { buffer ->
                         binding.bufferText.text = buffer.toString()
                     }
                 }
                 
                 // Observe center window (derived from buffer)
                 launch {
-                    viewModel.bufferContents.collectLatest { _ ->
+                    viewModel.buffer.collectLatest { _ ->
                         val center = viewModel.getCenterWindow()
                         binding.centerWindowText.text = center?.toString() ?: "N/A"
                     }

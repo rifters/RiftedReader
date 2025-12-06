@@ -184,7 +184,7 @@ class ConveyorBeltIntegrationBridge(
         
         val newPhase = conveyorViewModel.phase.value.name
         val newActive = conveyorViewModel.activeWindow.value
-        val newBuffer = conveyorViewModel.bufferContents.value
+        val newBuffer = conveyorViewModel.buffer.value
         val newCenter = conveyorViewModel.getCenterWindow()
         
         log("STATE_COMPARISON_$label", buildString {

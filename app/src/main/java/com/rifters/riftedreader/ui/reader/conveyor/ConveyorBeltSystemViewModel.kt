@@ -27,6 +27,9 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     private val _phase = MutableStateFlow<ConveyorPhase>(ConveyorPhase.STARTUP)
     val phase: StateFlow<ConveyorPhase> = _phase.asStateFlow()
     
+    private val _eventLog = MutableStateFlow<List<String>>(emptyList())
+    val eventLog: StateFlow<List<String>> = _eventLog.asStateFlow()
+    
     private var shiftsUnlocked = false
     
     fun onWindowEntered(windowIndex: Int) {
@@ -169,9 +172,17 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     // Methods needed by ConveyorDebugActivity and ConveyorBeltIntegrationBridge
     fun initialize(startWindow: Int, totalWindowCount: Int) {
         log("INIT", "Initialize called: startWindow=$startWindow, totalWindowCount=$totalWindowCount")
+        
+        // Clamp start window to valid range
+        val clampedStart = startWindow.coerceIn(0, (totalWindowCount - 1).coerceAtLeast(0))
+        
+        // Calculate buffer bounds
+        val bufferEnd = (clampedStart + BUFFER_SIZE - 1).coerceAtMost(totalWindowCount - 1)
+        val bufferStart = (bufferEnd - BUFFER_SIZE + 1).coerceAtLeast(0)
+        
         // Initialize buffer from start window
-        _buffer.value = (startWindow until startWindow + BUFFER_SIZE).toList()
-        _activeWindow.value = startWindow
+        _buffer.value = (bufferStart..bufferEnd).toList()
+        _activeWindow.value = clampedStart
         _phase.value = ConveyorPhase.STARTUP
         shiftsUnlocked = false
     }
@@ -197,16 +208,17 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     fun getCenterWindow(): Int? {
-        val list = _buffer.value
+        val list = buffer.value
         return if (list.size > CENTER_INDEX) list[CENTER_INDEX] else null
     }
-    
-    val bufferContents: StateFlow<List<Int>> get() = buffer
-    
-    val eventLog: StateFlow<List<String>> = MutableStateFlow<List<String>>(emptyList()).asStateFlow()
     
     private fun log(event: String, message: String) {
         val formattedMessage = "$LOG_PREFIX [$event] $message"
         AppLogger.d(TAG, formattedMessage)
+        
+        // Add to event log StateFlow
+        val currentLog = _eventLog.value.toMutableList()
+        currentLog.add(formattedMessage)
+        _eventLog.value = currentLog
     }
 }
