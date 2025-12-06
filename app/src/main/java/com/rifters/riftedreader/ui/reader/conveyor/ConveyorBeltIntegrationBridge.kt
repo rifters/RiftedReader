@@ -16,6 +16,8 @@ import kotlinx.coroutines.launch
  * 
  * **This bridge runs completely in parallel without modifying existing code paths.**
  * 
+ * **VERSION: 2025-12-06 Cache Clear Test - Updated for fresh reload**
+ * 
  * ## Purpose
  * 
  * - Listens to ReaderViewModel events without modifying its code
