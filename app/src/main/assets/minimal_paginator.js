@@ -84,7 +84,7 @@
     
     /**
      * Initialize paginator with HTML content
-     * @param {string} htmlContent - Pre-wrapped HTML with <section> tags
+     * @param {string} htmlContent - Pre-wrapped HTML with <section> tags (optional, HTML may already be in DOM)
      * @returns {boolean} - True if successful
      */
     function initialize(htmlContent) {
@@ -98,8 +98,14 @@
                 return false;
             }
             
-            // Insert HTML
-            state.contentWrapper.innerHTML = htmlContent;
+            // Only set innerHTML if htmlContent is provided
+            // If not provided, assume HTML is already in the DOM (loaded via loadDataWithBaseURL)
+            if (htmlContent !== undefined && htmlContent !== null && htmlContent.length > 0) {
+                state.contentWrapper.innerHTML = htmlContent;
+                log('INIT', 'HTML content injected from parameter');
+            } else {
+                log('INIT', 'Using existing HTML in DOM (htmlContent not provided)');
+            }
             
             // Get viewport width
             state.viewportWidth = Math.max(window.innerWidth, MIN_CLIENT_WIDTH);
