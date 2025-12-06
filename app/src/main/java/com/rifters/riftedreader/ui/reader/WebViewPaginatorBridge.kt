@@ -179,12 +179,12 @@ object WebViewPaginatorBridge {
     }
     
     /**
-     * Internal method called by JavaScript to sync page state.
-     * Called by minimal_paginator.js whenever pagination state changes.
+     * Internal method called by PaginationBridge to sync page state.
+     * Called from ReaderPageFragment.PaginationBridge._syncPaginationState()
+     * which receives the callback from minimal_paginator.js.
      * This allows Kotlin to read page info synchronously without async callbacks.
      * DO NOT call from Kotlin code directly.
      */
-    @Suppress("unused")
     fun _syncPaginationState(pageCount: Int, currentPage: Int) {
         cachedPageCount = pageCount
         cachedCurrentPage = currentPage

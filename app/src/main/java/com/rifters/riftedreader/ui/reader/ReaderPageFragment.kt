@@ -2004,6 +2004,18 @@ class ReaderPageFragment : Fragment() {
                 )
             }
         }
+        
+        @JavascriptInterface
+        fun _syncPaginationState(pageCount: Int, currentPage: Int) {
+            // Called by minimal_paginator.js to sync current page state
+            // Allows Kotlin navigation code to read page info synchronously
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "_syncPaginationState(pageCount=$pageCount, currentPage=$currentPage) [BRIDGE_SYNC]"
+            )
+            // Update the bridge's cached values
+            WebViewPaginatorBridge._syncPaginationState(pageCount, currentPage)
+        }
     }
     
     /**
