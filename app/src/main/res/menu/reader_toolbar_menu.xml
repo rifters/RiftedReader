@@ -18,4 +18,10 @@
         android:icon="@drawable/ic_settings_24"
         android:title="@string/reader_text_settings"
         app:showAsAction="always" />
+
+    <!-- Temporary debug button for conveyor system -->
+    <item
+        android:id="@+id/debug_conveyor"
+        android:title="Debug Conveyor"
+        app:showAsAction="never" />
 </menu>
