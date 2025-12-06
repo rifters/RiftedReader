@@ -661,47 +661,32 @@ class ReaderViewModel(
      * triggering phase transition checks and potential buffer shifts.
      * 
      * Should be called from ReaderActivity when RecyclerView scroll settles.
-     * This is called both for normal swipes and for Table of Contents jumps.
      * 
      * @param windowIndex The global window index that became visible
      */
     fun onWindowBecameVisible(windowIndex: Int) {
-        AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] *** onWindowBecameVisible ENTRY *** windowIndex=$windowIndex")
-        
         if (!isContinuousMode || _windowBufferManager == null) {
-            AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] Skipping onWindowBecameVisible: " +
-                "isContinuousMode=$isContinuousMode, bufferManagerExists=${_windowBufferManager != null}")
             return
         }
         
         val bufferManager = _windowBufferManager ?: return
         
-        AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] Before onEnteredWindow call:")
-        AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY]   windowIndex=$windowIndex")
-        AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY]   phase=${bufferManager.phase.value}")
-        AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY]   buffer=${bufferManager.getBufferedWindows()}")
-        AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY]   centerWindow=${bufferManager.getCenterWindowIndex()}")
-        
+        AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] ENTRY: onWindowBecameVisible($windowIndex)")
+        AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] State before: buffer=${bufferManager.getBufferedWindows()}, " +
+            "centerWindow=${bufferManager.getCenterWindowIndex()}, phase=${bufferManager.phase.value}")
         AppLogger.d("ReaderViewModel", "[CONVEYOR] onWindowBecameVisible: windowIndex=$windowIndex, " +
             "currentBuffer=${bufferManager.getBufferedWindows()}, phase=${bufferManager.phase.value}")
         
         viewModelScope.launch {
             try {
-                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] Calling bufferManager.onEnteredWindow($windowIndex)...")
                 bufferManager.onEnteredWindow(windowIndex)
-                
-                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] After onEnteredWindow call:")
-                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY]   phase=${bufferManager.phase.value}")
-                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY]   buffer=${bufferManager.getBufferedWindows()}")
-                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY]   activeWindow=${bufferManager.getActiveWindowIndex()}")
-                
+                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] After onEnteredWindow: phase=${bufferManager.phase.value}, " +
+                    "buffer=${bufferManager.getBufferedWindows()}, activeWindow=${bufferManager.getActiveWindowIndex()}")
                 AppLogger.d("ReaderViewModel", "[CONVEYOR] After onEnteredWindow: phase=${bufferManager.phase.value}, " +
                     "buffer=${bufferManager.getBufferedWindows()}, debug=${bufferManager.getDebugInfo()}")
-                
-                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] *** onWindowBecameVisible EXIT *** completed for windowIndex=$windowIndex")
+                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] EXIT: onWindowBecameVisible($windowIndex) completed")
             } catch (e: Exception) {
                 AppLogger.e("ReaderViewModel", "[CONVEYOR] Error in onWindowBecameVisible", e)
-                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] *** onWindowBecameVisible FAILED *** error: ${e.message}")
             }
         }
     }
@@ -712,30 +697,23 @@ class ReaderViewModel(
      * Called from ReaderPageFragment when WebView pagination updates indicate
      * the user is approaching the end of the current window's content.
      * 
-     * Only actually shifts when phase == STEADY (after STARTUP -> STEADY transition).
-     * 
      * @param currentInPageIndex Current page within the window (0-based)
      * @param totalPagesInWindow Total pages in the current window
      */
     fun maybeShiftForward(currentInPageIndex: Int, totalPagesInWindow: Int) {
+        val phaseCheck = _windowBufferManager?.phase?.value
+        AppLogger.d("ReaderViewModel", "[PHASE_CHECK_BEFORE_SHIFT] maybeShiftForward ENTRY: currentPage=$currentInPageIndex/$totalPagesInWindow, phase=$phaseCheck")
+
         val bufferManager = _windowBufferManager
         if (!isContinuousMode || bufferManager == null) {
-            AppLogger.d("ReaderViewModel", "[SHIFT_FORWARD] Skipping: isContinuousMode=$isContinuousMode, " +
-                "bufferManagerExists=${bufferManager != null}")
             return
         }
         
-        val currentPhase = bufferManager.phase.value
-        val activeWindow = bufferManager.getActiveWindowIndex()
-        
-        AppLogger.d("ReaderViewModel", "[SHIFT_FORWARD] ENTRY: currentPage=$currentInPageIndex/$totalPagesInWindow")
-        AppLogger.d("ReaderViewModel", "[SHIFT_FORWARD] State: phase=$currentPhase, activeWindow=$activeWindow, " +
-            "buffer=${bufferManager.getBufferedWindows()}")
-        
         // Check if we're at the last window (boundary check)
+        val activeWindow = bufferManager.getActiveWindowIndex()
         if (!bufferManager.hasNextWindow()) {
-            AppLogger.d("ReaderViewModel", "[SHIFT_FORWARD] Boundary check: NO next window available, " +
-                "activeWindow=$activeWindow is last window")
+            AppLogger.d("ReaderViewModel", "[CONVEYOR] maybeShiftForward: " +
+                "skipping - already at Window $activeWindow (last window)")
             return
         }
         
@@ -744,35 +722,26 @@ class ReaderViewModel(
         val shouldShift = totalPagesInWindow > 0 && 
             currentInPageIndex >= (totalPagesInWindow - bufferShiftThresholdPages).coerceAtLeast(0)
         
-        AppLogger.d("ReaderViewModel", "[SHIFT_FORWARD] shouldShift=$shouldShift (threshold=${bufferShiftThresholdPages}), " +
-            "phase=$currentPhase")
-        
-        if (shouldShift && currentPhase == WindowBufferManager.Phase.STEADY) {
-            AppLogger.d("ReaderViewModel", "[SHIFT_FORWARD] *** TRIGGERING SHIFT ***\n" +
+        if (shouldShift && bufferManager.phase.value == WindowBufferManager.Phase.STEADY) {
+            AppLogger.d("ReaderViewModel", "[CONVEYOR] maybeShiftForward TRIGGERED\n" +
                 "  activeWindow=$activeWindow\n" +
                 "  position=$currentInPageIndex/$totalPagesInWindow\n" +
                 "  threshold=${bufferShiftThresholdPages} pages from end\n" +
-                "  phase=${currentPhase}\n" +
-                "  buffer_before=${bufferManager.getBufferedWindows()}")
+                "  phase=${bufferManager.phase.value}\n" +
+                "  currentBuffer=${bufferManager.getBufferedWindows()}")
             
             viewModelScope.launch {
                 try {
-                    AppLogger.d("ReaderViewModel", "[SHIFT_FORWARD] Calling bufferManager.shiftForward()...")
                     val shifted = bufferManager.shiftForward()
-                    
                     if (shifted) {
-                        AppLogger.d("ReaderViewModel", "[SHIFT_FORWARD] *** SHIFT SUCCEEDED ***\n" +
-                            "  buffer_after=${bufferManager.getBufferedWindows()}\n" +
-                            "  debug=${bufferManager.getDebugInfo()}")
+                        AppLogger.d("ReaderViewModel", "[CONVEYOR] Forward shift completed: ${bufferManager.getDebugInfo()}")
                     } else {
-                        AppLogger.d("ReaderViewModel", "[SHIFT_FORWARD] Shift returned false (already at boundary)")
+                        AppLogger.d("ReaderViewModel", "[CONVEYOR] Forward shift returned false (at boundary)")
                     }
                 } catch (e: Exception) {
-                    AppLogger.e("ReaderViewModel", "[SHIFT_FORWARD] Error in shiftForward", e)
+                    AppLogger.e("ReaderViewModel", "[CONVEYOR] Error in maybeShiftForward", e)
                 }
             }
-        } else if (currentPhase != WindowBufferManager.Phase.STEADY) {
-            AppLogger.d("ReaderViewModel", "[SHIFT_FORWARD] Skipping: phase is $currentPhase (waiting for STEADY)")
         }
     }
     
@@ -782,29 +751,19 @@ class ReaderViewModel(
      * Called from ReaderPageFragment when WebView pagination updates indicate
      * the user is approaching the beginning of the current window's content.
      * 
-     * Only actually shifts when phase == STEADY (after STARTUP -> STEADY transition).
-     * 
      * @param currentInPageIndex Current page within the window (0-based)
      */
     fun maybeShiftBackward(currentInPageIndex: Int) {
         val bufferManager = _windowBufferManager
         if (!isContinuousMode || bufferManager == null) {
-            AppLogger.d("ReaderViewModel", "[SHIFT_BACKWARD] Skipping: isContinuousMode=$isContinuousMode, " +
-                "bufferManagerExists=${bufferManager != null}")
             return
         }
         
-        val currentPhase = bufferManager.phase.value
-        val activeWindow = bufferManager.getActiveWindowIndex()
-        
-        AppLogger.d("ReaderViewModel", "[SHIFT_BACKWARD] ENTRY: currentPage=$currentInPageIndex")
-        AppLogger.d("ReaderViewModel", "[SHIFT_BACKWARD] State: phase=$currentPhase, activeWindow=$activeWindow, " +
-            "buffer=${bufferManager.getBufferedWindows()}")
-        
         // Don't attempt to shift backward if we're already at Window 0 (first window)
+        val activeWindow = bufferManager.getActiveWindowIndex()
         if (!bufferManager.hasPreviousWindow()) {
-            AppLogger.d("ReaderViewModel", "[SHIFT_BACKWARD] Boundary check: NO previous window available, " +
-                "activeWindow=$activeWindow is first window")
+            AppLogger.d("ReaderViewModel", "[CONVEYOR] maybeShiftBackward: " +
+                "skipping - already at Window $activeWindow (first window)")
             return
         }
         
@@ -812,35 +771,26 @@ class ReaderViewModel(
         // This ensures the previous window is ready before they swipe back
         val shouldShift = currentInPageIndex < bufferShiftThresholdPages
         
-        AppLogger.d("ReaderViewModel", "[SHIFT_BACKWARD] shouldShift=$shouldShift (threshold=${bufferShiftThresholdPages}), " +
-            "phase=$currentPhase")
-        
-        if (shouldShift && currentPhase == WindowBufferManager.Phase.STEADY) {
-            AppLogger.d("ReaderViewModel", "[SHIFT_BACKWARD] *** TRIGGERING SHIFT ***\n" +
+        if (shouldShift && bufferManager.phase.value == WindowBufferManager.Phase.STEADY) {
+            AppLogger.d("ReaderViewModel", "[CONVEYOR] maybeShiftBackward TRIGGERED\n" +
                 "  activeWindow=$activeWindow\n" +
                 "  position=$currentInPageIndex (near start)\n" +
                 "  threshold=${bufferShiftThresholdPages} pages from start\n" +
-                "  phase=${currentPhase}\n" +
-                "  buffer_before=${bufferManager.getBufferedWindows()}")
+                "  phase=${bufferManager.phase.value}\n" +
+                "  currentBuffer=${bufferManager.getBufferedWindows()}")
             
             viewModelScope.launch {
                 try {
-                    AppLogger.d("ReaderViewModel", "[SHIFT_BACKWARD] Calling bufferManager.shiftBackward()...")
                     val shifted = bufferManager.shiftBackward()
-                    
                     if (shifted) {
-                        AppLogger.d("ReaderViewModel", "[SHIFT_BACKWARD] *** SHIFT SUCCEEDED ***\n" +
-                            "  buffer_after=${bufferManager.getBufferedWindows()}\n" +
-                            "  debug=${bufferManager.getDebugInfo()}")
+                        AppLogger.d("ReaderViewModel", "[CONVEYOR] Backward shift completed: ${bufferManager.getDebugInfo()}")
                     } else {
-                        AppLogger.d("ReaderViewModel", "[SHIFT_BACKWARD] Shift returned false (already at boundary)")
+                        AppLogger.d("ReaderViewModel", "[CONVEYOR] Backward shift returned false (at boundary)")
                     }
                 } catch (e: Exception) {
-                    AppLogger.e("ReaderViewModel", "[SHIFT_BACKWARD] Error in shiftBackward", e)
+                    AppLogger.e("ReaderViewModel", "[CONVEYOR] Error in maybeShiftBackward", e)
                 }
             }
-        } else if (currentPhase != WindowBufferManager.Phase.STEADY) {
-            AppLogger.d("ReaderViewModel", "[SHIFT_BACKWARD] Skipping: phase is $currentPhase (waiting for STEADY)")
         }
     }
     

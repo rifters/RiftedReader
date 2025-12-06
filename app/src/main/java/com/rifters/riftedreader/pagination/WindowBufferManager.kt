@@ -285,27 +285,11 @@ class WindowBufferManager(
      */
     suspend fun onEnteredWindow(globalWindowIndex: WindowIndex) {
         bufferMutex.withLock {
-            // Log entry with all required diagnostic info
             AppLogger.d(TAG, "[WINDOW_ENTRY] ENTRY: onEnteredWindow(globalWindowIndex=$globalWindowIndex)")
-            
-            // Log phase
-            val currentPhase = _phase.value
-            AppLogger.d(TAG, "[WINDOW_ENTRY] phase=${currentPhase}")
-            
-            // Log globalWindowIndex
-            AppLogger.d(TAG, "[WINDOW_ENTRY] globalWindowIndex=$globalWindowIndex")
-            
-            // Log buffer contents
-            val bufferList = buffer.toList()
-            AppLogger.d(TAG, "[WINDOW_ENTRY] buffer.toList()=$bufferList")
-            
-            // Log centerWindowIndex
-            val centerWindowIndex = getCenterWindowIndex()
-            AppLogger.d(TAG, "[WINDOW_ENTRY] getCenterWindowIndex()=$centerWindowIndex")
-            
-            // Additional diagnostic info
             AppLogger.d(TAG, "[PAGINATION_DEBUG] onEnteredWindow: globalWindowIndex=$globalWindowIndex, " +
-                "currentPhase=${currentPhase}, buffer=$bufferList, centerWindow=$centerWindowIndex")
+                "currentPhase=${_phase.value}, buffer=${buffer.toList()}")
+            AppLogger.d(TAG, "[WINDOW_ENTRY] Current state: phase=${_phase.value}, buffer=${buffer.toList()}, " +
+                "activeWindow=$activeWindowIndex, centerWindow=${getCenterWindowIndex()}")
             
             // Update active window
             activeWindowIndex = globalWindowIndex
@@ -314,25 +298,22 @@ class WindowBufferManager(
             updateActiveWindowStateFlow()
             
             // Check for STARTUP -> STEADY transition
-            if (currentPhase == Phase.STARTUP && !hasEnteredSteadyState) {
-                AppLogger.d(TAG, "[PHASE_TRANS_DEBUG] Checking transition condition: " +
-                    "centerWindow=$centerWindowIndex, globalWindow=$globalWindowIndex")
-                
+            if (_phase.value == Phase.STARTUP && !hasEnteredSteadyState) {
+                val centerWindowIndex = getCenterWindowIndex()
+                AppLogger.d(TAG, "[PHASE_TRANS_DEBUG] Checking transition: centerWindow=$centerWindowIndex, globalWindow=$globalWindowIndex, match=${centerWindowIndex == globalWindowIndex}")
+                AppLogger.d(TAG, "[WINDOW_ENTRY] Phase transition check: STARTUP->STEADY candidate at window=$globalWindowIndex (center=$centerWindowIndex)")
                 if (centerWindowIndex != null && globalWindowIndex == centerWindowIndex) {
-                    // Transition condition met: entered center window
+                    val oldPhase = _phase.value
                     hasEnteredSteadyState = true
                     _phase.value = Phase.STEADY
-                    
-                    AppLogger.d(TAG, "[WINDOW_ENTRY] *** PHASE TRANSITION: STARTUP -> STEADY ***")
+                    AppLogger.d(TAG, "[WINDOW_ENTRY] *** PHASE FLIPPED: STARTUP -> STEADY at window $globalWindowIndex ***")
                     AppLogger.d(TAG, "[CONVEYOR] *** PHASE TRANSITION STARTUP -> STEADY ***\n" +
                         "  Entered center window ($globalWindowIndex) of buffer\n" +
-                        "  buffer=$bufferList\n" +
+                        "  buffer=${buffer.toList()}\n" +
                         "  activeWindow=$globalWindowIndex\n" +
                         "  Now entering steady state with 2 windows ahead and 2 behind")
-                } else {
-                    // Still in STARTUP, waiting for center window
-                    AppLogger.d(TAG, "[WINDOW_ENTRY] Still in STARTUP phase: " +
-                        "window=$globalWindowIndex is not center (center=$centerWindowIndex), continuing to wait...")
+                } else if (_phase.value == Phase.STARTUP) {
+                    AppLogger.d(TAG, "[WINDOW_ENTRY] Still in STARTUP phase: window=$globalWindowIndex is not center (center=$centerWindowIndex)")
                 }
             }
             
