@@ -115,6 +115,9 @@
             state.isPaginationReady = state.pageCount > 0;
             state.currentPage = 0;
             
+            // Add scroll listener to detect boundary changes during user scrolling
+            setupScrollListener();
+            
             // Sync pagination state with Android bridge (for synchronized access)
             syncPaginationState();
             
@@ -350,6 +353,26 @@
         }
         
         return Math.max(0, Math.min(left, state.pageCount - 1));
+    }
+    
+    /**
+     * Setup scroll event listener to detect boundary changes
+     */
+    function setupScrollListener() {
+        window.addEventListener('scroll', function() {
+            if (!state.isPaginationReady) return;
+            
+            // Update current page based on scroll position
+            const currentScrollLeft = window.scrollX || window.pageXOffset || 0;
+            const newPage = Math.round(currentScrollLeft / state.appliedColumnWidth);
+            state.currentPage = Math.max(0, Math.min(newPage, state.pageCount - 1));
+            
+            // Check if boundary was reached
+            checkBoundary();
+            
+        }, false);
+        
+        log('SCROLL_LISTENER', 'Scroll event listener attached');
     }
     
     /**
