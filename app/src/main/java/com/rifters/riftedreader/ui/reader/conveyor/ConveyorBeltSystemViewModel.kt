@@ -1,465 +1,173 @@
-package com.rifters.riftedreader.ui.reader.conveyor
+package com.rifters. riftedreader.conveyor
 
-import androidx.lifecycle.ViewModel
-import com.rifters.riftedreader.util.AppLogger
-import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.lifecycle. ViewModel
+import kotlinx.coroutines.flow. MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import java.util.ArrayDeque
+import android.util.Log
 
-/**
- * Isolated conveyor belt system ViewModel.
- * 
- * **This ViewModel runs completely parallel to the existing window management code.**
- * 
- * It has:
- * - Zero coupling to legacy streaming/window buffer code
- * - Independent phase state machine (STARTUP → STEADY transition)
- * - Independent window buffer (separate from WindowBufferManager)
- * - Comprehensive logging with `[CONVEYOR_ISOLATED]` prefix
- * 
- * ## Purpose
- * 
- * This isolated system serves as:
- * 1. **Proof of concept**: If this works correctly, the conveyor logic itself is sound
- * 2. **Debugging tool**: Side-by-side logs show exactly where old code interferes
- * 3. **Zero risk**: Doesn't modify existing code paths
- * 4. **Migration path**: Can gradually switch over once validated
- * 
- * ## Buffer Lifecycle
- * 
- * ### Phase 1: STARTUP
- * - Buffer initialized with 5 consecutive windows
- * - User starts at window 0 (buffer[0])
- * - System monitors for center window entry
- * 
- * ### Phase 2: STEADY
- * - Entered when user reaches buffer[CENTER_POS] (window at index 2 in buffer)
- * - Active window kept centered with 2 ahead, 2 behind
- * - Buffer shifting enabled
- * 
- * @see ConveyorPhase for phase definitions
- * @see ConveyorBeltIntegrationBridge for event routing
- */
+enum class ConveyorPhase {
+    STARTUP,
+    STEADY
+}
+
 class ConveyorBeltSystemViewModel : ViewModel() {
     
     companion object {
-        private const val TAG = "ConveyorBeltSystemVM"
-        private const val LOG_PREFIX = "[CONVEYOR_ISOLATED]"
-        
-        /** Number of windows in the buffer */
-        const val BUFFER_SIZE = 5
-        
-        /** Center position in the buffer (0-indexed) */
-        const val CENTER_POS = 2
+        private const val TAG = "CONVEYOR_ISOLATED"
+        private const val BUFFER_SIZE = 5
+        private const val CENTER_INDEX = 2
+        private const val UNLOCK_WINDOW = 2
+        private const val STEADY_TRIGGER_WINDOW = 3
     }
     
-    // ========================================================================
-    // Independent State - Completely separate from legacy code
-    // ========================================================================
+    private val buffer = MutableStateFlow<List<Int>>((0..4).toList())
+    private val activeWindow = MutableStateFlow<Int>(0)
+    private val phase = MutableStateFlow<ConveyorPhase>(ConveyorPhase.STARTUP)
     
-    /** Current phase of the isolated conveyor system */
-    private val _phase = MutableStateFlow(ConveyorPhase.STARTUP)
-    val phase: StateFlow<ConveyorPhase> = _phase.asStateFlow()
+    private var shiftsUnlocked = false
     
-    /** Active window index in the isolated system */
-    private val _activeWindow = MutableStateFlow(0)
-    val activeWindow: StateFlow<Int> = _activeWindow.asStateFlow()
+    val bufferState: StateFlow<List<Int>> = buffer
+    val activeWindowState: StateFlow<Int> = activeWindow
+    val phaseState: StateFlow<ConveyorPhase> = phase
     
-    /** Buffer contents (window indices) */
-    private val _bufferContents = MutableStateFlow<List<Int>>(emptyList())
-    val bufferContents: StateFlow<List<Int>> = _bufferContents.asStateFlow()
-    
-    /** Total windows available in the book */
-    private val _totalWindows = MutableStateFlow(0)
-    val totalWindows: StateFlow<Int> = _totalWindows.asStateFlow()
-    
-    /** Log of all events for debugging */
-    private val _eventLog = MutableStateFlow<List<String>>(emptyList())
-    val eventLog: StateFlow<List<String>> = _eventLog.asStateFlow()
-    
-    /** Flag indicating if STARTUP → STEADY transition has occurred */
-    private var hasTransitionedToSteady = false
-    
-    /** Internal buffer storage */
-    private val buffer = ArrayDeque<Int>(BUFFER_SIZE)
-    
-    // ========================================================================
-    // Initialization
-    // ========================================================================
-    
-    /**
-     * Initialize the isolated conveyor system.
-     * 
-     * Creates a buffer of 5 consecutive windows starting from the given window.
-     * Resets all state to clean values.
-     * 
-     * @param startWindow The global window index to start from
-     * @param totalWindowCount Total number of windows in the book
-     */
-    fun initialize(startWindow: Int, totalWindowCount: Int) {
-        log("INIT_START", "Initializing: startWindow=$startWindow, totalWindows=$totalWindowCount")
+    fun onWindowEntered(windowIndex: Int) {
+        Log.d(TAG, "[STATE] onWindowEntered($windowIndex)")
+        Log.d(TAG, "[STATE] Current: buffer=${buffer.value}, activeWindow=${activeWindow.value}, phase=${phase.value}")
+        Log.d(TAG, "[STATE] shiftsUnlocked=$shiftsUnlocked")
         
-        // Reset state
-        buffer.clear()
-        hasTransitionedToSteady = false
-        _phase.value = ConveyorPhase.STARTUP
-        _totalWindows.value = totalWindowCount
+        when (phase.value) {
+            ConveyorPhase.STARTUP -> {
+                handleStartupNavigation(windowIndex)
+            }
+            ConveyorPhase.STEADY -> {
+                handleSteadyNavigation(windowIndex)
+            }
+        }
+    }
+    
+    private fun handleStartupNavigation(windowIndex: Int) {
+        Log.d(TAG, "[STARTUP] Navigating to window $windowIndex")
         
-        // Handle edge cases
-        if (totalWindowCount <= 0) {
-            log("INIT_EMPTY", "No windows available - empty book")
-            _bufferContents.value = emptyList()
-            _activeWindow.value = 0
+        // Check if window is in buffer
+        if (windowIndex !in buffer.value) {
+            Log. d(TAG, "[STARTUP] Window $windowIndex not in buffer, ignoring")
             return
         }
         
-        // Calculate valid buffer range
-        val maxValidWindow = totalWindowCount - 1
-        val clampedStart = startWindow.coerceIn(0, maxValidWindow)
+        activeWindow.value = windowIndex
+        Log.d(TAG, "[STARTUP] activeWindow = $windowIndex")
         
-        // Calculate end window, adjusting start if near end to maintain buffer size
-        val endWindow = (clampedStart + BUFFER_SIZE - 1).coerceAtMost(maxValidWindow)
-        val actualStart = (endWindow - BUFFER_SIZE + 1).coerceAtLeast(0)
-        
-        log("INIT_RANGE", "Buffer range: actualStart=$actualStart, endWindow=$endWindow")
-        
-        // Fill buffer
-        for (windowIndex in actualStart..endWindow) {
-            buffer.addLast(windowIndex)
+        // Window 2 unlocks shifts
+        if (windowIndex == UNLOCK_WINDOW) {
+            shiftsUnlocked = true
+            Log.d(TAG, "[STARTUP] *** SHIFTS UNLOCKED at window 2 ***")
         }
         
-        // Set active window to first in buffer
-        _activeWindow.value = if (buffer.isNotEmpty()) buffer.first else 0
-        _bufferContents.value = buffer.toList()
-        
-        log("INIT_COMPLETE", buildString {
-            appendLine("Initialization complete:")
-            appendLine("  buffer=${buffer.toList()}")
-            appendLine("  activeWindow=${_activeWindow.value}")
-            appendLine("  centerWindow=${getCenterWindow()}")
-            appendLine("  phase=${_phase.value}")
-        })
+        // Window 3 triggers steady (only if shifts were unlocked)
+        if (windowIndex == STEADY_TRIGGER_WINDOW && shiftsUnlocked) {
+            transitionToSteady(windowIndex)
+        }
     }
     
-    // ========================================================================
-    // Window Entry - Core navigation handling
-    // ========================================================================
-    
-    /**
-     * Called when the user enters/views a window.
-     * 
-     * This is the main entry point for navigation events. It:
-     * 1. Updates the active window
-     * 2. Checks for phase transition (STARTUP → STEADY)
-     * 3. Logs comprehensive state for debugging
-     * 
-     * @param globalWindowIndex The global window index the user entered
-     */
-    fun onWindowEntered(globalWindowIndex: Int) {
-        val previousActive = _activeWindow.value
-        val previousPhase = _phase.value
+    private fun transitionToSteady(windowIndex: Int) {
+        Log. d(TAG, "[TRANSITION] Moving to window $windowIndex triggers STEADY phase")
         
-        log("WINDOW_ENTER_START", buildString {
-            appendLine("Window entry event:")
-            appendLine("  entered=$globalWindowIndex")
-            appendLine("  previousActive=$previousActive")
-            appendLine("  currentPhase=$previousPhase")
-            appendLine("  buffer=${buffer.toList()}")
-        })
+        // Shift buffer right to center on new window
+        val currentBuffer = buffer.value. toMutableList()
         
-        // Update active window
-        _activeWindow.value = globalWindowIndex
+        // Calculate how many shifts needed
+        val currentCenterWindow = currentBuffer[CENTER_INDEX]
+        var shiftCount = windowIndex - currentCenterWindow
         
-        // Check for phase transition
-        if (_phase.value == ConveyorPhase.STARTUP && !hasTransitionedToSteady) {
-            val centerWindow = getCenterWindow()
-            
-            log("PHASE_CHECK", buildString {
-                appendLine("Checking phase transition:")
-                appendLine("  currentWindow=$globalWindowIndex")
-                appendLine("  centerWindow=$centerWindow")
-                appendLine("  match=${globalWindowIndex == centerWindow}")
-            })
-            
-            if (centerWindow != null && globalWindowIndex == centerWindow) {
-                // Transition to STEADY
-                hasTransitionedToSteady = true
-                _phase.value = ConveyorPhase.STEADY
-                
-                log("PHASE_TRANSITION", buildString {
-                    appendLine("*** PHASE TRANSITION: STARTUP → STEADY ***")
-                    appendLine("  triggeredAt=window $globalWindowIndex")
-                    appendLine("  centerWindow=$centerWindow")
-                    appendLine("  buffer=${buffer.toList()}")
-                })
-            }
+        Log.d(TAG, "[TRANSITION] Current center: $currentCenterWindow, target: $windowIndex, shifts needed: $shiftCount")
+        
+        while (shiftCount > 0) {
+            currentBuffer.removeAt(0)
+            currentBuffer.add(currentBuffer.last() + 1)
+            shiftCount--
+            Log. d(TAG, "[SHIFT] Shifted right: ${currentBuffer}, signal: remove ${currentBuffer[0]-1}, create ${currentBuffer. last()}")
         }
         
-        log("WINDOW_ENTER_COMPLETE", buildString {
-            appendLine("Window entry complete:")
-            appendLine("  activeWindow=${_activeWindow.value}")
-            appendLine("  phase=${_phase.value}")
-            appendLine("  transitioned=${previousPhase != _phase.value}")
-        })
+        buffer.value = currentBuffer
+        activeWindow.value = windowIndex
+        phase.value = ConveyorPhase.STEADY
+        
+        Log.d(TAG, "[TRANSITION] *** PHASE TRANSITION: STARTUP → STEADY ***")
+        Log.d(TAG, "[TRANSITION] New buffer: ${buffer.value}, activeWindow: $windowIndex, center: ${buffer. value[CENTER_INDEX]}")
     }
     
-    // ========================================================================
-    // Buffer Shifting
-    // ========================================================================
-    
-    /**
-     * Shift the buffer forward.
-     * 
-     * Only allowed in STEADY phase. Drops leftmost window and appends new rightmost.
-     * 
-     * @return true if shift was performed, false if blocked (wrong phase or at boundary)
-     */
-    fun shiftForward(): Boolean {
-        log("SHIFT_FORWARD_START", "Attempting forward shift, phase=${_phase.value}")
+    private fun handleSteadyNavigation(windowIndex: Int) {
+        Log.d(TAG, "[STEADY] Navigating to window $windowIndex")
         
-        if (_phase.value != ConveyorPhase.STEADY) {
-            log("SHIFT_FORWARD_BLOCKED", "Not in STEADY phase - blocking shift")
-            return false
+        val currentBuffer = buffer.value.toMutableList()
+        val currentCenter = currentBuffer[CENTER_INDEX]
+        
+        // Check if navigating back to window 2 (revert condition)
+        if (windowIndex == UNLOCK_WINDOW) {
+            revertToStartup()
+            return
         }
         
-        if (buffer.isEmpty()) {
-            log("SHIFT_FORWARD_BLOCKED", "Buffer empty - blocking shift")
-            return false
-        }
+        // Calculate shift direction and amount
+        val shiftDelta = windowIndex - currentCenter
         
-        val lastWindow = buffer.last
-        val nextWindow = lastWindow + 1
-        val total = _totalWindows.value
-        
-        if (nextWindow >= total) {
-            log("SHIFT_FORWARD_BLOCKED", "At end boundary: lastWindow=$lastWindow, total=$total")
-            return false
-        }
-        
-        // Perform shift
-        val droppedWindow = buffer.removeFirst()
-        buffer.addLast(nextWindow)
-        _bufferContents.value = buffer.toList()
-        
-        log("SHIFT_FORWARD_SUCCESS", buildString {
-            appendLine("Forward shift complete:")
-            appendLine("  dropped=$droppedWindow")
-            appendLine("  appended=$nextWindow")
-            appendLine("  newBuffer=${buffer.toList()}")
-        })
-        
-        return true
-    }
-    
-    /**
-     * Shift the buffer backward.
-     * 
-     * Only allowed in STEADY phase. Drops rightmost window and prepends new leftmost.
-     * 
-     * @return true if shift was performed, false if blocked (wrong phase or at boundary)
-     */
-    fun shiftBackward(): Boolean {
-        log("SHIFT_BACKWARD_START", "Attempting backward shift, phase=${_phase.value}")
-        
-        if (_phase.value != ConveyorPhase.STEADY) {
-            log("SHIFT_BACKWARD_BLOCKED", "Not in STEADY phase - blocking shift")
-            return false
-        }
-        
-        if (buffer.isEmpty()) {
-            log("SHIFT_BACKWARD_BLOCKED", "Buffer empty - blocking shift")
-            return false
-        }
-        
-        val firstWindow = buffer.first
-        val prevWindow = firstWindow - 1
-        
-        if (prevWindow < 0) {
-            log("SHIFT_BACKWARD_BLOCKED", "At start boundary: firstWindow=$firstWindow")
-            return false
-        }
-        
-        // Perform shift
-        val droppedWindow = buffer.removeLast()
-        buffer.addFirst(prevWindow)
-        _bufferContents.value = buffer.toList()
-        
-        log("SHIFT_BACKWARD_SUCCESS", buildString {
-            appendLine("Backward shift complete:")
-            appendLine("  dropped=$droppedWindow")
-            appendLine("  prepended=$prevWindow")
-            appendLine("  newBuffer=${buffer.toList()}")
-        })
-        
-        return true
-    }
-    
-    // ========================================================================
-    // Query Methods
-    // ========================================================================
-    
-    /**
-     * Get the window at the center position of the buffer.
-     * 
-     * @return The center window index, or null if buffer is too small
-     */
-    fun getCenterWindow(): Int? {
-        val list = buffer.toList()
-        return if (list.size > CENTER_POS) list[CENTER_POS] else null
-    }
-    
-    /**
-     * Check if a window is currently in the buffer.
-     * 
-     * @param windowIndex The window index to check
-     * @return true if the window is in the buffer
-     */
-    fun isWindowInBuffer(windowIndex: Int): Boolean {
-        return buffer.contains(windowIndex)
-    }
-    
-    /**
-     * Get current buffer contents as a list.
-     * 
-     * @return List of window indices currently in the buffer
-     */
-    fun getBufferAsList(): List<Int> = buffer.toList()
-    
-    /**
-     * Get a comprehensive debug state string.
-     * 
-     * @return Multi-line debug info about the current state
-     */
-    fun getDebugState(): String = buildString {
-        appendLine("=== CONVEYOR ISOLATED STATE ===")
-        appendLine("Phase: ${_phase.value}")
-        appendLine("Active Window: ${_activeWindow.value}")
-        appendLine("Buffer: ${buffer.toList()}")
-        appendLine("Center Window: ${getCenterWindow()}")
-        appendLine("Total Windows: ${_totalWindows.value}")
-        appendLine("Has Transitioned: $hasTransitionedToSteady")
-        appendLine("================================")
-    }
-    
-    /**
-     * Clear the event log.
-     */
-    fun clearEventLog() {
-        _eventLog.value = emptyList()
-        log("LOG_CLEARED", "Event log cleared")
-    }
-    
-    // ========================================================================
-    // Auto-Shift Logic Helpers
-    // ========================================================================
-    
-    /**
-     * Determine if buffer should shift forward after navigating to a window.
-     * 
-     * @param windowIndex The window we just navigated to
-     * @return true if forward shift is appropriate
-     */
-    private fun shouldShiftForwardAfterNavigation(windowIndex: Int): Boolean {
-        if (_phase.value != ConveyorPhase.STEADY) return false
-        
-        val bufferList = buffer.toList()
-        val positionInBuffer = bufferList.indexOf(windowIndex)
-        
-        // Shift forward if we're past center but not at edge
-        if (positionInBuffer < CENTER_POS || positionInBuffer >= bufferList.size - 1) {
-            return false
-        }
-        
-        // Only shift if we can maintain centering (next window exists)
-        val nextWindowIndex = bufferList.last() + 1
-        return nextWindowIndex < _totalWindows.value
-    }
-    
-    /**
-     * Determine if buffer should shift backward after navigating to a window.
-     * 
-     * @param windowIndex The window we just navigated to
-     * @return true if backward shift is appropriate
-     */
-    private fun shouldShiftBackwardAfterNavigation(windowIndex: Int): Boolean {
-        if (_phase.value != ConveyorPhase.STEADY) return false
-        
-        val bufferList = buffer.toList()
-        val positionInBuffer = bufferList.indexOf(windowIndex)
-        
-        // Shift backward if we're before or at center but not at edge
-        if (positionInBuffer > CENTER_POS || positionInBuffer <= 0) {
-            return false
-        }
-        
-        // Only shift if we can maintain centering (previous window exists)
-        val prevWindowIndex = bufferList.first() - 1
-        return prevWindowIndex >= 0
-    }
-    
-    // ========================================================================
-    // Simulation Methods (for Debug Activity)
-    // ========================================================================
-    
-    /**
-     * Simulate navigation to the next window.
-     * Used by ConveyorDebugActivity for testing.
-     */
-    fun simulateNextWindow() {
-        val current = _activeWindow.value
-        val next = current + 1
-        val total = _totalWindows.value
-        
-        log("SIMULATE_NEXT", "Simulating next: current=$current, next=$next, total=$total")
-        
-        if (next < total) {
-            onWindowEntered(next)
-            
-            // Auto-shift if appropriate
-            if (shouldShiftForwardAfterNavigation(next)) {
-                shiftForward()
-            }
+        if (shiftDelta > 0) {
+            // Navigate forward: shift right
+            handleSteadyForward(windowIndex, currentBuffer, shiftDelta)
+        } else if (shiftDelta < 0) {
+            // Navigate backward: shift left
+            handleSteadyBackward(windowIndex, currentBuffer, -shiftDelta)
         } else {
-            log("SIMULATE_NEXT_BLOCKED", "Already at last window")
+            Log.d(TAG, "[STEADY] Already at window $windowIndex (center)")
+            activeWindow.value = windowIndex
         }
     }
     
-    /**
-     * Simulate navigation to the previous window.
-     * Used by ConveyorDebugActivity for testing.
-     */
-    fun simulatePreviousWindow() {
-        val current = _activeWindow.value
-        val prev = current - 1
+    private fun handleSteadyForward(windowIndex: Int, buffer: MutableList<Int>, shiftCount: Int) {
+        Log. d(TAG, "[STEADY_FORWARD] Navigating to window $windowIndex, shifts: $shiftCount")
         
-        log("SIMULATE_PREV", "Simulating prev: current=$current, prev=$prev")
-        
-        if (prev >= 0) {
-            onWindowEntered(prev)
-            
-            // Auto-shift if appropriate
-            if (shouldShiftBackwardAfterNavigation(prev)) {
-                shiftBackward()
-            }
-        } else {
-            log("SIMULATE_PREV_BLOCKED", "Already at first window")
+        repeat(shiftCount) { i ->
+            val removedWindow = buffer.removeAt(0)
+            val newWindow = buffer.last() + 1
+            buffer.add(newWindow)
+            Log.d(TAG, "[SHIFT] $i: ${buffer}, signal: remove $removedWindow, create $newWindow")
         }
+        
+        this.buffer.value = buffer
+        activeWindow.value = windowIndex
+        
+        Log.d(TAG, "[STEADY_FORWARD] Final buffer: ${this.buffer.value}, activeWindow: $windowIndex")
     }
     
-    // ========================================================================
-    // Logging
-    // ========================================================================
+    private fun handleSteadyBackward(windowIndex: Int, buffer: MutableList<Int>, shiftCount: Int) {
+        Log.d(TAG, "[STEADY_BACKWARD] Navigating to window $windowIndex, shifts: $shiftCount")
+        
+        repeat(shiftCount) { i ->
+            val removedWindow = buffer.removeAt(buffer.size - 1)
+            val newWindow = buffer.first() - 1
+            buffer. add(0, newWindow)
+            Log. d(TAG, "[SHIFT] $i: ${buffer}, signal: remove $removedWindow, create $newWindow")
+        }
+        
+        this.buffer.value = buffer
+        activeWindow.value = windowIndex
+        
+        Log. d(TAG, "[STEADY_BACKWARD] Final buffer: ${this. buffer.value}, activeWindow: $windowIndex")
+    }
     
-    private fun log(event: String, message: String) {
-        val formattedMessage = "$LOG_PREFIX [$event] $message"
+    private fun revertToStartup() {
+        Log. d(TAG, "[REVERT] Hit boundary!  Navigating back to window 2")
         
-        // Log to AppLogger
-        AppLogger.d(TAG, formattedMessage)
+        buffer.value = (0..4).toList()
+        activeWindow.value = UNLOCK_WINDOW
+        phase. value = ConveyorPhase.STARTUP
+        shiftsUnlocked = false
         
-        // Also add to event log for UI display
-        val timestamp = System.currentTimeMillis()
-        val logEntry = "[$timestamp] $event: $message"
-        _eventLog.value = _eventLog.value + logEntry
+        Log.d(TAG, "[REVERT] *** PHASE TRANSITION: STEADY → STARTUP ***")
+        Log.d(TAG, "[REVERT] Buffer reverted: ${buffer.value}, activeWindow: $UNLOCK_WINDOW")
+    }
+    
+    fun getWindowMakerSignals(): String {
+        return "Remove: ${buffer.value. first()}, Create: ${buffer.value.last()}"
     }
 }
