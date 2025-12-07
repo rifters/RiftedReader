@@ -52,9 +52,10 @@ class ReaderPagerAdapter(
         // Check if ConveyorBeltSystem is the primary window manager
         val conveyorPrimary = viewModel.isConveyorPrimary
         
-        val count = if (conveyorPrimary && viewModel.conveyorBeltSystem != null) {
+        val count = if (conveyorPrimary) {
             // Use conveyor belt system as the authoritative source
-            val conveyorWindowCount = viewModel.conveyorBeltSystem!!.buffer.value.size
+            // Use safe call to handle potential race conditions
+            val conveyorWindowCount = viewModel.conveyorBeltSystem?.buffer?.value?.size ?: 0
             
             // [CONVEYOR_ACTIVE] Log that adapter is using conveyor
             if (conveyorWindowCount != lastKnownItemCount) {

@@ -26,6 +26,7 @@ import com.rifters.riftedreader.pagination.SlidingWindowPaginator
 import com.rifters.riftedreader.pagination.WindowBufferManager
 import com.rifters.riftedreader.pagination.WindowData
 import com.rifters.riftedreader.pagination.WindowSyncHelpers
+import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -154,13 +155,13 @@ class ReaderViewModel(
     
     // ConveyorBeltSystemViewModel for minimal paginator mode
     // When enableMinimalPaginator is true, this becomes the authoritative window manager
-    private var _conveyorBeltSystem: com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel? = null
+    private var _conveyorBeltSystem: ConveyorBeltSystemViewModel? = null
     
     /**
      * Set the ConveyorBeltSystemViewModel to use as the authoritative window manager.
      * Should be called by ReaderActivity after creating both ViewModels.
      */
-    fun setConveyorBeltSystem(conveyor: com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel) {
+    fun setConveyorBeltSystem(conveyor: ConveyorBeltSystemViewModel) {
         _conveyorBeltSystem = conveyor
         AppLogger.d("ReaderViewModel", "[CONVEYOR_INTEGRATION] ConveyorBeltSystem attached")
     }
@@ -176,7 +177,7 @@ class ReaderViewModel(
      * Get the conveyor belt system instance.
      * Returns null if not set or minimal paginator is disabled.
      */
-    val conveyorBeltSystem: com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel?
+    val conveyorBeltSystem: ConveyorBeltSystemViewModel?
         get() = if (readerSettings.value.enableMinimalPaginator) _conveyorBeltSystem else null
     
     private var windowAssembler: DefaultWindowAssembler? = null
@@ -481,10 +482,12 @@ class ReaderViewModel(
                 windowCountLiveData.postValue(computedWindowCount)
                 
                 // Initialize conveyor belt system if it's set
-                if (_conveyorBeltSystem != null && computedWindowCount > 0) {
-                    val initialWindowIndex = slidingWindowPaginator.getWindowForChapter(startChapter.coerceIn(0, totalChapters - 1))
-                    _conveyorBeltSystem!!.initialize(initialWindowIndex, computedWindowCount)
-                    AppLogger.d("ReaderViewModel", "[CONVEYOR_INTEGRATION] Initialized conveyor: startWindow=$initialWindowIndex, totalWindows=$computedWindowCount")
+                _conveyorBeltSystem?.let { conveyor ->
+                    if (computedWindowCount > 0) {
+                        val initialWindowIndex = slidingWindowPaginator.getWindowForChapter(startChapter.coerceIn(0, totalChapters - 1))
+                        conveyor.initialize(initialWindowIndex, computedWindowCount)
+                        AppLogger.d("ReaderViewModel", "[CONVEYOR_INTEGRATION] Initialized conveyor: startWindow=$initialWindowIndex, totalWindows=$computedWindowCount")
+                    }
                 }
                 
                 // [PAGINATION_DEBUG] Log window computation details

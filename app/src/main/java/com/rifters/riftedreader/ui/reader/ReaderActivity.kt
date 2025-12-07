@@ -39,6 +39,7 @@ import com.rifters.riftedreader.domain.tts.TTSService
 import com.rifters.riftedreader.domain.tts.TTSStatusNotifier
 import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
 import com.rifters.riftedreader.ui.reader.ReaderThemePaletteResolver
+import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorDebugActivity
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import com.rifters.riftedreader.util.AppLogger
@@ -122,7 +123,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         viewModel = ViewModelProvider(this, factory)[ReaderViewModel::class.java]
         
         // Instantiate and wire ConveyorBeltSystemViewModel
-        val conveyorViewModel = com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel()
+        val conveyorViewModel = ConveyorBeltSystemViewModel()
         viewModel.setConveyorBeltSystem(conveyorViewModel)
         AppLogger.d("ReaderActivity", "[CONVEYOR_INTEGRATION] ConveyorBeltSystemViewModel created and wired to ReaderViewModel")
         
