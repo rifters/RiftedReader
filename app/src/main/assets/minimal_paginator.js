@@ -130,6 +130,16 @@
             if (state.isPaginationReady) {
                 log('INIT_SUCCESS', `pageCount=${state.pageCount}, charOffsets=${charOffsets.length}`);
                 callAndroidBridge('onPaginationReady', { pageCount: state.pageCount });
+                
+                // Dispatch DOM CustomEvent for other consumers
+                try {
+                    const event = new CustomEvent('paginator-ready', {
+                        detail: { pageCount: state.pageCount, windowIndex: config.windowIndex }
+                    });
+                    document.dispatchEvent(event);
+                } catch (e) {
+                    log('ERROR', `Failed to dispatch paginator-ready event: ${e.message}`);
+                }
             } else {
                 log('INIT_INCOMPLETE', 'Pagination not ready');
             }
@@ -396,6 +406,15 @@
             if (window.AndroidBridge && typeof window.AndroidBridge.onBoundaryReached === 'function') {
                 window.AndroidBridge.onBoundaryReached('NEXT', state.currentPage, state.pageCount);
             }
+            // Dispatch DOM CustomEvent for other consumers
+            try {
+                const event = new CustomEvent('paginator-boundary', {
+                    detail: { direction: 'NEXT', windowIndex: config.windowIndex }
+                });
+                document.dispatchEvent(event);
+            } catch (e) {
+                log('ERROR', `Failed to dispatch boundary event: ${e.message}`);
+            }
             lastBoundaryDirection = 'FORWARD';
             log('BOUNDARY', 'Reached FORWARD boundary');
         } else if (currentProgress <= (1 - BOUNDARY_THRESHOLD) && lastBoundaryDirection !== 'BACKWARD') {
@@ -404,6 +423,15 @@
             // Also call legacy onBoundaryReached for backward compatibility
             if (window.AndroidBridge && typeof window.AndroidBridge.onBoundaryReached === 'function') {
                 window.AndroidBridge.onBoundaryReached('PREVIOUS', state.currentPage, state.pageCount);
+            }
+            // Dispatch DOM CustomEvent for other consumers
+            try {
+                const event = new CustomEvent('paginator-boundary', {
+                    detail: { direction: 'PREVIOUS', windowIndex: config.windowIndex }
+                });
+                document.dispatchEvent(event);
+            } catch (e) {
+                log('ERROR', `Failed to dispatch boundary event: ${e.message}`);
             }
             lastBoundaryDirection = 'BACKWARD';
             log('BOUNDARY', 'Reached BACKWARD boundary');

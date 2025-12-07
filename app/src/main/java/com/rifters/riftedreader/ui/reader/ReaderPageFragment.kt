@@ -213,6 +213,23 @@ class ReaderPageFragment : Fragment() {
                     // Initialize minimal paginator if feature flag is enabled
                     val settings = readerViewModel.readerSettings.value
                     if (settings.enableMinimalPaginator) {
+                        // Configure minimal paginator
+                        val mode = when (readerViewModel.paginationMode) {
+                            PaginationMode.CONTINUOUS -> "window"
+                            PaginationMode.CHAPTER_BASED -> "chapter"
+                        }
+                        binding.pageWebView.evaluateJavascript(
+                            """
+                            if (window.minimalPaginator) {
+                                window.minimalPaginator.configure({
+                                    mode: '$mode',
+                                    windowIndex: $windowIndex
+                                });
+                            }
+                            """.trimIndent(),
+                            null
+                        )
+                        
                         // Call window.initPaginator() to initialize the minimal paginator
                         binding.pageWebView.evaluateJavascript(
                             "if (window.initPaginator) { window.initPaginator('#window-root'); }",
@@ -220,7 +237,7 @@ class ReaderPageFragment : Fragment() {
                         )
                         com.rifters.riftedreader.util.AppLogger.d(
                             "ReaderPageFragment",
-                            "[MIN_PAGINATOR] Called window.initPaginator for windowIndex=$windowIndex"
+                            "[MIN_PAGINATOR] Configured and initialized for windowIndex=$windowIndex, mode=$mode"
                         )
                     }
                     
@@ -520,9 +537,15 @@ class ReaderPageFragment : Fragment() {
                 // Fix: Replace webViewClient BEFORE calling loadUrl to prevent onPageFinished callback
                 // This prevents race condition where onPageFinished could trigger prepareTtsChunks
                 webViewClient = WebViewClient()
-                // Remove JavaScript interface
+                // Remove JavaScript interfaces
                 removeJavascriptInterface("AndroidTtsBridge")
                 removeJavascriptInterface("AndroidBridge")
+                // Remove PaginatorBridge if it was registered
+                if (readerViewModel.readerSettings.value.enableMinimalPaginator) {
+                    removeJavascriptInterface("PaginatorBridge")
+                    // Call paginatorStop to cleanup JS state
+                    evaluateJavascript("if (window.paginatorStop) { window.paginatorStop(); }", null)
+                }
                 // Load blank page to clear memory
                 loadUrl("about:blank")
                 // Clear history and cache
