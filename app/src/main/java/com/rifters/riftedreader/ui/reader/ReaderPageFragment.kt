@@ -157,6 +157,32 @@ class ReaderPageFragment : Fragment() {
             // Add JavaScript interface for pagination callbacks
             addJavascriptInterface(PaginationBridge(), "AndroidBridge")
             
+            // Add minimal paginator bridge if feature flag is enabled
+            val settings = readerViewModel.readerSettings.value
+            if (settings.enableMinimalPaginator) {
+                val minimalPaginatorBridge = PaginatorBridge(
+                    windowIndex = windowIndex,
+                    onPaginationReady = { wIdx, totalPages ->
+                        // Set paginator initialized flag (same as existing PaginationBridge)
+                        isPaginatorInitialized = true
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "[MIN_PAGINATOR] isPaginatorInitialized set to true for windowIndex=$wIdx"
+                        )
+                        // Forward to ViewModel for state updates and conveyor integration
+                        readerViewModel.onWindowPaginationReady(wIdx, totalPages)
+                    },
+                    onBoundary = { wIdx, direction ->
+                        handleMinimalPaginatorBoundary(wIdx, direction)
+                    }
+                )
+                addJavascriptInterface(minimalPaginatorBridge, "PaginatorBridge")
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "[MIN_PAGINATOR] Registered PaginatorBridge for windowIndex=$windowIndex"
+                )
+            }
+            
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(
                     view: WebView?,
@@ -191,8 +217,38 @@ class ReaderPageFragment : Fragment() {
                     // Configure the paginator before it initializes
                     configurePaginator()
                     
-                    // Initialize the in-page paginator
+                    // Initialize minimal paginator if feature flag is enabled
                     val settings = readerViewModel.readerSettings.value
+                    if (settings.enableMinimalPaginator) {
+                        // Configure minimal paginator
+                        val mode = when (readerViewModel.paginationMode) {
+                            PaginationMode.CONTINUOUS -> "window"
+                            PaginationMode.CHAPTER_BASED -> "chapter"
+                        }
+                        binding.pageWebView.evaluateJavascript(
+                            """
+                            if (window.minimalPaginator) {
+                                window.minimalPaginator.configure({
+                                    mode: '$mode',
+                                    windowIndex: $windowIndex
+                                });
+                            }
+                            """.trimIndent(),
+                            null
+                        )
+                        
+                        // Call window.initPaginator() to initialize the minimal paginator
+                        binding.pageWebView.evaluateJavascript(
+                            "if (window.initPaginator) { window.initPaginator('#window-root'); }",
+                            null
+                        )
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "[MIN_PAGINATOR] Configured and initialized for windowIndex=$windowIndex, mode=$mode"
+                        )
+                    }
+                    
+                    // Initialize the in-page paginator
                     com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "[PAGINATION_DEBUG] Initializing paginator with fontSize=${settings.textSizeSp}px")
                     
                     // Set font size, which will trigger a reflow
@@ -488,9 +544,15 @@ class ReaderPageFragment : Fragment() {
                 // Fix: Replace webViewClient BEFORE calling loadUrl to prevent onPageFinished callback
                 // This prevents race condition where onPageFinished could trigger prepareTtsChunks
                 webViewClient = WebViewClient()
-                // Remove JavaScript interface
+                // Remove JavaScript interfaces
                 removeJavascriptInterface("AndroidTtsBridge")
                 removeJavascriptInterface("AndroidBridge")
+                // Remove PaginatorBridge if it was registered
+                if (readerViewModel.readerSettings.value.enableMinimalPaginator) {
+                    removeJavascriptInterface("PaginatorBridge")
+                    // Call paginatorStop to cleanup JS state
+                    evaluateJavascript("if (window.paginatorStop) { window.paginatorStop(); }", null)
+                }
                 // Load blank page to clear memory
                 loadUrl("about:blank")
                 // Clear history and cache
@@ -1478,6 +1540,57 @@ class ReaderPageFragment : Fragment() {
             """.trimIndent(),
             null
         )
+    }
+
+    /**
+     * Handle boundary events from the minimal paginator.
+     * Called when user attempts to navigate past window boundaries.
+     * 
+     * @param windowIndex The window index that triggered the boundary
+     * @param direction The boundary direction ("NEXT" or "PREVIOUS")
+     */
+    private fun handleMinimalPaginatorBoundary(windowIndex: Int, direction: String) {
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "[MIN_PAGINATOR] Boundary reached: windowIndex=$windowIndex, direction=$direction"
+        )
+        
+        // Convert direction string to BoundaryDirection enum
+        val boundaryDir = when (direction.uppercase()) {
+            "NEXT" -> BoundaryDirection.NEXT
+            "PREVIOUS" -> BoundaryDirection.PREVIOUS
+            else -> {
+                com.rifters.riftedreader.util.AppLogger.w(
+                    "ReaderPageFragment",
+                    "[MIN_PAGINATOR] Unknown boundary direction: $direction"
+                )
+                return
+            }
+        }
+        
+        // Forward to existing boundary handling logic
+        // This reuses the navigation code that the old paginator used
+        val readerActivity = activity as? ReaderActivity ?: return
+        when (boundaryDir) {
+            BoundaryDirection.NEXT -> {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "[MIN_PAGINATOR] Navigating to next page from windowIndex=$windowIndex"
+                )
+                readerActivity.navigateToNextPage(animated = true)
+            }
+            BoundaryDirection.PREVIOUS -> {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "[MIN_PAGINATOR] Navigating to previous page from windowIndex=$windowIndex"
+                )
+                if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                    readerActivity.navigateToPreviousPage(animated = true)
+                } else {
+                    readerActivity.navigateToPreviousChapterToLastPage(animated = true)
+                }
+            }
+        }
     }
 
     private fun handleChapterBoundary(direction: BoundaryDirection, boundaryPage: Int, totalPages: Int) {
