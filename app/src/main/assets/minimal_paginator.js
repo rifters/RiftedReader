@@ -381,7 +381,21 @@
             // Update current page based on scroll position
             const currentScrollLeft = window.scrollX || window.pageXOffset || 0;
             const newPage = Math.round(currentScrollLeft / state.appliedColumnWidth);
+            const prevPage = state.currentPage;  // ← TRACK PREVIOUS
             state.currentPage = Math.max(0, Math.min(newPage, state.pageCount - 1));
+            
+            // ✅ ADD THIS: Notify Android when page actually changes
+            if (state.currentPage !== prevPage) {
+                syncPaginationState();  // Sync first
+                
+                // Call onPageChanged for Conveyor edge detection
+                callAndroidBridge('onPageChanged', { 
+                    page: state.currentPage,
+                    pageCount: state.pageCount
+                });
+                
+                log('PAGE_CHANGE', `Manual scroll: ${prevPage} → ${state.currentPage}`);
+            }
             
             // Check if boundary was reached
             checkBoundary();
