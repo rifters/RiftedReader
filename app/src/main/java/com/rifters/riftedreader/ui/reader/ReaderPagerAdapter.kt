@@ -51,6 +51,7 @@ class ReaderPagerAdapter(
     override fun getItemCount(): Int {
         // TASK 1: CONVEYOR AUTHORITATIVE TAKEOVER - Adapter routing
         // When conveyor is primary, use its buffer size as authoritative window count
+        // TODO: Add unit test to verify adapter uses conveyor buffer size when isConveyorPrimary=true
         if (viewModel.isConveyorPrimary && viewModel.conveyorBeltSystem != null) {
             val conveyorCount = viewModel.conveyorBeltSystem!!.buffer.value.size
             

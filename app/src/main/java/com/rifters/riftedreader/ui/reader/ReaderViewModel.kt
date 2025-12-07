@@ -166,6 +166,8 @@ class ReaderViewModel(
      * Returns true when:
      * - enableMinimalPaginator flag is true in settings
      * - conveyorBeltSystem is not null
+     * 
+     * TODO: Add unit test to verify isConveyorPrimary returns correct value based on flag and conveyor state
      */
     val isConveyorPrimary: Boolean
         get() = readerSettings.value.enableMinimalPaginator && _conveyorBeltSystem != null
