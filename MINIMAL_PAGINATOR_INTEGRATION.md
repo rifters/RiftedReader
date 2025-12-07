@@ -2,7 +2,7 @@
 
 ## Overview
 
-The minimal paginator integration provides a robust, non-invasive pagination system that integrates with the **ConveyorBeltSystemViewModel** in the development branch. The integration is **feature-flagged** and disabled by default for backward compatibility.
+The minimal paginator integration provides a robust, non-invasive pagination system that integrates with the **ConveyorBeltSystemViewModel** in the development branch. The integration is **feature-flagged** and **enabled by default** for all development and QA work.
 
 ### Architecture Overview
 - **Development branch**: ConveyorBeltSystemViewModel is the window controller (replacing main's WindowBufferManager)
@@ -22,29 +22,42 @@ The feature flag is stored in **ReaderPreferences** as part of **ReaderSettings*
 
 ```kotlin
 // In ReaderSettings data class
-val enableMinimalPaginator: Boolean = false  // Default: disabled
+val enableMinimalPaginator: Boolean = true  // Default: ENABLED for development
 ```
 
-### How to Enable/Disable
+### Default State
+
+**As of December 2025, the minimal paginator is ENABLED BY DEFAULT** for all development and QA builds. This ensures all ongoing work covers the new paginator/conveyor system without manual setup.
+
+- Fresh installs: Minimal paginator active
+- Upgrades: Minimal paginator active (unless previously disabled by user)
+- ConveyorBeltSystemViewModel: Always wired and ready
+
+### How to Disable (Testing Legacy Paginator)
 
 #### Method 1: Via SharedPreferences (Programmatic)
 ```kotlin
-// In your app code
+// In your app code - to DISABLE the minimal paginator
+readerPreferences.updateSettings { settings ->
+    settings.copy(enableMinimalPaginator = false)
+}
+
+// To RE-ENABLE (restore default)
 readerPreferences.updateSettings { settings ->
     settings.copy(enableMinimalPaginator = true)
 }
 ```
 
-#### Method 2: Via ADB (For Testing)
+#### Method 2: Via ADB (For Testing Legacy Paginator)
 ```bash
-# Enable the feature
-adb shell "run-as com.rifters.riftedreader \
-  echo 'enable_minimal_paginator=true' >> \
-  /data/data/com.rifters.riftedreader/shared_prefs/reader_preferences.xml"
-
-# Disable the feature
+# Disable the feature (test legacy paginator)
 adb shell "run-as com.rifters.riftedreader \
   echo 'enable_minimal_paginator=false' >> \
+  /data/data/com.rifters.riftedreader/shared_prefs/reader_preferences.xml"
+
+# Re-enable the feature (restore default)
+adb shell "run-as com.rifters.riftedreader \
+  echo 'enable_minimal_paginator=true' >> \
   /data/data/com.rifters.riftedreader/shared_prefs/reader_preferences.xml"
 ```
 
@@ -53,7 +66,7 @@ You can temporarily hardcode the flag in `ReaderPreferences.kt`:
 
 ```kotlin
 // In ReaderPreferences.readSettings()
-val enableMinimalPaginator = true  // Force enable for testing
+val enableMinimalPaginator = false  // Force disable for legacy testing
 ```
 
 **Remember to revert this change before committing!**
@@ -127,7 +140,23 @@ minimal_paginator.js (stable totalPages > 0)
 
 ## Behavior
 
-### When Feature Flag is DISABLED (default)
+### When Feature Flag is DISABLED (for legacy testing)
+- No PaginatorBridge is registered
+- No `window.initPaginator()` call is made
+- Existing pagination system operates normally
+- No performance impact
+- Use this mode to compare behavior or debug regressions
+
+### When Feature Flag is ENABLED (default)
+- PaginatorBridge is registered to WebView before HTML load
+- After HTML loads, `window.initPaginator('#window-root')` is called
+- minimal_paginator.js waits for stable layout (DOM + fonts + images)
+- When stable and totalPages > 0, calls `onPaginationReady`
+- When user reaches window boundaries, calls `onBoundary`
+- Boundary events trigger existing navigation logic (navigateToNextPage/navigateToPreviousPage)
+- ConveyorBeltSystemViewModel manages window lifecycle and phase transitions
+
+### When Feature Flag is DISABLED (for legacy testing)
 - No PaginatorBridge is registered
 - No `window.initPaginator()` call is made
 - Existing pagination system operates normally
@@ -177,7 +206,30 @@ adb logcat | grep "BOUNDARY"
 
 ## Testing Checklist
 
-### With Feature Flag OFF (default)
+### With Feature Flag OFF (legacy testing - requires manual toggle)
+- [ ] Disable flag via ADB or code (see "How to Disable" section above)
+- [ ] Open a book - should behave like pre-minimal-paginator development branch
+- [ ] Navigate between pages - no console errors
+- [ ] Check logcat - no PaginatorBridge messages
+- [ ] Window transitions work normally using legacy system
+
+### With Feature Flag ON (default - should always work)
+- [ ] Open a book (e.g., "Hell Difficulty Tutorial 2")
+- [ ] Check logcat for:
+  - `[MINIMAL_PAGINATOR_DEFAULT] Minimal paginator is now DEFAULT for development: ENABLED`
+  - `[MIN_PAGINATOR] Registered PaginatorBridge for windowIndex=X`
+  - `[MIN_PAGINATOR] Called window.initPaginator for windowIndex=X`
+  - `[PAGINATION_READY] windowIndex=X, pageCount=Y` (Y should be > 0)
+- [ ] Navigate to last page in window
+- [ ] Swipe/tap next - should trigger boundary event
+- [ ] Check logcat for: `[BOUNDARY] windowIndex=X, direction=NEXT`
+- [ ] Verify window transition occurs (conveyor shift)
+- [ ] Navigate to first page in window
+- [ ] Swipe/tap previous - should trigger boundary event
+- [ ] Check logcat for: `[BOUNDARY] windowIndex=X, direction=PREVIOUS`
+- [ ] Verify backward window transition occurs
+
+### With Feature Flag OFF (legacy testing - requires manual toggle)
 - [ ] Open a book - should behave like current development branch
 - [ ] Navigate between pages - no console errors
 - [ ] Check logcat - no PaginatorBridge messages
@@ -208,7 +260,7 @@ adb logcat | grep "BOUNDARY"
 
 4. **Conveyor Phase Testing**: The main benefit of stable pagination is avoiding 0-page reports that cause conveyor phase transition issues. Test with books that previously had pagination timing issues.
 
-5. **ConveyorBeltSystemViewModel Setup**: The conveyor system needs to be instantiated and set on ReaderViewModel via `setConveyorBeltSystem()`. This setup should be done in ReaderActivity or wherever ReaderViewModel is created.
+5. **ConveyorBeltSystemViewModel Setup**: ✅ **COMPLETE** - The conveyor system is automatically instantiated and wired in ReaderActivity.onCreate(). It receives pagination events via ReaderViewModel.setConveyorBeltSystem(). No manual setup needed.
 
 ## Conveyor System Integration Notes
 
@@ -222,12 +274,13 @@ The development branch uses ConveyorBeltSystemViewModel as the primary window co
 
 ## Future Enhancements
 
-When the feature is stable and proven:
-1. Change default to `true` in ReaderSettings
-2. Add UI toggle in Reader Settings screen
-3. Wire character offset tracking to bookmark system
-4. Remove feature flag once fully adopted
-5. Consider removing WindowBufferManager once conveyor system fully replaces it
+~~When the feature is stable and proven:~~ **UPDATE: Completed December 2025**
+1. ✅ Change default to `true` in ReaderSettings
+2. ✅ Wire ConveyorBeltSystemViewModel automatically in ReaderActivity
+3. Add UI toggle in Reader Settings screen (future enhancement)
+4. Wire character offset tracking to bookmark system (future enhancement)
+5. Remove feature flag once fully adopted (future consideration)
+6. Consider removing WindowBufferManager once conveyor system fully replaces it (future consideration)
 
 ## Code Locations
 
@@ -251,4 +304,4 @@ For issues or questions about the minimal paginator integration:
 ---
 
 **Last Updated**: 2025-12-07  
-**Status**: Implemented, Feature-Flagged (Default: OFF)
+**Status**: Implemented, Feature-Flagged (Default: **ON** - Enabled for all development/QA)
