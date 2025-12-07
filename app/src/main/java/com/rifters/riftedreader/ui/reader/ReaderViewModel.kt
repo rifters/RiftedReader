@@ -26,7 +26,6 @@ import com.rifters.riftedreader.pagination.SlidingWindowPaginator
 import com.rifters.riftedreader.pagination.WindowBufferManager
 import com.rifters.riftedreader.pagination.WindowData
 import com.rifters.riftedreader.pagination.WindowSyncHelpers
-import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -152,14 +151,6 @@ class ReaderViewModel(
     // Public accessor for fragments that need to check buffer state
     val windowBufferManager: WindowBufferManager?
         get() = _windowBufferManager
-    
-    // Conveyor Belt System for managing window transitions and buffer state
-    // This is the primary window controller in development branch
-    private var _conveyorBeltSystem: ConveyorBeltSystemViewModel? = null
-    
-    // Public accessor for conveyor system
-    val conveyorBeltSystem: ConveyorBeltSystemViewModel?
-        get() = _conveyorBeltSystem
     
     private var windowAssembler: DefaultWindowAssembler? = null
     
@@ -900,106 +891,6 @@ class ReaderViewModel(
     fun setJumpToLastPageFlag() {
         _jumpToLastPage.value = true
     }
-    
-    /**
-     * Set the conveyor belt system instance.
-     * This should be called early in the reader lifecycle to enable
-     * conveyor-based window management for the minimal paginator.
-     * 
-     * @param conveyorSystem The ConveyorBeltSystemViewModel instance
-     */
-    fun setConveyorBeltSystem(conveyorSystem: ConveyorBeltSystemViewModel) {
-        _conveyorBeltSystem = conveyorSystem
-        AppLogger.d("ReaderViewModel", "[CONVEYOR] Conveyor belt system reference set")
-    }
-    
-    /**
-     * Called by PaginatorBridge when pagination is ready and stable.
-     * This is the entry point for the minimal paginator integration.
-     * 
-     * The minimal paginator ensures totalPages > 0 before calling this method,
-     * avoiding race conditions with 0-page reports that can occur with the
-     * inpage_paginator.js system.
-     * 
-     * This method performs the same state updates as the existing PaginationBridge
-     * but with the guarantee of stable, non-zero page counts.
-     * 
-     * When the conveyor belt system is set, this method notifies it that the window
-     * has completed stable pagination, allowing for proper phase transitions.
-     * 
-     * @param windowIndex The window index that completed pagination
-     * @param totalPages The total page count for the window (guaranteed > 0)
-     */
-    fun onWindowPaginationReady(windowIndex: Int, totalPages: Int) {
-        AppLogger.d(
-            "ReaderViewModel",
-            "[MIN_PAGINATOR] onWindowPaginationReady: windowIndex=$windowIndex, totalPages=$totalPages, " +
-            "currentWindowIndex=$_currentWindowIndex.value"
-        )
-        
-        // Validate input
-        if (totalPages <= 0) {
-            AppLogger.w(
-                "ReaderViewModel",
-                "[MIN_PAGINATOR] Received invalid totalPages=$totalPages for windowIndex=$windowIndex"
-            )
-            return
-        }
-        
-        // Update state flows to reflect stable pagination completion
-        _totalWebViewPages.value = totalPages
-        
-        // If this is the active window, update metrics and notify conveyor system
-        if (windowIndex == _currentWindowIndex.value) {
-            AppLogger.d(
-                "ReaderViewModel",
-                "[MIN_PAGINATOR] Active window paginated: windowIndex=$windowIndex, totalPages=$totalPages"
-            )
-            
-            // Update chapter pagination metrics (same as existing PaginationBridge)
-            if (isContinuousMode) {
-                viewModelScope.launch {
-                    try {
-                        val location = getPageLocation(windowIndex)
-                        val chapterIndex = location?.chapterIndex ?: windowIndex
-                        updateChapterPaginationMetrics(chapterIndex, totalPages)
-                        AppLogger.d(
-                            "ReaderViewModel",
-                            "[MIN_PAGINATOR] Updated chapter metrics: chapterIndex=$chapterIndex, totalPages=$totalPages"
-                        )
-                    } catch (e: Exception) {
-                        AppLogger.e(
-                            "ReaderViewModel",
-                            "[MIN_PAGINATOR] Error updating chapter pagination metrics",
-                            e
-                        )
-                    }
-                }
-            }
-            
-            // Notify the conveyor belt system that this window has stable pagination
-            _conveyorBeltSystem?.let { conveyor ->
-                AppLogger.d(
-                    "ReaderViewModel",
-                    "[MIN_PAGINATOR] Notifying conveyor system: onWindowEntered($windowIndex)"
-                )
-                conveyor.onWindowEntered(windowIndex)
-                AppLogger.d(
-                    "ReaderViewModel",
-                    "[MIN_PAGINATOR] Conveyor notified - phase=${conveyor.phase.value}, " +
-                    "buffer=${conveyor.buffer.value}, activeWindow=${conveyor.activeWindow.value}"
-                )
-            } ?: AppLogger.d(
-                "ReaderViewModel",
-                "[MIN_PAGINATOR] No conveyor system set - skipping conveyor notification"
-            )
-        } else {
-            AppLogger.d(
-                "ReaderViewModel",
-                "[MIN_PAGINATOR] Non-active window paginated: windowIndex=$windowIndex (current=$_currentWindowIndex.value)"
-            )
-        }
-    }
 
     fun goToPage(page: Int): Boolean {
         val total = _totalPages.value
@@ -1126,57 +1017,6 @@ class ReaderViewModel(
         } else {
             PageLocation(globalPageIndex, globalPageIndex, 0)
         }
-    }
-
-    /**
-     * Character offset tracking for stable position persistence across font changes and reflows.
-     * Maps window index to character offset for that position.
-     */
-    private val characterOffsetMap = mutableMapOf<Int, Int>()
-
-    /**
-     * Update reading position with character offset.
-     * Called after navigation to capture the current position with stable offset info.
-     * 
-     * @param windowIndex The window/page index
-     * @param pageInWindow The in-page index within the window
-     * @param characterOffset The character offset from the JavaScript paginator
-     */
-    fun updateReadingPosition(windowIndex: Int, pageInWindow: Int, characterOffset: Int) {
-        characterOffsetMap[windowIndex] = characterOffset
-        AppLogger.d(
-            "ReaderViewModel",
-            "[CHARACTER_OFFSET] Updated position: windowIndex=$windowIndex, pageInWindow=$pageInWindow, offset=$characterOffset"
-        )
-    }
-
-    /**
-     * Get saved character offset for a window.
-     * Used to restore reading position when returning to a window.
-     * 
-     * @param windowIndex The window index to look up
-     * @return The saved character offset, or 0 if not found
-     */
-    fun getSavedCharacterOffset(windowIndex: Int): Int {
-        val offset = characterOffsetMap[windowIndex] ?: 0
-        if (offset > 0) {
-            AppLogger.d(
-                "ReaderViewModel",
-                "[CHARACTER_OFFSET] Retrieved offset for windowIndex=$windowIndex: offset=$offset"
-            )
-        }
-        return offset
-    }
-
-    /**
-     * Clear character offset for a window (useful after window reload).
-     */
-    fun clearCharacterOffset(windowIndex: Int) {
-        characterOffsetMap.remove(windowIndex)
-        AppLogger.d(
-            "ReaderViewModel",
-            "[CHARACTER_OFFSET] Cleared offset for windowIndex=$windowIndex"
-        )
     }
 
     suspend fun navigateToChapter(chapterIndex: Int, inPageIndex: Int = 0): Int? {
@@ -1458,16 +1298,8 @@ class ReaderViewModel(
         }
         
         _currentWindowIndex.value = windowIndex
-        AppLogger.d("ReaderViewModel",
+        AppLogger.d("ReaderViewModel", 
             "goToWindow: _currentWindowIndex updated from $previousWindow to $windowIndex [WINDOW_STATE_UPDATE]")
-        
-        // CRITICAL: Preload the window HTML when navigating to a new window
-        // This ensures the HTML is available when the fragment calls getWindowHtml()
-        if (isContinuousMode && windowBufferManager != null) {
-            AppLogger.d("ReaderViewModel", 
-                "goToWindow: triggering window preload for windowIndex=$windowIndex [PRELOAD_TRIGGER]")
-            windowBufferManager!!.preloadWindow(windowIndex)
-        }
         
         if (isContinuousMode) {
             viewModelScope.launch {
