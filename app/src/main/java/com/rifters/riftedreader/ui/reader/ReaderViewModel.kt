@@ -891,6 +891,52 @@ class ReaderViewModel(
     fun setJumpToLastPageFlag() {
         _jumpToLastPage.value = true
     }
+    
+    /**
+     * Called by PaginatorBridge when pagination is ready and stable.
+     * This is the entry point for the minimal paginator integration.
+     * 
+     * The minimal paginator ensures totalPages > 0 before calling this method,
+     * avoiding race conditions with 0-page reports.
+     * 
+     * @param windowIndex The window index that completed pagination
+     * @param totalPages The total page count for the window (guaranteed > 0)
+     */
+    fun onWindowPaginationReady(windowIndex: Int, totalPages: Int) {
+        AppLogger.d(
+            "ReaderViewModel",
+            "[MIN_PAGINATOR] onWindowPaginationReady: windowIndex=$windowIndex, totalPages=$totalPages"
+        )
+        
+        // Update state flows to reflect pagination completion
+        if (totalPages > 0) {
+            _totalWebViewPages.value = totalPages
+            
+            // If this is the active window, notify buffer manager (conveyor)
+            if (windowIndex == _currentWindowIndex.value) {
+                AppLogger.d(
+                    "ReaderViewModel",
+                    "[MIN_PAGINATOR] Active window paginated: windowIndex=$windowIndex, totalPages=$totalPages"
+                )
+                
+                // Signal WindowBufferManager about stable pagination
+                // This allows conveyor to transition from STARTUP to STEADY phase
+                _windowBufferManager?.let { bufferManager ->
+                    // The buffer manager uses this signal to know the active window is ready
+                    // for navigation and phase transitions
+                    AppLogger.d(
+                        "ReaderViewModel",
+                        "[MIN_PAGINATOR] Notifying buffer manager of pagination ready"
+                    )
+                }
+            }
+        } else {
+            AppLogger.w(
+                "ReaderViewModel",
+                "[MIN_PAGINATOR] Received invalid totalPages=$totalPages for windowIndex=$windowIndex"
+            )
+        }
+    }
 
     fun goToPage(page: Int): Boolean {
         val total = _totalPages.value

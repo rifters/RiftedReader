@@ -390,14 +390,18 @@
         const currentProgress = state.currentPage / Math.max(1, state.pageCount - 1);
         
         if (currentProgress >= BOUNDARY_THRESHOLD && lastBoundaryDirection !== 'FORWARD') {
-            // Call onBoundaryReached with direction, currentPage, totalPages (NOT JSON)
+            // Call onBoundary with JSON format for PaginatorBridge
+            callAndroidBridge('onBoundary', { direction: 'NEXT' });
+            // Also call legacy onBoundaryReached for backward compatibility
             if (window.AndroidBridge && typeof window.AndroidBridge.onBoundaryReached === 'function') {
                 window.AndroidBridge.onBoundaryReached('NEXT', state.currentPage, state.pageCount);
             }
             lastBoundaryDirection = 'FORWARD';
             log('BOUNDARY', 'Reached FORWARD boundary');
         } else if (currentProgress <= (1 - BOUNDARY_THRESHOLD) && lastBoundaryDirection !== 'BACKWARD') {
-            // Call onBoundaryReached with direction, currentPage, totalPages (NOT JSON)
+            // Call onBoundary with JSON format for PaginatorBridge
+            callAndroidBridge('onBoundary', { direction: 'PREVIOUS' });
+            // Also call legacy onBoundaryReached for backward compatibility
             if (window.AndroidBridge && typeof window.AndroidBridge.onBoundaryReached === 'function') {
                 window.AndroidBridge.onBoundaryReached('PREVIOUS', state.currentPage, state.pageCount);
             }
@@ -434,9 +438,15 @@
      */
     function callAndroidBridge(method, data) {
         try {
-            if (window.AndroidBridge && typeof window.AndroidBridge[method] === 'function') {
+            // Try new PaginatorBridge first (for feature-flagged integration)
+            if (window.PaginatorBridge && typeof window.PaginatorBridge[method] === 'function') {
+                window.PaginatorBridge[method](JSON.stringify(data));
+                log('BRIDGE', `Called PaginatorBridge.${method}(${JSON.stringify(data)})`);
+            }
+            // Fall back to AndroidBridge for backward compatibility
+            else if (window.AndroidBridge && typeof window.AndroidBridge[method] === 'function') {
                 window.AndroidBridge[method](JSON.stringify(data));
-                log('BRIDGE', `Called ${method}(${JSON.stringify(data)})`);
+                log('BRIDGE', `Called AndroidBridge.${method}(${JSON.stringify(data)})`);
             }
         } catch (e) {
             log('ERROR', `Bridge call failed: ${e.message}`);
@@ -473,6 +483,39 @@
     
     // Add 'inpagePaginator' alias for backward compatibility during transition
     window.inpagePaginator = window.minimalPaginator;
+    
+    /**
+     * Convenience wrapper for initializing the paginator.
+     * This is called from Kotlin after HTML is fully loaded.
+     * @param {string} rootSelector - CSS selector for root element (optional, defaults to body)
+     * @returns {boolean} - True if initialization succeeded
+     */
+    window.initPaginator = function(rootSelector) {
+        log('INIT', `initPaginator called with selector: ${rootSelector || 'default'}`);
+        // The selector is for future extensibility; currently we always use document.body
+        return initialize();
+    };
+    
+    /**
+     * Request paginator to recheck page count (for dynamic content changes)
+     */
+    window.paginatorRecheck = function() {
+        log('RECHECK', 'Pagination recheck requested');
+        calculatePageCountAndOffsets();
+        syncPaginationState();
+        if (state.isPaginationReady) {
+            callAndroidBridge('onPaginationReady', { pageCount: state.pageCount });
+        }
+    };
+    
+    /**
+     * Stop paginator (cleanup)
+     */
+    window.paginatorStop = function() {
+        log('STOP', 'Paginator stopped');
+        state.isInitialized = false;
+        state.isPaginationReady = false;
+    };
     
     log('INIT', 'Minimal Paginator v2 injected');
     
