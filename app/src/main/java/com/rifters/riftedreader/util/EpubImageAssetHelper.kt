@@ -39,8 +39,8 @@ object EpubImageAssetHelper {
     /** Path prefix for app assets (served via WebViewAssetLoader.AssetsPathHandler) */
     const val ASSETS_PATH = "/assets/"
     
-    /** Full URL for the inpage paginator script */
-    const val PAGINATOR_SCRIPT_URL = "https://$ASSET_HOST${ASSETS_PATH}inpage_paginator.js"
+    /** Full URL for the minimal paginator script */
+    const val PAGINATOR_SCRIPT_URL = "https://$ASSET_HOST${ASSETS_PATH}minimal_paginator.js"
     
     // ================================================================================
     // Fallback Image Data
