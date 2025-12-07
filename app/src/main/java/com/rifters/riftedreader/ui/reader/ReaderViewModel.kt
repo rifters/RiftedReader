@@ -161,6 +161,15 @@ class ReaderViewModel(
     val conveyorBeltSystem: ConveyorBeltSystemViewModel?
         get() = _conveyorBeltSystem
     
+    /**
+     * Check if the conveyor system is active and should be the authoritative window manager.
+     * Returns true when:
+     * - enableMinimalPaginator flag is true in settings
+     * - conveyorBeltSystem is not null
+     */
+    val isConveyorPrimary: Boolean
+        get() = readerSettings.value.enableMinimalPaginator && _conveyorBeltSystem != null
+    
     private var windowAssembler: DefaultWindowAssembler? = null
     
     // Cache for pre-wrapped HTML to enable fast access for windows 0-4 during initial load

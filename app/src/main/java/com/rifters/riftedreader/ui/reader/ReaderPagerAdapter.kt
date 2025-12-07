@@ -49,13 +49,27 @@ class ReaderPagerAdapter(
     private var windowMismatchWarningLogged: Boolean = false
 
     override fun getItemCount(): Int {
-        // ISSUE 1 FIX: Derive window count from SlidingWindowPaginator's window count, NOT from TOC length
-        // This ensures adapter/VM use the same source of truth for chapter count
+        // TASK 1: CONVEYOR AUTHORITATIVE TAKEOVER - Adapter routing
+        // When conveyor is primary, use its buffer size as authoritative window count
+        if (viewModel.isConveyorPrimary && viewModel.conveyorBeltSystem != null) {
+            val conveyorCount = viewModel.conveyorBeltSystem!!.buffer.value.size
+            
+            // [CONVEYOR_ACTIVE] Log when using conveyor as authoritative source
+            if (conveyorCount != lastKnownItemCount) {
+                AppLogger.d("ReaderPagerAdapter", "[CONVEYOR_ACTIVE] Adapter using conveyor.buffer.size -> $conveyorCount windows")
+                lastKnownItemCount = conveyorCount
+            }
+            
+            return conveyorCount
+        }
+        
+        // LEGACY PATH: Derive window count from SlidingWindowPaginator's window count
+        // This ensures adapter/VM use the same source of truth for chapter count when conveyor is not active
         val count = viewModel.slidingWindowPaginator.getWindowCount()
         
         // [PAGINATION_DEBUG] Log window count changes with detailed context
         if (count != lastKnownItemCount) {
-            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] getItemCount CHANGED: " +
+            AppLogger.d("ReaderPagerAdapter", "[LEGACY_ACTIVE] getItemCount CHANGED: " +
                 "$lastKnownItemCount -> $count windows, " +
                 "paginationMode=${viewModel.paginationMode}, " +
                 "chaptersPerWindow=${viewModel.chaptersPerWindow}")
