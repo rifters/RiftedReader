@@ -972,11 +972,19 @@ class ReaderViewModel(
      * @param totalPages The total page count for the window (guaranteed > 0)
      */
     fun onWindowPaginationReady(windowIndex: Int, totalPages: Int) {
-        AppLogger.d(
-            "ReaderViewModel",
-            "[MIN_PAGINATOR] onWindowPaginationReady: windowIndex=$windowIndex, totalPages=$totalPages, " +
-            "currentWindowIndex=$_currentWindowIndex.value"
-        )
+        // TASK 4: CONVEYOR AUTHORITATIVE TAKEOVER - Log when forwarding to conveyor
+        if (isConveyorPrimary && _conveyorBeltSystem != null) {
+            AppLogger.d(
+                "ReaderViewModel",
+                "[CONVEYOR_ACTIVE] Paginator event forwarded to conveyor: window=$windowIndex totalPages=$totalPages"
+            )
+        } else {
+            AppLogger.d(
+                "ReaderViewModel",
+                "[LEGACY_ACTIVE] [MIN_PAGINATOR] onWindowPaginationReady: windowIndex=$windowIndex, totalPages=$totalPages, " +
+                "currentWindowIndex=$_currentWindowIndex.value"
+            )
+        }
         
         // Validate input
         if (totalPages <= 0) {
