@@ -49,18 +49,37 @@ class ReaderPagerAdapter(
     private var windowMismatchWarningLogged: Boolean = false
 
     override fun getItemCount(): Int {
-        // ISSUE 1 FIX: Derive window count from SlidingWindowPaginator's window count, NOT from TOC length
-        // This ensures adapter/VM use the same source of truth for chapter count
-        val count = viewModel.slidingWindowPaginator.getWindowCount()
+        // Check if ConveyorBeltSystem is the primary window manager
+        val conveyorPrimary = viewModel.isConveyorPrimary
         
-        // [PAGINATION_DEBUG] Log window count changes with detailed context
-        if (count != lastKnownItemCount) {
-            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] getItemCount CHANGED: " +
-                "$lastKnownItemCount -> $count windows, " +
-                "paginationMode=${viewModel.paginationMode}, " +
-                "chaptersPerWindow=${viewModel.chaptersPerWindow}")
-            lastKnownItemCount = count
+        val count = if (conveyorPrimary && viewModel.conveyorBeltSystem != null) {
+            // Use conveyor belt system as the authoritative source
+            val conveyorWindowCount = viewModel.conveyorBeltSystem!!.buffer.value.size
+            
+            // [CONVEYOR_ACTIVE] Log that adapter is using conveyor
+            if (conveyorWindowCount != lastKnownItemCount) {
+                AppLogger.d("ReaderPagerAdapter", "[CONVEYOR_ACTIVE] Adapter using conveyor.windowCount: " +
+                    "$lastKnownItemCount -> $conveyorWindowCount windows (conveyor is authoritative)")
+            }
+            
+            conveyorWindowCount
+        } else {
+            // Legacy behavior: use SlidingWindowPaginator
+            val legacyCount = viewModel.slidingWindowPaginator.getWindowCount()
+            
+            // [PAGINATION_DEBUG] Log window count changes with detailed context
+            if (legacyCount != lastKnownItemCount) {
+                AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] getItemCount CHANGED: " +
+                    "$lastKnownItemCount -> $legacyCount windows, " +
+                    "paginationMode=${viewModel.paginationMode}, " +
+                    "chaptersPerWindow=${viewModel.chaptersPerWindow}")
+            }
+            
+            legacyCount
         }
+        
+        // Update last known count
+        lastKnownItemCount = count
         
         // [PAGINATION_DEBUG] Warn if zero windows (pagination may have failed)
         if (count == 0) {
@@ -70,16 +89,19 @@ class ReaderPagerAdapter(
         
         // [PAGINATION_DEBUG] Validate window count matches expected calculation (emit warning only once per session)
         // Use visible chapter count (accounts for hidden chapters like cover, NAV, non-linear)
-        val visibleChapterCount = viewModel.visibleChapterCount
-        val spineCount = viewModel.chapterIndexProvider.spineCount
-        if (visibleChapterCount > 0 && viewModel.isContinuousMode && !windowMismatchWarningLogged) {
-            val expectedWindows = kotlin.math.ceil(visibleChapterCount.toDouble() / viewModel.chaptersPerWindow).toInt()
-            if (count != expectedWindows && count > 0) {
-                // Log both actual and expected counts in a single diagnostic message
-                AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] WINDOW_COUNT_MISMATCH (one-time): " +
-                    "actual=$count, expected=$expectedWindows based on visible chapters " +
-                    "(visibleChapters=$visibleChapterCount, spineAll=$spineCount, perWindow=${viewModel.chaptersPerWindow})")
-                windowMismatchWarningLogged = true
+        // Only validate in legacy mode
+        if (!conveyorPrimary) {
+            val visibleChapterCount = viewModel.visibleChapterCount
+            val spineCount = viewModel.chapterIndexProvider.spineCount
+            if (visibleChapterCount > 0 && viewModel.isContinuousMode && !windowMismatchWarningLogged) {
+                val expectedWindows = kotlin.math.ceil(visibleChapterCount.toDouble() / viewModel.chaptersPerWindow).toInt()
+                if (count != expectedWindows && count > 0) {
+                    // Log both actual and expected counts in a single diagnostic message
+                    AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] WINDOW_COUNT_MISMATCH (one-time): " +
+                        "actual=$count, expected=$expectedWindows based on visible chapters " +
+                        "(visibleChapters=$visibleChapterCount, spineAll=$spineCount, perWindow=${viewModel.chaptersPerWindow})")
+                    windowMismatchWarningLogged = true
+                }
             }
         }
         

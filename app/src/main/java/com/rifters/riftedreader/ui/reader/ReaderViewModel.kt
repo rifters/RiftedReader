@@ -152,6 +152,33 @@ class ReaderViewModel(
     val windowBufferManager: WindowBufferManager?
         get() = _windowBufferManager
     
+    // ConveyorBeltSystemViewModel for minimal paginator mode
+    // When enableMinimalPaginator is true, this becomes the authoritative window manager
+    private var _conveyorBeltSystem: com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel? = null
+    
+    /**
+     * Set the ConveyorBeltSystemViewModel to use as the authoritative window manager.
+     * Should be called by ReaderActivity after creating both ViewModels.
+     */
+    fun setConveyorBeltSystem(conveyor: com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel) {
+        _conveyorBeltSystem = conveyor
+        AppLogger.d("ReaderViewModel", "[CONVEYOR_INTEGRATION] ConveyorBeltSystem attached")
+    }
+    
+    /**
+     * Check if the conveyor belt system is the primary window manager.
+     * When true, the conveyor is the single source of truth for window count and pagination.
+     */
+    val isConveyorPrimary: Boolean
+        get() = readerSettings.value.enableMinimalPaginator && _conveyorBeltSystem != null
+    
+    /**
+     * Get the conveyor belt system instance.
+     * Returns null if not set or minimal paginator is disabled.
+     */
+    val conveyorBeltSystem: com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel?
+        get() = if (readerSettings.value.enableMinimalPaginator) _conveyorBeltSystem else null
+    
     private var windowAssembler: DefaultWindowAssembler? = null
     
     // Cache for pre-wrapped HTML to enable fast access for windows 0-4 during initial load
@@ -452,6 +479,13 @@ class ReaderViewModel(
                 _windowCount.value = computedWindowCount
                 // Keep LiveData in sync for observers using traditional LiveData pattern
                 windowCountLiveData.postValue(computedWindowCount)
+                
+                // Initialize conveyor belt system if it's set
+                if (_conveyorBeltSystem != null && computedWindowCount > 0) {
+                    val initialWindowIndex = slidingWindowPaginator.getWindowForChapter(startChapter.coerceIn(0, totalChapters - 1))
+                    _conveyorBeltSystem!!.initialize(initialWindowIndex, computedWindowCount)
+                    AppLogger.d("ReaderViewModel", "[CONVEYOR_INTEGRATION] Initialized conveyor: startWindow=$initialWindowIndex, totalWindows=$computedWindowCount")
+                }
                 
                 // [PAGINATION_DEBUG] Log window computation details
                 AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Window computation: totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow, computedWindowCount=$computedWindowCount")

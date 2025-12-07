@@ -121,6 +121,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         val factory = ReaderViewModel.Factory(bookId, bookFile, parser, repository, readerPreferences)
         viewModel = ViewModelProvider(this, factory)[ReaderViewModel::class.java]
         
+        // Instantiate and wire ConveyorBeltSystemViewModel
+        val conveyorViewModel = com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel()
+        viewModel.setConveyorBeltSystem(conveyorViewModel)
+        AppLogger.d("ReaderActivity", "[CONVEYOR_INTEGRATION] ConveyorBeltSystemViewModel created and wired to ReaderViewModel")
+        
         // Debug log: assert initial pagination mode and window count
         AppLogger.d(
             "ReaderActivity",
