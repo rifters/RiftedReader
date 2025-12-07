@@ -897,7 +897,11 @@ class ReaderViewModel(
      * This is the entry point for the minimal paginator integration.
      * 
      * The minimal paginator ensures totalPages > 0 before calling this method,
-     * avoiding race conditions with 0-page reports.
+     * avoiding race conditions with 0-page reports that can occur with the
+     * inpage_paginator.js system.
+     * 
+     * This method performs the same state updates as the existing PaginationBridge
+     * but with the guarantee of stable, non-zero page counts.
      * 
      * @param windowIndex The window index that completed pagination
      * @param totalPages The total page count for the window (guaranteed > 0)
@@ -905,35 +909,62 @@ class ReaderViewModel(
     fun onWindowPaginationReady(windowIndex: Int, totalPages: Int) {
         AppLogger.d(
             "ReaderViewModel",
-            "[MIN_PAGINATOR] onWindowPaginationReady: windowIndex=$windowIndex, totalPages=$totalPages"
+            "[MIN_PAGINATOR] onWindowPaginationReady: windowIndex=$windowIndex, totalPages=$totalPages, " +
+            "currentWindowIndex=$_currentWindowIndex.value"
         )
         
-        // Update state flows to reflect pagination completion
-        if (totalPages > 0) {
-            _totalWebViewPages.value = totalPages
-            
-            // If this is the active window, notify buffer manager (conveyor)
-            if (windowIndex == _currentWindowIndex.value) {
-                AppLogger.d(
-                    "ReaderViewModel",
-                    "[MIN_PAGINATOR] Active window paginated: windowIndex=$windowIndex, totalPages=$totalPages"
-                )
-                
-                // Signal WindowBufferManager about stable pagination
-                // This allows conveyor to transition from STARTUP to STEADY phase
-                _windowBufferManager?.let { bufferManager ->
-                    // The buffer manager uses this signal to know the active window is ready
-                    // for navigation and phase transitions
-                    AppLogger.d(
-                        "ReaderViewModel",
-                        "[MIN_PAGINATOR] Notifying buffer manager of pagination ready"
-                    )
-                }
-            }
-        } else {
+        // Validate input
+        if (totalPages <= 0) {
             AppLogger.w(
                 "ReaderViewModel",
                 "[MIN_PAGINATOR] Received invalid totalPages=$totalPages for windowIndex=$windowIndex"
+            )
+            return
+        }
+        
+        // Update state flows to reflect stable pagination completion
+        _totalWebViewPages.value = totalPages
+        
+        // If this is the active window, update metrics and notify conveyor system
+        if (windowIndex == _currentWindowIndex.value) {
+            AppLogger.d(
+                "ReaderViewModel",
+                "[MIN_PAGINATOR] Active window paginated: windowIndex=$windowIndex, totalPages=$totalPages"
+            )
+            
+            // Update chapter pagination metrics (same as existing PaginationBridge)
+            if (isContinuousMode) {
+                viewModelScope.launch {
+                    try {
+                        val location = getPageLocation(windowIndex)
+                        val chapterIndex = location?.chapterIndex ?: windowIndex
+                        updateChapterPaginationMetrics(chapterIndex, totalPages)
+                        AppLogger.d(
+                            "ReaderViewModel",
+                            "[MIN_PAGINATOR] Updated chapter metrics: chapterIndex=$chapterIndex, totalPages=$totalPages"
+                        )
+                    } catch (e: Exception) {
+                        AppLogger.e(
+                            "ReaderViewModel",
+                            "[MIN_PAGINATOR] Error updating chapter pagination metrics",
+                            e
+                        )
+                    }
+                }
+            }
+            
+            // The WindowBufferManager/conveyor system receives window navigation events
+            // via onEnteredWindow and maybeShiftForward, which are already wired.
+            // The stable totalPages ensures those methods work with accurate data.
+            AppLogger.d(
+                "ReaderViewModel",
+                "[MIN_PAGINATOR] Stable pagination ready for conveyor system - " +
+                "window=$windowIndex has $totalPages pages ready for navigation"
+            )
+        } else {
+            AppLogger.d(
+                "ReaderViewModel",
+                "[MIN_PAGINATOR] Non-active window paginated: windowIndex=$windowIndex (current=$_currentWindowIndex.value)"
             )
         }
     }

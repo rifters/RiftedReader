@@ -163,6 +163,13 @@ class ReaderPageFragment : Fragment() {
                 val minimalPaginatorBridge = PaginatorBridge(
                     windowIndex = windowIndex,
                     onPaginationReady = { wIdx, totalPages ->
+                        // Set paginator initialized flag (same as existing PaginationBridge)
+                        isPaginatorInitialized = true
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "[MIN_PAGINATOR] isPaginatorInitialized set to true for windowIndex=$wIdx"
+                        )
+                        // Forward to ViewModel for state updates and conveyor integration
                         readerViewModel.onWindowPaginationReady(wIdx, totalPages)
                     },
                     onBoundary = { wIdx, direction ->

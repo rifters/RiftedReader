@@ -2,7 +2,12 @@
 
 ## Overview
 
-The minimal paginator integration provides a robust, non-invasive pagination system that works alongside the existing conveyor belt and WindowBufferManager architecture. The integration is **feature-flagged** and disabled by default for backward compatibility.
+The minimal paginator integration provides a robust, non-invasive pagination system that works with the **WindowBufferManager/conveyor belt system** in the development branch. The integration is **feature-flagged** and disabled by default for backward compatibility.
+
+### Key Difference from Main Branch
+- **Main branch**: Conveyor system is isolated for debugging
+- **Development branch**: Conveyor system is actively wired to WindowBufferManager and pagination
+- **This integration**: Provides stable pagination events to support conveyor phase transitions
 
 ## Feature Flag
 
@@ -49,6 +54,20 @@ val enableMinimalPaginator = true  // Force enable for testing
 
 ## Architecture
 
+### Integration with Conveyor System
+
+The minimal paginator integrates with the development branch's conveyor/WindowBufferManager system by:
+
+1. **Stable Pagination Events**: Reports `onPaginationReady` only when totalPages > 0 and stable (avoids 0-page race conditions)
+2. **State Synchronization**: Updates `isPaginatorInitialized` flag and chapter metrics (same as existing system)
+3. **Boundary Detection**: Triggers window shifts via `handleMinimalPaginatorBoundary` → `navigateToNextPage/PreviousPage`
+4. **Conveyor Integration**: `onWindowPaginationReady` updates state flows and chapter metrics used by WindowBufferManager
+
+The WindowBufferManager receives navigation events through existing paths:
+- `onEnteredWindow(windowIndex)` - called when user enters a window
+- `maybeShiftForward/Backward()` - called when user approaches window boundaries
+- `updatePosition()` - called with stable totalPages for progress tracking
+
 ### Components
 
 1. **minimal_paginator.js**
@@ -73,7 +92,26 @@ val enableMinimalPaginator = true  // Force enable for testing
 4. **ReaderViewModel Integration**
    - Location: `app/src/main/java/com/rifters/riftedreader/ui/reader/ReaderViewModel.kt`
    - New method: `onWindowPaginationReady(windowIndex: Int, totalPages: Int)`
-   - Updates StateFlows and notifies WindowBufferManager
+   - Updates StateFlows and chapter metrics
+   - Integrates with WindowBufferManager/conveyor system through existing navigation methods
+
+### Key Relationships
+
+```
+minimal_paginator.js (stable pagination)
+         ↓
+   PaginatorBridge (JavascriptInterface)
+         ↓
+   ReaderPageFragment (sets isPaginatorInitialized)
+         ↓
+   ReaderViewModel.onWindowPaginationReady()
+         ↓
+   Updates: _totalWebViewPages, chapter metrics
+         ↓
+   WindowBufferManager/Conveyor (uses via existing navigation methods)
+         ↓
+   Phase transitions: STARTUP → STEADY
+```
 
 ## Behavior
 
@@ -150,11 +188,27 @@ adb logcat | grep "BOUNDARY"
 
 ## Known Issues / TODOs
 
-1. **WindowBufferManager Integration**: The `onWindowPaginationReady` method currently logs and updates state but doesn't fully signal the buffer manager. This will be completed when the conveyor system requires explicit pagination-ready signals for phase transitions.
+1. **Dual Pagination Systems**: When feature flag is OFF, `inpage_paginator.js` and `AndroidBridge` handle pagination. When ON, `minimal_paginator.js` and `PaginatorBridge` handle it. Both systems coexist but only one is active at a time based on the flag.
 
 2. **Console Message Capture**: WebView console messages from minimal_paginator.js could be captured via WebChromeClient for better diagnostics. This is optional and not implemented yet.
 
 3. **Character Offset Support**: The minimal paginator tracks character offsets for bookmarks/progress, but this isn't wired to the bookmark system yet.
+
+4. **Conveyor Phase Testing**: The main benefit of stable pagination is avoiding 0-page reports that cause conveyor phase transition issues. Test with books that previously had pagination timing issues.
+
+## Conveyor System Integration Notes
+
+The development branch actively wires the conveyor system (which was isolated in main) to the pagination system:
+
+- **WindowBufferManager**: Manages 5-window buffer with STARTUP → STEADY phase transition
+- **Phase Transition Trigger**: When user reaches center window (index 2) of buffer
+- **Stable Pagination Benefit**: Ensures `totalPages > 0` before any navigation logic runs
+- **Integration Points**:
+  - `onEnteredWindow(windowIndex)` - user enters a window
+  - `updatePosition(chapterIndex, inPageIndex, totalPagesInWindow)` - progress tracking
+  - `maybeShiftForward/Backward()` - buffer shift triggers based on position
+
+The minimal paginator ensures all these integration points receive accurate, stable page counts, preventing race conditions where pagination isn't ready yet.
 
 ## Future Enhancements
 
