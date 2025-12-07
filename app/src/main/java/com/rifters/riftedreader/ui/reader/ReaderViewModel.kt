@@ -624,13 +624,22 @@ class ReaderViewModel(
         totalChapters: Int,
         initialWindowIndex: Int
     ) {
+        // TASK 3: CONVEYOR AUTHORITATIVE TAKEOVER - Passive WindowBufferManager
+        // When conveyor is primary, skip WindowBufferManager initialization
+        if (isConveyorPrimary) {
+            AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] WindowBufferManager initialization skipped - conveyor is authoritative")
+            _windowBufferManager = null
+            windowAssembler = null
+            return
+        }
+        
         if (totalChapters <= 0) {
             AppLogger.w("ReaderViewModel", "[CONVEYOR] Skipping buffer initialization: no chapters")
             return
         }
         
         try {
-            AppLogger.d("ReaderViewModel", "[CONVEYOR] *** INITIALIZING WINDOWBUFFERMANAGER ***\n" +
+            AppLogger.d("ReaderViewModel", "[LEGACY_ACTIVE] *** INITIALIZING WINDOWBUFFERMANAGER ***\n" +
                 "  totalChapters=$totalChapters\n" +
                 "  initialWindowIndex=$initialWindowIndex\n" +
                 "  chaptersPerWindow=$chaptersPerWindow")
@@ -683,13 +692,20 @@ class ReaderViewModel(
      * @param windowIndex The global window index that became visible
      */
     fun onWindowBecameVisible(windowIndex: Int) {
+        // TASK 3: CONVEYOR AUTHORITATIVE TAKEOVER - Passive WindowBufferManager
+        // When conveyor is primary, skip WindowBufferManager calls
+        if (isConveyorPrimary) {
+            AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] WindowBufferManager passive - skipping onWindowBecameVisible for window $windowIndex")
+            return
+        }
+        
         if (!isContinuousMode || _windowBufferManager == null) {
             return
         }
         
         val bufferManager = _windowBufferManager ?: return
         
-        AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] ENTRY: onWindowBecameVisible($windowIndex)")
+        AppLogger.d("ReaderViewModel", "[LEGACY_ACTIVE] [WINDOW_VISIBILITY] ENTRY: onWindowBecameVisible($windowIndex)")
         AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] State before: buffer=${bufferManager.getBufferedWindows()}, " +
             "centerWindow=${bufferManager.getCenterWindowIndex()}, phase=${bufferManager.phase.value}")
         AppLogger.d("ReaderViewModel", "[CONVEYOR] onWindowBecameVisible: windowIndex=$windowIndex, " +
@@ -719,6 +735,14 @@ class ReaderViewModel(
      * @param totalPagesInWindow Total pages in the current window
      */
     fun maybeShiftForward(currentInPageIndex: Int, totalPagesInWindow: Int) {
+        // TASK 3: CONVEYOR AUTHORITATIVE TAKEOVER - Passive WindowBufferManager
+        // When conveyor is primary, skip buffer shifting
+        if (isConveyorPrimary) {
+            // Optionally log at trace level for debugging
+            // AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] WindowBufferManager passive - skipping maybeShiftForward")
+            return
+        }
+        
         val phaseCheck = _windowBufferManager?.phase?.value
         AppLogger.d("ReaderViewModel", "[PHASE_CHECK_BEFORE_SHIFT] maybeShiftForward ENTRY: currentPage=$currentInPageIndex/$totalPagesInWindow, phase=$phaseCheck")
 
@@ -772,6 +796,14 @@ class ReaderViewModel(
      * @param currentInPageIndex Current page within the window (0-based)
      */
     fun maybeShiftBackward(currentInPageIndex: Int) {
+        // TASK 3: CONVEYOR AUTHORITATIVE TAKEOVER - Passive WindowBufferManager
+        // When conveyor is primary, skip buffer shifting
+        if (isConveyorPrimary) {
+            // Optionally log at trace level for debugging
+            // AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] WindowBufferManager passive - skipping maybeShiftBackward")
+            return
+        }
+        
         val bufferManager = _windowBufferManager
         if (!isContinuousMode || bufferManager == null) {
             return
@@ -1472,10 +1504,14 @@ class ReaderViewModel(
         
         // CRITICAL: Preload the window HTML when navigating to a new window
         // This ensures the HTML is available when the fragment calls getWindowHtml()
-        if (isContinuousMode && windowBufferManager != null) {
+        // TASK 3: CONVEYOR AUTHORITATIVE TAKEOVER - Skip preload when conveyor is primary
+        if (isContinuousMode && windowBufferManager != null && !isConveyorPrimary) {
             AppLogger.d("ReaderViewModel", 
                 "goToWindow: triggering window preload for windowIndex=$windowIndex [PRELOAD_TRIGGER]")
             windowBufferManager!!.preloadWindow(windowIndex)
+        } else if (isConveyorPrimary) {
+            AppLogger.d("ReaderViewModel", 
+                "[CONVEYOR_ACTIVE] WindowBufferManager passive - skipping preloadWindow for window $windowIndex")
         }
         
         if (isContinuousMode) {
