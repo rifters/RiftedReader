@@ -5,12 +5,8 @@ import android.os.Looper
 import android.util.Base64
 import android.webkit.WebView
 import com.google.gson.Gson
-import com.rifters.riftedreader.domain.pagination.ChapterBoundaryInfo
-import com.rifters.riftedreader.domain.pagination.EntryPosition
-import com.rifters.riftedreader.domain.pagination.PageMappingInfo
 import com.rifters.riftedreader.domain.pagination.PaginatorConfig
 import com.rifters.riftedreader.domain.pagination.PaginatorMode
-import com.rifters.riftedreader.domain.pagination.WindowDescriptor
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -18,53 +14,42 @@ import kotlin.coroutines.resumeWithException
 import kotlin.text.Charsets
 
 /**
- * Bridge for communicating with the in-page paginator JavaScript API.
+ * Bridge for communicating with the minimal paginator JavaScript API (Phase 3).
  * 
- * Provides convenient Kotlin functions to interact with the inpagePaginator
- * JavaScript object injected into WebView content.
+ * This bridge provides Kotlin functions to interact with `minimal_paginator.js`,
+ * a focused implementation that handles:
+ * - Page layout via CSS columns
+ * - In-window navigation (goToPage/getCurrentPage)
+ * - Boundary detection (next/prev window triggers)
+ * - Character offset tracking (bookmarks & progress)
  * 
- * ## Window Communication API
+ * NOT handled (moved to Conveyor):
+ * - Chapter streaming/management
+ * - Window transitions
+ * - TOC navigation
  * 
- * This bridge implements the pseudo-API for Android ↔ JavaScript communication:
- * 
- * ### Commands (Android → JavaScript)
- * - loadWindow(descriptor) - Load a complete window for reading
- * - goToPage(index, animate) - Navigate to specific page
- * - getPageCount() - Query total pages
- * - getCurrentPage() - Query current page
- * - getCurrentChapter() - Query current chapter
- * - getChapterBoundaries() - Get chapter page mappings
- * - getPageMappingInfo() - Get detailed position info
- * 
- * ### Events (JavaScript → Android)
- * Events are handled via AndroidBridge JavascriptInterface in ReaderPageFragment:
- * - onWindowLoaded - Window ready for reading
- * - onPageChanged - User navigated to new page
- * - onBoundaryReached - User at window boundary
- * - onWindowFinalized - Window locked for reading
- * - onWindowLoadError - Error during window load
- * 
- * See docs/complete/WINDOW_COMMUNICATION_API.md for full documentation.
+ * @see docs/complete/PAGINATOR_AUDIT_PHASE_1.md for API audit
+ * @see app/src/main/assets/minimal_paginator.js for implementation
  */
 object WebViewPaginatorBridge {
     
     private val mainHandler = Handler(Looper.getMainLooper())
     private val gson = Gson()
     
-    // ISSUE 4 FIX: Track last known page count to return when paginator is not ready
-    // This prevents returning 1 when paginator is not ready, causing page count flips like 118->109
-    private var lastKnownPageCount: Int = -1
+    // Synchronized cache - read directly from JS state without async callbacks
+    // Updated in real-time by minimal_paginator.js via _syncPaginationState()
+    private var cachedPageCount: Int = -1
+    private var cachedCurrentPage: Int = 0
     
     /**
      * Check if the paginator is initialized and ready for operations.
-     * This should be called before any other paginator methods.
      * 
      * @param webView The WebView to check
      * @return true if paginator is ready, false otherwise
      */
     suspend fun isReady(webView: WebView): Boolean {
         return try {
-            evaluateBoolean(webView, "window.inpagePaginator && window.inpagePaginator.isReady()")
+            evaluateBoolean(webView, "window.minimalPaginator && window.minimalPaginator.isReady()")
         } catch (e: Exception) {
             AppLogger.e("WebViewPaginatorBridge", "Error checking if paginator is ready", e)
             false
@@ -73,8 +58,9 @@ object WebViewPaginatorBridge {
     
     /**
      * Configure the paginator before initialization.
-     * This method should be called before the paginator is initialized to set
-     * the pagination mode and context.
+     * 
+     * This sets mode (window/chapter) and indices for logging/context.
+     * Conveyor system passes complete window HTML to initialize().
      * 
      * @param webView The WebView to configure
      * @param config The paginator configuration
@@ -85,25 +71,30 @@ object WebViewPaginatorBridge {
             PaginatorMode.CHAPTER -> "chapter"
         }
         
-        val chapterIndexParam = config.chapterIndex?.let { ", chapterIndex: $it" } ?: ""
-        // Escape rootSelector for safe JavaScript string interpolation
-        // Handle single quotes, backslashes, newlines, and control characters
-        val rootSelectorParam = config.rootSelector?.let { 
-            val escaped = it
-                .replace("\\", "\\\\")  // Escape backslashes first
-                .replace("'", "\\'")     // Escape single quotes
-                .replace("\n", "\\n")    // Escape newlines
-                .replace("\r", "\\r")    // Escape carriage returns
-                .replace("\t", "\\t")    // Escape tabs
-            ", rootSelector: '$escaped'" 
-        } ?: ""
-        
-        val jsConfig = "{ mode: '$mode', windowIndex: ${config.windowIndex}$chapterIndexParam$rootSelectorParam }"
+        val jsConfig = "{mode: '$mode', windowIndex: ${config.windowIndex}}"
         
         AppLogger.d("WebViewPaginatorBridge", "configure: $jsConfig")
         mainHandler.post {
             webView.evaluateJavascript(
-                "if (window.inpagePaginator) { window.inpagePaginator.configure($jsConfig); }",
+                "if (window.minimalPaginator) { window.minimalPaginator.configure($jsConfig); }",
+                null
+            )
+        }
+    }
+    
+    /**
+     * Initialize the paginator after HTML is loaded.
+     * 
+     * Must be called after HTML content is loaded into the WebView.
+     * This sets up the column layout and calculates page count.
+     * 
+     * @param webView The WebView containing the HTML
+     */
+    fun initialize(webView: WebView) {
+        AppLogger.d("WebViewPaginatorBridge", "initialize: calling window.minimalPaginator.initialize()")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.minimalPaginator) { window.minimalPaginator.initialize(); }",
                 null
             )
         }
@@ -119,7 +110,7 @@ object WebViewPaginatorBridge {
      * @throws NumberFormatException if the result cannot be parsed as an Int
      * @throws Exception if JavaScript evaluation fails
      */
-    suspend fun evaluateInt(webView: WebView, expression: String): Int {
+    private suspend fun evaluateInt(webView: WebView, expression: String): Int {
         val result = evaluateString(webView, expression)
         return result.toIntOrNull() 
             ?: throw NumberFormatException("JavaScript returned non-integer value: $result")
@@ -133,7 +124,7 @@ object WebViewPaginatorBridge {
      * @param expression The JavaScript expression to evaluate
      * @return The result as a String (may be "null" if JavaScript returns null/undefined)
      */
-    suspend fun evaluateString(webView: WebView, expression: String): String = 
+    private suspend fun evaluateString(webView: WebView, expression: String): String = 
         suspendCancellableCoroutine { continuation ->
             AppLogger.d("WebViewPaginatorBridge", "evaluateJavascript: $expression")
             mainHandler.post {
@@ -158,571 +149,160 @@ object WebViewPaginatorBridge {
      * @param expression The JavaScript expression to evaluate
      * @return The result as a Boolean
      */
-    suspend fun evaluateBoolean(webView: WebView, expression: String): Boolean {
+    private suspend fun evaluateBoolean(webView: WebView, expression: String): Boolean {
         val result = evaluateString(webView, expression)
         return result == "true"
     }
     
     /**
-     * Get the current page count from the paginator.
+     * Get total page count in current window.
+     * Returns cached value - synchronized with minimal_paginator.js state.
+     * No async callback - reads directly from paginator state.
      * 
-     * ISSUE 4 FIX: When paginator is not ready, returns lastKnownPageCount if > 0, 
-     * otherwise returns -1 (not 1). This prevents ContinuousPaginator from 
-     * recomputing global pages with stale values, causing page count flips.
-     * 
-     * @param webView The WebView containing the paginated content
-     * @return The number of pages, or lastKnownPageCount if not ready, or -1 if unknown
+     * @param webView The WebView to query (not used, reads cached state)
+     * @return Page count, or -1 if not ready
      */
-    suspend fun getPageCount(webView: WebView): Int {
-        return try {
-            if (!isReady(webView)) {
-                // ISSUE 4 FIX: Return lastKnownPageCount if > 0, otherwise return -1
-                val fallbackCount = if (lastKnownPageCount > 0) lastKnownPageCount else -1
-                AppLogger.d("WebViewPaginatorBridge", "getPageCount: paginator not ready, returning fallback=$fallbackCount (lastKnown=$lastKnownPageCount)")
-                return fallbackCount
-            }
-            val count = evaluateInt(webView, "window.inpagePaginator.getPageCount()")
-            AppLogger.d("WebViewPaginatorBridge", "getPageCount: $count pages")
-            
-            // ISSUE 4 FIX: Update lastKnownPageCount when a valid page count is retrieved
-            if (count > 0) {
-                lastKnownPageCount = count
-            }
-            
-            count
-        } catch (e: Exception) {
-            AppLogger.e("WebViewPaginatorBridge", "Error getting page count", e)
-            // Return lastKnownPageCount if > 0, otherwise return -1
-            if (lastKnownPageCount > 0) lastKnownPageCount else -1
-        }
+    fun getPageCount(webView: WebView): Int {
+        return cachedPageCount
     }
     
     /**
-     * Get the current page index (0-based).
-     * Returns 0 if paginator is not ready.
+     * Get currently displayed page index.
+     * Returns cached value - synchronized with minimal_paginator.js state.
+     * No async callback - reads directly from paginator state.
      * 
-     * @param webView The WebView containing the paginated content
-     * @return The current page index
+     * @param webView The WebView to query (not used, reads cached state)
+     * @return Current page (0-indexed), or 0 if not ready
      */
-    suspend fun getCurrentPage(webView: WebView): Int {
-        return try {
-            if (!isReady(webView)) {
-                AppLogger.d("WebViewPaginatorBridge", "getCurrentPage: paginator not ready, returning 0")
-                return 0
-            }
-            val page = evaluateInt(webView, "window.inpagePaginator.getCurrentPage()")
-            AppLogger.d("WebViewPaginatorBridge", "getCurrentPage: $page")
-            page
-        } catch (e: Exception) {
-            AppLogger.e("WebViewPaginatorBridge", "Error getting current page", e)
-            0 // Return safe default
-        }
+    fun getCurrentPage(webView: WebView): Int {
+        return cachedCurrentPage
     }
     
     /**
-     * Navigate to a specific page.
-     * This method does not suspend - it fires and forgets.
-     * Silently fails if paginator is not ready.
-     * 
-     * @param webView The WebView containing the paginated content
-     * @param index The page index to navigate to (0-based)
-     * @param smooth Whether to animate the transition (default: true)
+     * Internal method called by PaginationBridge to sync page state.
+     * Called from ReaderPageFragment.PaginationBridge._syncPaginationState()
+     * which receives the callback from minimal_paginator.js.
+     * This allows Kotlin to read page info synchronously without async callbacks.
+     * DO NOT call from Kotlin code directly.
      */
-    fun goToPage(webView: WebView, index: Int, smooth: Boolean = true) {
-        AppLogger.userAction("WebViewPaginatorBridge", "goToPage: index=$index, smooth=$smooth", "ui/webview/pagination")
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator && window.inpagePaginator.isReady()) { window.inpagePaginator.goToPage($index, $smooth); }",
-                null
-            )
-        }
-    }
-    
-    /**
-     * Set the font size for the paginated content.
-     * This will trigger a reflow of the columns.
-     * This method does not suspend - it fires and forgets.
-     * Silently fails if paginator is not ready.
-     * 
-     * @param webView The WebView containing the paginated content
-     * @param px The font size in pixels
-     */
-    fun setFontSize(webView: WebView, px: Int) {
-        AppLogger.d("WebViewPaginatorBridge", "setFontSize: ${px}px - triggering reflow")
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator) { window.inpagePaginator.setFontSize($px); }",
-                null
-            )
-        }
-    }
-    
-    /**
-     * Reconfigure display settings without full reinitialization.
-     * Use for theme changes, font size, or line height updates.
-     * 
-     * @param webView The WebView containing the paginated content
-     * @param options Configuration options
-     */
-    fun reconfigure(webView: WebView, options: ReconfigureOptions) {
-        AppLogger.d("WebViewPaginatorBridge", "reconfigure: $options")
-        
-        // Use Gson for safe JSON construction to prevent injection
-        val jsonOptions = gson.toJson(mapOf(
-            "fontSize" to options.fontSize,
-            "lineHeight" to options.lineHeight,
-            "backgroundColor" to options.backgroundColor,
-            "textColor" to options.textColor,
-            "preservePosition" to options.preservePosition
-        ).filterValues { it != null })
-        
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator && window.inpagePaginator.reconfigure) { window.inpagePaginator.reconfigure($jsonOptions); }",
-                null
-            )
-        }
-    }
-
-    fun setInitialChapter(webView: WebView, chapterIndex: Int) {
-        AppLogger.d("WebViewPaginatorBridge", "setInitialChapter: chapter=$chapterIndex")
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator) { window.inpagePaginator.setInitialChapter($chapterIndex); }",
-                null
-            )
-        }
-    }
-
-    fun appendChapter(webView: WebView, chapterIndex: Int, html: String) {
-        AppLogger.userAction(
-            "WebViewPaginatorBridge",
-            "appendChapter: chapter=$chapterIndex length=${html.length}",
-            "ui/webview/streaming"
-        )
-        val encoded = html.toBase64()
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator) { window.inpagePaginator.appendChapter($chapterIndex, atob('$encoded')); }",
-                null
-            )
-        }
-    }
-
-    fun prependChapter(webView: WebView, chapterIndex: Int, html: String) {
-        AppLogger.userAction(
-            "WebViewPaginatorBridge",
-            "prependChapter: chapter=$chapterIndex length=${html.length}",
-            "ui/webview/streaming"
-        )
-        val encoded = html.toBase64()
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator) { window.inpagePaginator.prependChapter($chapterIndex, atob('$encoded')); }",
-                null
-            )
-        }
-    }
-
-    suspend fun getSegmentPageCount(webView: WebView, chapterIndex: Int): Int {
-        return evaluateInt(
-            webView,
-            "window.inpagePaginator.getSegmentPageCount($chapterIndex)"
-        )
-    }
-    
-    /**
-     * Navigate to the next page.
-     * This method does not suspend - it fires and forgets.
-     * Silently fails if paginator is not ready.
-     * 
-     * @param webView The WebView containing the paginated content
-     */
-    fun nextPage(webView: WebView) {
-        AppLogger.d("WebViewPaginatorBridge", "nextPage: navigating to next in-page")
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator && window.inpagePaginator.isReady()) { window.inpagePaginator.nextPage(); }",
-                null
-            )
-        }
-    }
-    
-    /**
-     * Navigate to the previous page.
-     * This method does not suspend - it fires and forgets.
-     * Silently fails if paginator is not ready.
-     * 
-     * @param webView The WebView containing the paginated content
-     */
-    fun prevPage(webView: WebView) {
-        AppLogger.d("WebViewPaginatorBridge", "prevPage: navigating to previous in-page")
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator && window.inpagePaginator.isReady()) { window.inpagePaginator.prevPage(); }",
-                null
-            )
-        }
-    }
-    
-    /**
-     * Get the page index for a given CSS selector.
-     * 
-     * @param webView The WebView containing the paginated content
-     * @param selector The CSS selector to find
-     * @return The page index containing the element, or -1 if not found
-     */
-    suspend fun getPageForSelector(webView: WebView, selector: String): Int {
-        val escapedSelector = selector.replace("'", "\\'")
-        return evaluateInt(webView, "window.inpagePaginator.getPageForSelector('$escapedSelector')")
-    }
-    
-    /**
-     * Jump to a specific chapter by chapter index.
-     * Useful for TOC navigation - scrolls to the first page of the specified chapter.
-     * This method does not suspend - it fires and forgets.
-     * Silently fails if paginator is not ready or chapter not loaded.
-     * 
-     * @param webView The WebView containing the paginated content
-     * @param chapterIndex The chapter index to jump to
-     * @param smooth Whether to animate the transition (default: true)
-     */
-    fun jumpToChapter(webView: WebView, chapterIndex: Int, smooth: Boolean = true) {
-        AppLogger.userAction("WebViewPaginatorBridge", "jumpToChapter: chapter=$chapterIndex, smooth=$smooth", "ui/webview/toc")
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator) { window.inpagePaginator.jumpToChapter($chapterIndex, $smooth); }",
-                null
-            )
-        }
-    }
-    
-    /**
-     * Remove a specific chapter segment by chapter index.
-     * This method does not suspend - it fires and forgets.
-     * 
-     * @param webView The WebView containing the paginated content
-     * @param chapterIndex The chapter index to remove
-     */
-    fun removeChapter(webView: WebView, chapterIndex: Int) {
-        AppLogger.d("WebViewPaginatorBridge", "removeChapter: chapter=$chapterIndex")
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator) { window.inpagePaginator.removeChapter($chapterIndex); }",
-                null
-            )
-        }
-    }
-    
-    /**
-     * Clear all chapter segments.
-     * This method does not suspend - it fires and forgets.
-     * 
-     * @param webView The WebView containing the paginated content
-     */
-    fun clearAllSegments(webView: WebView) {
-        AppLogger.d("WebViewPaginatorBridge", "clearAllSegments")
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator) { window.inpagePaginator.clearAllSegments(); }",
-                null
-            )
-        }
-    }
-    
-    /**
-     * Get the chapter index for the currently visible page.
-     * 
-     * @param webView The WebView containing the paginated content
-     * @return The chapter index or -1 if not found
-     */
-    suspend fun getCurrentChapter(webView: WebView): Int {
-        return try {
-            evaluateInt(webView, "window.inpagePaginator.getCurrentChapter()")
-        } catch (e: Exception) {
-            AppLogger.e("WebViewPaginatorBridge", "Error getting current chapter", e)
-            -1
-        }
-    }
-    
-    /**
-     * Get information about all loaded chapter segments.
-     * 
-     * @param webView The WebView containing the paginated content
-     * @return JSON string with chapter info array
-     */
-    suspend fun getLoadedChapters(webView: WebView): String {
-        return try {
-            evaluateString(webView, "JSON.stringify(window.inpagePaginator.getLoadedChapters())")
-        } catch (e: Exception) {
-            AppLogger.e("WebViewPaginatorBridge", "Error getting loaded chapters", e)
-            "[]"
-        }
-    }
-    
-    /**
-     * Trigger a reflow of the paginated content with optional position preservation.
-     * This method does not suspend - it fires and forgets.
-     * 
-     * @param webView The WebView containing the paginated content
-     * @param preservePosition Whether to try to preserve the reading position (default: true)
-     */
-    fun reflow(webView: WebView, preservePosition: Boolean = true) {
-        AppLogger.d("WebViewPaginatorBridge", "reflow: preservePosition=$preservePosition")
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator) { window.inpagePaginator.reflow($preservePosition); }",
-                null
-            )
-        }
-    }
-    
-    /**
-     * Reapply column styles after layout changes.
-     * This should be called after orientation changes, resize events, or font/line-height changes.
-     * This method does not suspend - it fires and forgets.
-     * 
-     * @param webView The WebView containing the paginated content
-     */
-    fun reapplyColumns(webView: WebView) {
-        AppLogger.d("WebViewPaginatorBridge", "reapplyColumns: requesting column recomputation")
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.reapplyColumns) { window.reapplyColumns(); } else if (window.inpagePaginator && window.inpagePaginator.reapplyColumns) { window.inpagePaginator.reapplyColumns(); }",
-                null
-            )
-        }
-    }
-    
-    /**
-     * Enable or disable pagination diagnostics in the JS paginator.
-     * When enabled, detailed pagination state is logged after key events.
-     * This method does not suspend - it fires and forgets.
-     * 
-     * @param webView The WebView containing the paginated content
-     * @param enable Whether to enable diagnostics
-     */
-    fun enableDiagnostics(webView: WebView, enable: Boolean) {
-        AppLogger.d("WebViewPaginatorBridge", "enableDiagnostics: $enable")
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator && window.inpagePaginator.enableDiagnostics) { window.inpagePaginator.enableDiagnostics($enable); }",
-                null
-            )
-        }
-    }
-    
-    /**
-     * Get image diagnostics from the paginator.
-     * Useful for debugging broken images under sliding window mode.
-     * 
-     * @param webView The WebView containing the paginated content
-     * @return JSON string with image diagnostics array
-     */
-    suspend fun getImageDiagnostics(webView: WebView): String {
-        return try {
-            evaluateString(webView, "JSON.stringify(window.inpagePaginator.getImageDiagnostics ? window.inpagePaginator.getImageDiagnostics() : [])")
-        } catch (e: Exception) {
-            AppLogger.e("WebViewPaginatorBridge", "Error getting image diagnostics", e)
-            "[]"
-        }
-    }
-    
-    /**
-     * Create an anchor around the viewport top to preserve reading position.
-     * 
-     * @param webView The WebView containing the paginated content
-     * @param anchorId The ID for the anchor element
-     * @return true if anchor was created successfully
-     */
-    suspend fun createAnchorAroundViewportTop(webView: WebView, anchorId: String): Boolean {
-        return evaluateBoolean(
-            webView,
-            "window.inpagePaginator.createAnchorAroundViewportTop('$anchorId')"
-        )
-    }
-    
-    /**
-     * Scroll to an anchor element by ID.
-     * 
-     * @param webView The WebView containing the paginated content
-     * @param anchorId The ID of the anchor element
-     * @return true if scrolled successfully
-     */
-    suspend fun scrollToAnchor(webView: WebView, anchorId: String): Boolean {
-        return evaluateBoolean(
-            webView,
-            "window.inpagePaginator.scrollToAnchor('$anchorId')"
-        )
-    }
-    
-    // ========================================================================
-    // Window Communication API
-    // ========================================================================
-    // These methods implement the pseudo-API for Android ↔ JavaScript 
-    // communication for managing reading windows.
-    // See docs/complete/WINDOW_COMMUNICATION_API.md for full documentation.
-    
-    /**
-     * Load a complete window for reading.
-     * 
-     * This is the primary entry point for initializing a window after loading
-     * HTML content into the WebView. It:
-     * 1. Configures the paginator for window mode
-     * 2. Finalizes the window (locks it for reading)
-     * 3. Navigates to the entry position if specified
-     * 
-     * The HTML content should already be loaded via loadDataWithBaseURL().
-     * 
-     * @param webView The WebView containing the window content
-     * @param descriptor The window descriptor with chapters and entry position
-     */
-    fun loadWindow(webView: WebView, descriptor: WindowDescriptor) {
-        val descriptorJson = gson.toJson(descriptor)
-        AppLogger.userAction(
-            "WebViewPaginatorBridge",
-            "loadWindow: windowIndex=${descriptor.windowIndex}, chapters=${descriptor.firstChapterIndex}-${descriptor.lastChapterIndex}",
-            "ui/webview/window"
-        )
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator && window.inpagePaginator.loadWindow) { window.inpagePaginator.loadWindow($descriptorJson); }",
-                null
-            )
-        }
-    }
-    
-    /**
-     * Finalize the window (lock it for reading).
-     * 
-     * After calling this, no mutations (append/prepend) are allowed.
-     * Should be called after window HTML is fully loaded and before reading begins.
-     * 
-     * @param webView The WebView containing the window content
-     */
-    fun finalizeWindow(webView: WebView) {
-        AppLogger.d("WebViewPaginatorBridge", "finalizeWindow: locking window for reading")
-        mainHandler.post {
-            webView.evaluateJavascript(
-                "if (window.inpagePaginator && window.inpagePaginator.finalizeWindow) { window.inpagePaginator.finalizeWindow(); }",
-                null
-            )
-        }
-    }
-    
-    /**
-     * Get chapter boundaries for all chapters in the current window.
-     * 
-     * Returns page ranges for each chapter, enabling:
-     * - Chapter navigation
-     * - Position tracking
-     * - Progress calculation
-     * 
-     * @param webView The WebView containing the window content
-     * @return List of chapter boundary info, or empty list on error
-     */
-    suspend fun getChapterBoundaries(webView: WebView): List<ChapterBoundaryInfo> {
-        return try {
-            // Use getChapterBoundaries if available, fallback to getLoadedChapters for compatibility
-            val jsExpression = """
-                (function() {
-                    var p = window.inpagePaginator;
-                    if (!p) return null;
-                    if (p.getChapterBoundaries) return p.getChapterBoundaries();
-                    if (p.getLoadedChapters) return p.getLoadedChapters();
-                    return [];
-                })()
-            """.trimIndent()
-            val json = evaluateString(webView, "JSON.stringify($jsExpression)")
-            if (json == "null" || json == "[]") {
-                emptyList()
-            } else {
-                gson.fromJson(json, Array<ChapterBoundaryInfo>::class.java).toList()
-            }
-        } catch (e: Exception) {
-            AppLogger.e("WebViewPaginatorBridge", "Error getting chapter boundaries", e)
-            emptyList()
-        }
-    }
-    
-    /**
-     * Get detailed page mapping info for the current position.
-     * 
-     * Returns information about:
-     * - Current window and chapter indices
-     * - Page position within window and chapter
-     * - Total page counts
-     * 
-     * Useful for accurate position restoration during window transitions.
-     * 
-     * @param webView The WebView containing the window content
-     * @return PageMappingInfo or null on error
-     */
-    suspend fun getPageMappingInfo(webView: WebView): PageMappingInfo? {
-        return try {
-            val json = evaluateString(
-                webView,
-                "JSON.stringify(window.inpagePaginator.getPageMappingInfo ? window.inpagePaginator.getPageMappingInfo() : null)"
-            )
-            if (json == "null") {
-                null
-            } else {
-                gson.fromJson(json, PageMappingInfo::class.java)
-            }
-        } catch (e: Exception) {
-            AppLogger.e("WebViewPaginatorBridge", "Error getting page mapping info", e)
-            null
-        }
-    }
-    
-    /**
-     * Navigate to entry position after window load.
-     * 
-     * Helper method to jump to a specific position, typically used during
-     * window transitions to restore reading position.
-     * 
-     * Note: Uses non-smooth scrolling (false) to ensure immediate positioning.
-     * The jumpToChapter and goToPage calls update the internal currentPage state
-     * synchronously, even though the scrolling may have a small delay.
-     * 
-     * @param webView The WebView containing the window content
-     * @param entryPosition The position to navigate to
-     */
-    fun navigateToEntryPosition(webView: WebView, entryPosition: EntryPosition) {
+    fun _syncPaginationState(pageCount: Int, currentPage: Int) {
+        cachedPageCount = pageCount
+        cachedCurrentPage = currentPage
         AppLogger.d(
             "WebViewPaginatorBridge",
-            "navigateToEntryPosition: chapter=${entryPosition.chapterIndex}, page=${entryPosition.inPageIndex}"
+            "_syncPaginationState: pageCount=$pageCount, currentPage=$currentPage [SYNC]"
         )
+    }
+    
+    /**
+     * Navigate to specific page in current window.
+     * 
+     * @param webView The WebView to navigate
+     * @param index Page index (0-indexed)
+     * @param smooth Use smooth scroll animation
+     */
+    fun goToPage(webView: WebView, index: Int, smooth: Boolean = false) {
+        AppLogger.d("WebViewPaginatorBridge", "goToPage: $index, smooth=$smooth")
         mainHandler.post {
-            // First jump to the chapter, then to the specific page
-            // Using non-smooth scrolling (false) for immediate positioning
-            webView.evaluateJavascript("""
-                if (window.inpagePaginator) {
-                    window.inpagePaginator.jumpToChapter(${entryPosition.chapterIndex}, false);
-                    window.inpagePaginator.goToPage(${entryPosition.inPageIndex}, false);
-                }
-            """.trimIndent(), null)
+            webView.evaluateJavascript(
+                "if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage($index, $smooth); }",
+                null
+            )
         }
     }
+    
+    /**
+     * Navigate to next page.
+     * 
+     * Silently fails if paginator is not ready.
+     * 
+     * @param webView The WebView to navigate
+     */
+    fun nextPage(webView: WebView) {
+        AppLogger.d("WebViewPaginatorBridge", "nextPage")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.nextPage(); }",
+                null
+            )
+        }
+    }
+    
+    /**
+     * Navigate to previous page.
+     * 
+     * Silently fails if paginator is not ready.
+     * 
+     * @param webView The WebView to navigate
+     */
+    fun prevPage(webView: WebView) {
+        AppLogger.d("WebViewPaginatorBridge", "prevPage")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.prevPage(); }",
+                null
+            )
+        }
+    }
+    
+    /**
+     * Set font size and trigger reflow.
+     * 
+     * Recalculates page boundaries and character offsets after font change.
+     * 
+     * @param webView The WebView to modify
+     * @param px Font size in pixels
+     */
+    fun setFontSize(webView: WebView, px: Int) {
+        AppLogger.d("WebViewPaginatorBridge", "setFontSize: ${px}px")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.minimalPaginator) { window.minimalPaginator.setFontSize($px); }",
+                null
+            )
+        }
+    }
+    
+    /**
+     * Get character offset at start of a page.
+     * 
+     * Character offset is stable across font size changes.
+     * Used for precise bookmark and progress tracking.
+     * 
+     * @param webView The WebView to query
+     * @param pageIndex Page index (0-indexed)
+     * @return Character offset within current window
+     */
+    suspend fun getCharacterOffsetForPage(webView: WebView, pageIndex: Int): Int {
+        return try {
+            evaluateInt(webView, "window.minimalPaginator.getCharacterOffsetForPage($pageIndex)")
+        } catch (e: Exception) {
+            AppLogger.e("WebViewPaginatorBridge", "Error getting character offset for page $pageIndex", e)
+            0
+        }
+    }
+    
+    /**
+     * Navigate to page containing specific character offset.
+     * 
+     * **NEW API**: Essential for restoring bookmarks after font size changes.
+     * Character offset is stable; page indices shift with font changes.
+     * 
+     * @param webView The WebView to navigate
+     * @param offset Character offset within current window
+     */
+    fun goToPageWithCharacterOffset(webView: WebView, offset: Int) {
+        AppLogger.d("WebViewPaginatorBridge", "goToPageWithCharacterOffset: offset=$offset")
+        mainHandler.post {
+            webView.evaluateJavascript(
+                "if (window.minimalPaginator) { window.minimalPaginator.goToPageWithCharacterOffset($offset); }",
+                null
+            )
+        }
+    }
+    
 }
 
 private fun String.toBase64(): String {
     return Base64.encodeToString(this.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
 }
-
-/**
- * Options for reconfiguring the paginator display settings.
- *
- * @property fontSize Font size in pixels (null to keep current)
- * @property lineHeight Line height multiplier (null to keep current)
- * @property backgroundColor Background color as CSS value (null to keep current)
- * @property textColor Text color as CSS value (null to keep current)
- * @property preservePosition Whether to preserve reading position (default: true)
- */
-data class ReconfigureOptions(
-    val fontSize: Int? = null,
-    val lineHeight: Float? = null,
-    val backgroundColor: String? = null,
-    val textColor: String? = null,
-    val preservePosition: Boolean = true
-)
