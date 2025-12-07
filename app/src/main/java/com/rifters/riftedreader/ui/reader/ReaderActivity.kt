@@ -39,7 +39,6 @@ import com.rifters.riftedreader.domain.tts.TTSService
 import com.rifters.riftedreader.domain.tts.TTSStatusNotifier
 import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
 import com.rifters.riftedreader.ui.reader.ReaderThemePaletteResolver
-import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorDebugActivity
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import com.rifters.riftedreader.util.AppLogger
@@ -54,7 +53,6 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     
     private lateinit var binding: ActivityReaderBinding
     private lateinit var viewModel: ReaderViewModel
-    private lateinit var conveyorBeltSystem: ConveyorBeltSystemViewModel
     private lateinit var gestureDetector: GestureDetector
     private lateinit var controlsManager: ReaderControlsManager
     override lateinit var readerPreferences: ReaderPreferences
@@ -122,18 +120,6 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         
         val factory = ReaderViewModel.Factory(bookId, bookFile, parser, repository, readerPreferences)
         viewModel = ViewModelProvider(this, factory)[ReaderViewModel::class.java]
-        
-        // Instantiate and wire ConveyorBeltSystemViewModel for minimal paginator integration
-        conveyorBeltSystem = ConveyorBeltSystemViewModel()
-        viewModel.setConveyorBeltSystem(conveyorBeltSystem)
-        
-        // Log startup information about minimal paginator default state
-        val enabledStatus = if (readerPreferences.settings.value.enableMinimalPaginator) "ENABLED" else "DISABLED"
-        AppLogger.d(
-            "ReaderActivity",
-            "[MINIMAL_PAGINATOR_DEFAULT] Minimal paginator is now DEFAULT for development: $enabledStatus. " +
-            "ConveyorBeltSystemViewModel wired to ReaderViewModel. Toggle via ADB if needed."
-        )
         
         // Debug log: assert initial pagination mode and window count
         AppLogger.d(

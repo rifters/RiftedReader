@@ -653,11 +653,11 @@ class WindowBufferManager(
     }
     
     /**
-     * Preload window HTML asynchronously.
+     * Preload a single window asynchronously.
      * 
      * @param windowIndex The window index to preload
      */
-    fun preloadWindow(windowIndex: WindowIndex) {
+    private fun preloadWindow(windowIndex: WindowIndex) {
         // Skip if already cached
         if (windowCache.containsKey(windowIndex)) {
             AppLogger.d(TAG, "[PAGINATION_DEBUG] preloadWindow: window $windowIndex already cached")
