@@ -2,12 +2,18 @@
 
 ## Overview
 
-The minimal paginator integration provides a robust, non-invasive pagination system that works with the **WindowBufferManager/conveyor belt system** in the development branch. The integration is **feature-flagged** and disabled by default for backward compatibility.
+The minimal paginator integration provides a robust, non-invasive pagination system that integrates with the **ConveyorBeltSystemViewModel** in the development branch. The integration is **feature-flagged** and disabled by default for backward compatibility.
 
-### Key Difference from Main Branch
-- **Main branch**: Conveyor system is isolated for debugging
-- **Development branch**: Conveyor system is actively wired to WindowBufferManager and pagination
-- **This integration**: Provides stable pagination events to support conveyor phase transitions
+### Architecture Overview
+- **Development branch**: ConveyorBeltSystemViewModel is the window controller (replacing main's WindowBufferManager)
+- **Main branch**: Uses WindowBufferManager for window management
+- **This integration**: Minimal paginator calls `ConveyorBeltSystemViewModel.onWindowEntered()` when pagination is stable
+
+The conveyor system manages:
+- 5-window buffer lifecycle
+- STARTUP → STEADY phase transitions (unlocked at window 2, triggered at window 3)
+- Window shifting (forward/backward navigation)
+- Active window tracking
 
 ## Feature Flag
 
@@ -56,17 +62,18 @@ val enableMinimalPaginator = true  // Force enable for testing
 
 ### Integration with Conveyor System
 
-The minimal paginator integrates with the development branch's conveyor/WindowBufferManager system by:
+The minimal paginator integrates with ConveyorBeltSystemViewModel by:
 
 1. **Stable Pagination Events**: Reports `onPaginationReady` only when totalPages > 0 and stable (avoids 0-page race conditions)
 2. **State Synchronization**: Updates `isPaginatorInitialized` flag and chapter metrics (same as existing system)
-3. **Boundary Detection**: Triggers window shifts via `handleMinimalPaginatorBoundary` → `navigateToNextPage/PreviousPage`
-4. **Conveyor Integration**: `onWindowPaginationReady` updates state flows and chapter metrics used by WindowBufferManager
+3. **Boundary Detection**: Triggers window navigation via `handleMinimalPaginatorBoundary` → `navigateToNextPage/PreviousPage`
+4. **Conveyor Notification**: `onWindowPaginationReady` calls `ConveyorBeltSystemViewModel.onWindowEntered()` with stable page count
 
-The WindowBufferManager receives navigation events through existing paths:
-- `onEnteredWindow(windowIndex)` - called when user enters a window
-- `maybeShiftForward/Backward()` - called when user approaches window boundaries
-- `updatePosition()` - called with stable totalPages for progress tracking
+The ConveyorBeltSystemViewModel manages:
+- **STARTUP phase**: Initial 5-window buffer (windows 0-4), user starts at window 0
+- **Unlock condition**: Reaching window 2 unlocks buffer shifts
+- **STEADY transition**: Moving to window 3 triggers STARTUP → STEADY phase
+- **STEADY phase**: Keeps active window centered with 2 windows ahead/behind, shifts buffer as needed
 
 ### Components
 
@@ -91,14 +98,20 @@ The WindowBufferManager receives navigation events through existing paths:
 
 4. **ReaderViewModel Integration**
    - Location: `app/src/main/java/com/rifters/riftedreader/ui/reader/ReaderViewModel.kt`
+   - New method: `setConveyorBeltSystem(ConveyorBeltSystemViewModel)` - sets the conveyor reference
    - New method: `onWindowPaginationReady(windowIndex: Int, totalPages: Int)`
-   - Updates StateFlows and chapter metrics
-   - Integrates with WindowBufferManager/conveyor system through existing navigation methods
+   - Updates StateFlows, chapter metrics, and calls `conveyor.onWindowEntered(windowIndex)`
+
+5. **ConveyorBeltSystemViewModel** (existing)
+   - Location: `app/src/main/java/com/rifters/riftedreader/ui/reader/conveyor/ConveyorBeltSystemViewModel.kt`
+   - Manages window buffer and phase transitions
+   - `onWindowEntered(windowIndex)` - entry point for pagination events
+   - Tracks phase (STARTUP/STEADY), buffer state, and active window
 
 ### Key Relationships
 
 ```
-minimal_paginator.js (stable pagination)
+minimal_paginator.js (stable totalPages > 0)
          ↓
    PaginatorBridge (JavascriptInterface)
          ↓
@@ -106,11 +119,10 @@ minimal_paginator.js (stable pagination)
          ↓
    ReaderViewModel.onWindowPaginationReady()
          ↓
-   Updates: _totalWebViewPages, chapter metrics
-         ↓
-   WindowBufferManager/Conveyor (uses via existing navigation methods)
+   ConveyorBeltSystemViewModel.onWindowEntered(windowIndex)
          ↓
    Phase transitions: STARTUP → STEADY
+   Buffer shifts: forward/backward navigation
 ```
 
 ## Behavior
@@ -196,19 +208,17 @@ adb logcat | grep "BOUNDARY"
 
 4. **Conveyor Phase Testing**: The main benefit of stable pagination is avoiding 0-page reports that cause conveyor phase transition issues. Test with books that previously had pagination timing issues.
 
+5. **ConveyorBeltSystemViewModel Setup**: The conveyor system needs to be instantiated and set on ReaderViewModel via `setConveyorBeltSystem()`. This setup should be done in ReaderActivity or wherever ReaderViewModel is created.
+
 ## Conveyor System Integration Notes
 
-The development branch actively wires the conveyor system (which was isolated in main) to the pagination system:
+The development branch uses ConveyorBeltSystemViewModel as the primary window controller (replacing main's WindowBufferManager):
 
-- **WindowBufferManager**: Manages 5-window buffer with STARTUP → STEADY phase transition
-- **Phase Transition Trigger**: When user reaches center window (index 2) of buffer
-- **Stable Pagination Benefit**: Ensures `totalPages > 0` before any navigation logic runs
-- **Integration Points**:
-  - `onEnteredWindow(windowIndex)` - user enters a window
-  - `updatePosition(chapterIndex, inPageIndex, totalPagesInWindow)` - progress tracking
-  - `maybeShiftForward/Backward()` - buffer shift triggers based on position
-
-The minimal paginator ensures all these integration points receive accurate, stable page counts, preventing race conditions where pagination isn't ready yet.
+- **Purpose**: Drives window management and phase transitions
+- **STARTUP phase**: Initial 5-window buffer, user at window 0, shifts unlock at window 2, STEADY triggers at window 3
+- **STEADY phase**: Active window kept centered with 2 windows ahead/behind
+- **Integration**: Minimal paginator calls `onWindowEntered(windowIndex)` when pagination is stable
+- **Benefit**: Ensures pagination is ready before phase transitions occur
 
 ## Future Enhancements
 
@@ -216,8 +226,8 @@ When the feature is stable and proven:
 1. Change default to `true` in ReaderSettings
 2. Add UI toggle in Reader Settings screen
 3. Wire character offset tracking to bookmark system
-4. Full WindowBufferManager conveyor integration
-5. Remove feature flag once fully adopted
+4. Remove feature flag once fully adopted
+5. Consider removing WindowBufferManager once conveyor system fully replaces it
 
 ## Code Locations
 
@@ -226,7 +236,8 @@ When the feature is stable and proven:
 | `app/src/main/assets/minimal_paginator.js` | JavaScript pagination engine |
 | `app/src/main/java/com/rifters/riftedreader/ui/reader/PaginatorBridge.kt` | JS-to-Kotlin bridge |
 | `app/src/main/java/com/rifters/riftedreader/ui/reader/ReaderPageFragment.kt` | Bridge registration & initialization |
-| `app/src/main/java/com/rifters/riftedreader/ui/reader/ReaderViewModel.kt` | `onWindowPaginationReady()` handler |
+| `app/src/main/java/com/rifters/riftedreader/ui/reader/ReaderViewModel.kt` | `onWindowPaginationReady()` + `setConveyorBeltSystem()` |
+| `app/src/main/java/com/rifters/riftedreader/ui/reader/conveyor/ConveyorBeltSystemViewModel.kt` | Window controller (receives `onWindowEntered()`) |
 | `app/src/main/java/com/rifters/riftedreader/data/preferences/ReaderPreferences.kt` | Feature flag storage |
 
 ## Support
