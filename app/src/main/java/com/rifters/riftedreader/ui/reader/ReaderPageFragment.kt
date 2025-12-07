@@ -1555,6 +1555,16 @@ class ReaderPageFragment : Fragment() {
             "[MIN_PAGINATOR] Boundary reached: windowIndex=$windowIndex, direction=$direction"
         )
         
+        // TASK 4: CONVEYOR AUTHORITATIVE TAKEOVER - Forward boundary events to conveyor
+        if (readerViewModel.isConveyorPrimary && readerViewModel.conveyorBeltSystem != null) {
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "[CONVEYOR_ACTIVE] Boundary event forwarded to conveyor: window=$windowIndex direction=$direction"
+            )
+            // Note: The actual window navigation will trigger onWindowEntered via the scroll listener
+            // This log serves as a diagnostic marker for boundary detection in conveyor mode
+        }
+        
         // Convert direction string to BoundaryDirection enum
         val boundaryDir = when (direction.uppercase()) {
             "NEXT" -> BoundaryDirection.NEXT

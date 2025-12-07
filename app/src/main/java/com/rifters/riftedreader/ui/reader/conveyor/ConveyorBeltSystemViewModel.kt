@@ -30,6 +30,14 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     private val _eventLog = MutableStateFlow<List<String>>(emptyList())
     val eventLog: StateFlow<List<String>> = _eventLog.asStateFlow()
     
+    // Window count exposed as StateFlow for adapter integration
+    private val _windowCount = MutableStateFlow<Int>(0)
+    val windowCount: StateFlow<Int> = _windowCount.asStateFlow()
+    
+    // Initialization state for readiness checks
+    private val _isInitialized = MutableStateFlow<Boolean>(false)
+    val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
+    
     private var shiftsUnlocked = false
     
     fun onWindowEntered(windowIndex: Int) {
@@ -185,6 +193,12 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         _activeWindow.value = clampedStart
         _phase.value = ConveyorPhase.STARTUP
         shiftsUnlocked = false
+        
+        // Set window count and mark as initialized
+        _windowCount.value = totalWindowCount
+        _isInitialized.value = true
+        
+        log("INIT", "Conveyor initialized: windowCount=$totalWindowCount, buffer=${_buffer.value}, isInitialized=true")
     }
     
     fun simulateNextWindow() {

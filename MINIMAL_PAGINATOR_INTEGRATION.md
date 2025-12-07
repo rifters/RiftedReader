@@ -293,6 +293,113 @@ The development branch uses ConveyorBeltSystemViewModel as the primary window co
 | `app/src/main/java/com/rifters/riftedreader/ui/reader/conveyor/ConveyorBeltSystemViewModel.kt` | Window controller (receives `onWindowEntered()`) |
 | `app/src/main/java/com/rifters/riftedreader/data/preferences/ReaderPreferences.kt` | Feature flag storage |
 
+## Conveyor Authoritative Takeover
+
+### Overview
+
+The **Conveyor Authoritative Takeover** feature makes `ConveyorBeltSystemViewModel` the primary window manager when the minimal paginator is enabled. This is controlled by the same `enableMinimalPaginator` flag.
+
+### What Changes When Conveyor is Primary
+
+When `enableMinimalPaginator=true` (default), the following components behave differently:
+
+1. **ReaderPagerAdapter**: Uses `conveyor.buffer.value.size` as authoritative item count
+2. **ReaderActivity**: Waits for conveyor initialization before initial sync
+3. **WindowBufferManager**: Becomes passive (skips all operations)
+4. **PaginatorBridge**: Forwards events to conveyor with enhanced logging
+
+### Runtime Detection
+
+You can check if conveyor is primary by looking for startup logs:
+
+```
+[CONVEYOR_ACTIVE] CONVEYOR_PRIMARY=true - Conveyor is authoritative window manager
+```
+
+Or when flag is off:
+
+```
+[CONVEYOR_ACTIVE] CONVEYOR_PRIMARY=false - Conveyor is inactive (legacy mode)
+```
+
+### Diagnostic Logs
+
+All conveyor-related operations are tagged with `[CONVEYOR_ACTIVE]` when conveyor is primary, and `[LEGACY_ACTIVE]` when using legacy behavior.
+
+#### Key Log Markers
+
+| Log Prefix | Component | Meaning |
+|------------|-----------|---------|
+| `[CONVEYOR_ACTIVE]` | ReaderPagerAdapter | Adapter using conveyor buffer size |
+| `[CONVEYOR_ACTIVE]` | ReaderActivity | Waiting for conveyor readiness |
+| `[CONVEYOR_ACTIVE]` | ReaderViewModel | WindowBufferManager passive mode |
+| `[CONVEYOR_ACTIVE]` | ReaderPageFragment | Boundary events forwarded to conveyor |
+| `[LEGACY_ACTIVE]` | Various | Legacy behavior active (flag off or conveyor null) |
+
+#### Example Logcat Filter
+
+```bash
+# See all conveyor takeover logs
+adb logcat | grep "CONVEYOR_ACTIVE"
+
+# See when conveyor vs legacy is active
+adb logcat | grep -E "CONVEYOR_ACTIVE|LEGACY_ACTIVE"
+
+# Check conveyor initialization
+adb logcat | grep "CONVEYOR_PRIMARY"
+```
+
+### Testing Checklist: Conveyor Takeover
+
+#### With Conveyor Primary (enableMinimalPaginator=true, default)
+- [ ] Startup log shows `CONVEYOR_PRIMARY=true`
+- [ ] Adapter logs `[CONVEYOR_ACTIVE] Adapter using conveyor.buffer.size`
+- [ ] Initial sync waits for `conveyor.windowCount > 0 && isInitialized`
+- [ ] WindowBufferManager logs show passive mode: `[CONVEYOR_ACTIVE] WindowBufferManager passive - skipping...`
+- [ ] Paginator events show: `[CONVEYOR_ACTIVE] Paginator event forwarded to conveyor`
+- [ ] Boundary events show: `[CONVEYOR_ACTIVE] Boundary event forwarded to conveyor`
+- [ ] Window navigation works smoothly
+- [ ] Buffer size stays at 5 windows
+- [ ] Phase transitions (STARTUP → STEADY) occur correctly
+
+#### With Legacy Mode (enableMinimalPaginator=false)
+- [ ] Startup log shows `CONVEYOR_PRIMARY=false`
+- [ ] Adapter logs `[LEGACY_ACTIVE] getItemCount CHANGED`
+- [ ] Initial sync uses `viewModel.windowCount`
+- [ ] WindowBufferManager is active (initialized and managing buffer)
+- [ ] No `[CONVEYOR_ACTIVE]` logs appear
+- [ ] All logs show `[LEGACY_ACTIVE]` prefix
+
+### Rollback
+
+If issues are detected with conveyor as primary, disable the flag:
+
+```bash
+# Via ADB (requires app restart)
+adb shell "run-as com.rifters.riftedreader \
+  echo 'enable_minimal_paginator=false' >> \
+  /data/data/com.rifters.riftedreader/shared_prefs/reader_preferences.xml"
+
+# Restart app
+adb shell am force-stop com.rifters.riftedreader
+```
+
+After restart, verify legacy mode is active:
+```bash
+adb logcat | grep "CONVEYOR_PRIMARY=false"
+```
+
+### TODO: Unit Tests
+
+The following unit tests should be added to verify conveyor takeover behavior:
+
+- [ ] Test `ReaderViewModel.isConveyorPrimary` returns correct value based on flag
+- [ ] Test adapter routing to conveyor buffer when primary
+- [ ] Test initial sync waits for conveyor readiness
+- [ ] Test WindowBufferManager methods early-return when conveyor primary
+- [ ] Test paginator events forwarded with correct logs
+- [ ] Mock conveyor and verify `onWindowEntered` calls
+
 ## Support
 
 For issues or questions about the minimal paginator integration:
@@ -304,4 +411,4 @@ For issues or questions about the minimal paginator integration:
 ---
 
 **Last Updated**: 2025-12-07  
-**Status**: Implemented, Feature-Flagged (Default: **ON** - Enabled for all development/QA)
+**Status**: Implemented with Conveyor Authoritative Takeover, Feature-Flagged (Default: **ON** - Enabled for all development/QA)

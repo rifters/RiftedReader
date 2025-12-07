@@ -127,6 +127,14 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         conveyorBeltSystem = ConveyorBeltSystemViewModel()
         viewModel.setConveyorBeltSystem(conveyorBeltSystem)
         
+        // DIAGNOSTICS: Log ConveyorPrimary status at startup
+        val isConveyorPrimary = readerPreferences.settings.value.enableMinimalPaginator
+        val conveyorStatus = if (isConveyorPrimary) "CONVEYOR_PRIMARY=true" else "CONVEYOR_PRIMARY=false"
+        AppLogger.d(
+            "ReaderActivity",
+            "[CONVEYOR_ACTIVE] $conveyorStatus - Conveyor is ${if (isConveyorPrimary) "authoritative window manager" else "inactive (legacy mode)"}"
+        )
+        
         // Log startup information about minimal paginator default state
         val enabledStatus = if (readerPreferences.settings.value.enableMinimalPaginator) "ENABLED" else "DISABLED"
         AppLogger.d(
@@ -492,12 +500,30 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         // Use first { } with timeout to properly terminate collection after finding valid window count
         lifecycleScope.launch {
             try {
-                // Timeout after 10 seconds to avoid hanging indefinitely
-                // Book parsing typically completes within seconds, 10s is generous for edge cases
-                withTimeout(10_000L) {
-                    viewModel.windowCount.first { windowCount ->
-                        // Wait for window count to be available
-                        windowCount > 0
+                // TASK 2: CONVEYOR AUTHORITATIVE TAKEOVER - Deferred initial sync
+                // When conveyor is primary, wait for conveyor readiness before syncing
+                if (viewModel.isConveyorPrimary && viewModel.conveyorBeltSystem != null) {
+                    AppLogger.d("ReaderActivity", "[CONVEYOR_ACTIVE] Waiting for conveyor readiness before initial sync")
+                    
+                    // Timeout after 10 seconds to avoid hanging indefinitely
+                    withTimeout(10_000L) {
+                        // Wait for both windowCount > 0 AND isInitialized to be true
+                        viewModel.conveyorBeltSystem!!.windowCount.first { it > 0 }
+                        viewModel.conveyorBeltSystem!!.isInitialized.first { it }
+                    }
+                    
+                    AppLogger.d("ReaderActivity", "[CONVEYOR_ACTIVE] Conveyor ready: windowCount=${viewModel.conveyorBeltSystem!!.windowCount.value}")
+                } else {
+                    // LEGACY PATH: Wait for windowCount from ViewModel
+                    AppLogger.d("ReaderActivity", "[LEGACY_ACTIVE] Waiting for window count before initial sync")
+                    
+                    // Timeout after 10 seconds to avoid hanging indefinitely
+                    // Book parsing typically completes within seconds, 10s is generous for edge cases
+                    withTimeout(10_000L) {
+                        viewModel.windowCount.first { windowCount ->
+                            // Wait for window count to be available
+                            windowCount > 0
+                        }
                     }
                 }
                 
@@ -543,6 +569,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         val initialWindow = viewModel.currentWindowIndex.value
         val adapterItemCount = pagerAdapter.itemCount
         AppLogger.d("ReaderActivity", "[BUFFER_SYNC] Sync parameters: currentWindowIndex=$initialWindow, adapterItemCount=$adapterItemCount")
+        
+        // TASK 2: CONVEYOR AUTHORITATIVE TAKEOVER - Log when using conveyor
+        if (viewModel.isConveyorPrimary && viewModel.conveyorBeltSystem != null) {
+            AppLogger.d("ReaderActivity", "[CONVEYOR_ACTIVE] Scrolling to initialWindow=$initialWindow (conveyor buffer=${viewModel.conveyorBeltSystem!!.buffer.value})")
+        }
         
         // Validate adapter has items
         if (adapterItemCount <= 0) {
