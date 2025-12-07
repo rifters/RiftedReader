@@ -59,9 +59,10 @@ data class ReaderSettings(
      * - Provides explicit boundary detection for window transitions
      * - Ensures totalPages > 0 before reporting ready (avoids race conditions)
      * 
-     * Default is false for backward compatibility. Enable for testing/QA.
+     * Default is true for development. All QA and dev work tests the new pipeline.
+     * Can be toggled to false via ADB or code for legacy paginator testing.
      */
-    val enableMinimalPaginator: Boolean = false
+    val enableMinimalPaginator: Boolean = true
 )
 
 enum class ReaderTheme {
@@ -105,7 +106,7 @@ class ReaderPreferences(context: Context) {
         val streamingEnabled = prefs.getBoolean(KEY_CONTINUOUS_STREAMING, true)
         val diagnosticsEnabled = prefs.getBoolean(KEY_PAGINATION_DIAGNOSTICS, false)
         val debugWindowRendering = prefs.getBoolean(KEY_DEBUG_WINDOW_RENDERING, false)
-        val enableMinimalPaginator = prefs.getBoolean(KEY_ENABLE_MINIMAL_PAGINATOR, false)
+        val enableMinimalPaginator = prefs.getBoolean(KEY_ENABLE_MINIMAL_PAGINATOR, true)
         
         // Read chapter visibility settings
         val includeCover = prefs.getBoolean(KEY_INCLUDE_COVER, false)
