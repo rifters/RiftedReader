@@ -93,6 +93,13 @@ class ReaderViewModel(
     val paginationMode: PaginationMode
         get() = readerPreferences.settings.value.paginationMode
     
+    /**
+     * Check if using horizontal windowed pagination mode.
+     * 
+     * Note: "CONTINUOUS mode" in the codebase refers to horizontal windowed pagination
+     * where chapters are grouped into sliding windows (5 chapters per window) for
+     * efficient memory management and smooth horizontal scrolling.
+     */
     val isContinuousMode: Boolean
         get() = paginationMode == PaginationMode.CONTINUOUS
     
@@ -128,7 +135,7 @@ class ReaderViewModel(
     // Chapter index provider for unified chapter indexing with visibility settings
     // Provides mapping between UI indices and spine indices based on visibility settings.
     // NOTE: Chapters are populated during pagination initialization (initializeChapterBasedPagination
-    // or initializeContinuousPagination), not during construction. The initial visibility settings
+    // or initializeHorizontalWindowedPagination), not during construction. The initial visibility settings
     // are applied when observeVisibilitySettingsChanges() starts collecting.
     val chapterIndexProvider = ChapterIndexProvider(chaptersPerWindow)
 
@@ -297,8 +304,8 @@ class ReaderViewModel(
         
         // Initialize content loading based on pagination mode
         if (isContinuousMode) {
-            AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Starting continuous mode initialization")
-            initializeContinuousPagination()
+            AppLogger.d("ReaderViewModel", "[WINDOWED] Starting horizontal windowed mode initialization")
+            initializeHorizontalWindowedPagination()
         } else {
             AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Starting chapter-based mode initialization")
             initializeChapterBasedPagination()
@@ -427,12 +434,23 @@ class ReaderViewModel(
         }
     }
 
-    private fun initializeContinuousPagination() {
+    /**
+     * Initialize horizontal windowed pagination mode.
+     * 
+     * CONTINUOUS mode = horizontal windowed pagination with 5-chapter windows.
+     * This mode groups chapters into sliding windows for efficient memory management
+     * and smooth horizontal scrolling through the book content.
+     * 
+     * Each window contains up to 5 chapters of content, and windows are managed in
+     * a 5-window buffer (STARTUP and STEADY phases) by the ConveyorBeltSystemViewModel
+     * when enableMinimalPaginator is true.
+     */
+    private fun initializeHorizontalWindowedPagination() {
         viewModelScope.launch {
             // Begin window build - lock pagination mode during construction
             paginationModeGuard.beginWindowBuild()
             try {
-                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Initializing continuous pagination for book=$bookId")
+                AppLogger.d("ReaderViewModel", "[WINDOWED] Initializing horizontal windowed pagination for book=$bookId")
                 val paginator = ContinuousPaginator(bookFile, parser, windowSize = 5)
                 paginator.initialize()
                 continuousPaginator = paginator
@@ -441,7 +459,7 @@ class ReaderViewModel(
                 val startChapter = book?.currentChapterIndex ?: 0
                 val startInPage = book?.currentInPageIndex ?: 0
                 
-                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Book info: startChapter=$startChapter, startInPage=$startInPage")
+                AppLogger.d("ReaderViewModel", "[WINDOWED] Book info: startChapter=$startChapter, startInPage=$startInPage")
                 
                 // Load the initial window
                 paginator.loadInitialWindow(startChapter)
@@ -451,11 +469,11 @@ class ReaderViewModel(
                 val windowInfo = paginator.getWindowInfo()
                 val totalChapters = windowInfo.totalChapters
                 
-                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] WindowInfo: totalChapters=$totalChapters, totalGlobalPages=${windowInfo.totalGlobalPages}")
+                AppLogger.d("ReaderViewModel", "[WINDOWED] WindowInfo: totalChapters=$totalChapters, totalGlobalPages=${windowInfo.totalGlobalPages}")
                 
                 // Handle empty book case properly - set all state to consistent values
                 if (totalChapters <= 0) {
-                    AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] Book has no chapters - applying fallback")
+                    AppLogger.w("ReaderViewModel", "[WINDOWED] Book has no chapters - applying fallback")
                     _totalPages.value = 0
                     _windowCount.value = 0
                     windowCountLiveData.postValue(0)
@@ -473,12 +491,12 @@ class ReaderViewModel(
                 // Keep LiveData in sync for observers using traditional LiveData pattern
                 windowCountLiveData.postValue(computedWindowCount)
                 
-                // [PAGINATION_DEBUG] Log window computation details
-                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Window computation: totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow, computedWindowCount=$computedWindowCount")
+                // [WINDOWED] Log window computation details
+                AppLogger.d("ReaderViewModel", "[WINDOWED] Window computation: totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow, computedWindowCount=$computedWindowCount")
                 
                 // [FALLBACK] If zero windows computed, create at least one window with all content
                 if (computedWindowCount == 0 && totalChapters > 0) {
-                    AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] FALLBACK: Zero windows computed for $totalChapters chapters - forcing windowCount=1")
+                    AppLogger.e("ReaderViewModel", "[WINDOWED] FALLBACK: Zero windows computed for $totalChapters chapters - forcing windowCount=1")
                     _windowCount.value = 1
                     // Also update LiveData for observers using traditional LiveData pattern
                     windowCountLiveData.postValue(1)
@@ -499,7 +517,7 @@ class ReaderViewModel(
                 val initialWindowIndex = slidingWindowPaginator.getWindowForChapter(safeStartChapter)
                 _currentWindowIndex.value = initialWindowIndex
                 
-                AppLogger.d("ReaderViewModel", "[WINDOW_BUILD] CONTINUOUS complete: totalChapters=$totalChapters, windowCount=$computedWindowCount, initialWindowIndex=$initialWindowIndex")
+                AppLogger.d("ReaderViewModel", "[WINDOWED] Initialization complete: totalChapters=$totalChapters, windowCount=$computedWindowCount, initialWindowIndex=$initialWindowIndex")
                 
                 // Verify invariant
                 paginationModeGuard.assertWindowCountInvariant(
@@ -521,9 +539,9 @@ class ReaderViewModel(
 
                 updateForGlobalPage(initialGlobalPage)
                 
-                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Restored position: chapter=$safeStartChapter, inPage=$startInPage, globalPage=$initialGlobalPage")
+                AppLogger.d("ReaderViewModel", "[WINDOWED] Restored position: chapter=$safeStartChapter, inPage=$startInPage, globalPage=$initialGlobalPage")
             } catch (e: Exception) {
-                AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] Failed to initialize continuous paginator", e)
+                AppLogger.e("ReaderViewModel", "[WINDOWED] Failed to initialize horizontal windowed pagination", e)
                 _pages.value = emptyList()
                 _totalPages.value = 0
                 _windowCount.value = 0
@@ -632,6 +650,20 @@ class ReaderViewModel(
             AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] WindowBufferManager initialization skipped - conveyor is authoritative")
             _windowBufferManager = null
             windowAssembler = null
+            
+            // Initialize ConveyorBeltSystemViewModel with window count and starting position
+            val computedWindowCount = _windowCount.value
+            val conveyorSystem = _conveyorBeltSystem
+            if (conveyorSystem != null && computedWindowCount > 0) {
+                conveyorSystem.initialize(initialWindowIndex, computedWindowCount)
+                AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] ConveyorBeltSystemViewModel initialized: " +
+                    "startWindow=$initialWindowIndex, totalWindows=$computedWindowCount, " +
+                    "phase=${conveyorSystem.phase.value}")
+            } else {
+                AppLogger.w("ReaderViewModel", "[CONVEYOR_ACTIVE] Conveyor initialization skipped: " +
+                    "conveyorSystem=${conveyorSystem != null}, windowCount=$computedWindowCount")
+            }
+            
             return
         }
         
