@@ -75,11 +75,7 @@ class FlexPaginator(
                 val content = withContext(Dispatchers.IO) {
                     parser.getPageContent(bookFile, chapterIndex)
                 }
-                if (content != null) {
-                    chapterContents[chapterIndex] = content
-                } else {
-                    AppLogger.w(TAG, "[FLEX] Failed to load chapter $chapterIndex")
-                }
+                chapterContents[chapterIndex] = content
             }
             
             // If no chapters loaded, return null
