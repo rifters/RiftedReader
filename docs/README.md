@@ -59,6 +59,11 @@ This directory contains all project documentation, organized by category for eas
 - **[STAGE_6_8_TODO.md](planning/STAGE_6_8_TODO.md)** - Current implementation tasks
 - **[EPUB_IMPROVEMENTS.md](planning/EPUB_IMPROVEMENTS.md)** - EPUB parser enhancements
 - **[WEBVIEW_PAGINATOR_ENHANCEMENTS.md](planning/WEBVIEW_PAGINATOR_ENHANCEMENTS.md)** - Paginator improvements
+- **[FLEX_PAGINATION_ARCHITECTURE.md](planning/FLEX_PAGINATION_ARCHITECTURE.md)** - Conveyor + WebView flow with flex pagination system
+  - Node-walking slicing algorithm with hard chapter breaks
+  - Flex container and scroll-snap navigation
+  - WebView lifecycle integration
+  - Complete data flow pipeline and component specifications
 
 ### [implemented/](implemented/)
 **Implementation status and summaries** - Records of what has been completed.
@@ -109,4 +114,4 @@ When adding or updating documentation:
 Always update this README when adding significant new documentation.
 
 ---
-*Last Updated: 2025-11-25*
+*Last Updated: 2025-12-08*
