@@ -304,7 +304,7 @@ class ReaderViewModel(
         
         // Initialize content loading based on pagination mode
         if (isContinuousMode) {
-            AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Starting horizontal windowed mode initialization")
+            AppLogger.d("ReaderViewModel", "[WINDOWED] Starting horizontal windowed mode initialization")
             initializeHorizontalWindowedPagination()
         } else {
             AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Starting chapter-based mode initialization")
@@ -653,14 +653,15 @@ class ReaderViewModel(
             
             // Initialize ConveyorBeltSystemViewModel with window count and starting position
             val computedWindowCount = _windowCount.value
-            if (_conveyorBeltSystem != null && computedWindowCount > 0) {
-                _conveyorBeltSystem?.initialize(initialWindowIndex, computedWindowCount)
+            val conveyorSystem = _conveyorBeltSystem
+            if (conveyorSystem != null && computedWindowCount > 0) {
+                conveyorSystem.initialize(initialWindowIndex, computedWindowCount)
                 AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] ConveyorBeltSystemViewModel initialized: " +
                     "startWindow=$initialWindowIndex, totalWindows=$computedWindowCount, " +
-                    "phase=${_conveyorBeltSystem?.phase?.value}")
+                    "phase=${conveyorSystem.phase.value}")
             } else {
                 AppLogger.w("ReaderViewModel", "[CONVEYOR_ACTIVE] Conveyor initialization skipped: " +
-                    "conveyorSystem=${_conveyorBeltSystem != null}, windowCount=$computedWindowCount")
+                    "conveyorSystem=${conveyorSystem != null}, windowCount=$computedWindowCount")
             }
             
             return
