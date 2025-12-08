@@ -633,8 +633,41 @@ class ReaderViewModel(
         totalChapters: Int,
         initialWindowIndex: Int
     ) {
-        // WindowBufferManager is deprecated - always use ConveyorBeltSystemViewModel
-        AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] WindowBufferManager deprecated - using ConveyorBeltSystemViewModel")
+        // TASK 3: CONVEYOR AUTHORITATIVE TAKEOVER - Passive WindowBufferManager
+        // When conveyor is primary, skip WindowBufferManager initialization
+        if (isConveyorPrimary) {
+            AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] WindowBufferManager initialization skipped - conveyor is authoritative")
+            _windowBufferManager = null
+            windowAssembler = null
+            
+            // Initialize ConveyorBeltSystemViewModel with window count and starting position
+            val computedWindowCount = _windowCount.value
+            val conveyorSystem = _conveyorBeltSystem
+            if (conveyorSystem != null && computedWindowCount > 0) {
+                // Set HTML loading dependencies first
+                conveyorSystem.setHtmlLoadingDependencies(
+                    paginator = paginator,
+                    windowManager = slidingWindowManager,
+                    bookId = bookId
+                )
+                
+                // Then initialize the buffer
+                conveyorSystem.initialize(initialWindowIndex, computedWindowCount)
+                AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] ConveyorBeltSystemViewModel initialized: " +
+                    "startWindow=$initialWindowIndex, totalWindows=$computedWindowCount, " +
+                    "phase=${conveyorSystem.phase.value}")
+            } else {
+                AppLogger.w("ReaderViewModel", "[CONVEYOR_ACTIVE] Conveyor initialization skipped: " +
+                    "conveyorSystem=${conveyorSystem != null}, windowCount=$computedWindowCount")
+            }
+            
+            return
+        }
+        
+        if (totalChapters <= 0) {
+            AppLogger.w("ReaderViewModel", "[CONVEYOR] Skipping buffer initialization: no chapters")
+            return
+        }
         
         // Initialize ConveyorBeltSystemViewModel with window count and starting position
         val computedWindowCount = _windowCount.value
@@ -653,14 +686,50 @@ class ReaderViewModel(
     /**
      * Called when the user scrolls to and settles on a new window.
      * 
-     * DEPRECATED: WindowBufferManager has been removed in favor of ConveyorBeltSystemViewModel.
-     * This method is kept for API compatibility but does nothing.
+     * This notifies the ConveyorBeltSystemViewModel or WindowBufferManager that a window became visible,
+     * triggering phase transition checks and potential buffer shifts.
+     * 
+     * Should be called from ReaderActivity when RecyclerView scroll settles.
      * 
      * @param windowIndex The global window index that became visible
      */
     fun onWindowBecameVisible(windowIndex: Int) {
-        // WindowBufferManager is deprecated and removed - this is a no-op
-        return
+        // When conveyor is primary, route to ConveyorBeltSystemViewModel
+        if (isConveyorPrimary) {
+            val conveyorSystem = _conveyorBeltSystem
+            if (conveyorSystem != null) {
+                AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] Routing onWindowBecameVisible($windowIndex) to ConveyorBeltSystemViewModel")
+                conveyorSystem.onWindowEntered(windowIndex)
+            } else {
+                AppLogger.w("ReaderViewModel", "[CONVEYOR_ACTIVE] onWindowBecameVisible called but conveyor system is null")
+            }
+            return
+        }
+        
+        if (!isContinuousMode || _windowBufferManager == null) {
+            return
+        }
+        
+        val bufferManager = _windowBufferManager ?: return
+        
+        AppLogger.d("ReaderViewModel", "[LEGACY_ACTIVE] [WINDOW_VISIBILITY] ENTRY: onWindowBecameVisible($windowIndex)")
+        AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] State before: buffer=${bufferManager.getBufferedWindows()}, " +
+            "centerWindow=${bufferManager.getCenterWindowIndex()}, phase=${bufferManager.phase.value}")
+        AppLogger.d("ReaderViewModel", "[CONVEYOR] onWindowBecameVisible: windowIndex=$windowIndex, " +
+            "currentBuffer=${bufferManager.getBufferedWindows()}, phase=${bufferManager.phase.value}")
+        
+        viewModelScope.launch {
+            try {
+                bufferManager.onEnteredWindow(windowIndex)
+                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] After onEnteredWindow: phase=${bufferManager.phase.value}, " +
+                    "buffer=${bufferManager.getBufferedWindows()}, activeWindow=${bufferManager.getActiveWindowIndex()}")
+                AppLogger.d("ReaderViewModel", "[CONVEYOR] After onEnteredWindow: phase=${bufferManager.phase.value}, " +
+                    "buffer=${bufferManager.getBufferedWindows()}, debug=${bufferManager.getDebugInfo()}")
+                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] EXIT: onWindowBecameVisible($windowIndex) completed")
+            } catch (e: Exception) {
+                AppLogger.e("ReaderViewModel", "[CONVEYOR] Error in onWindowBecameVisible", e)
+            }
+        }
     }
     
     /**
@@ -1258,8 +1327,35 @@ class ReaderViewModel(
             
             AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Getting window HTML: windowIndex=$windowIndex, chapters=$firstChapterInWindow-$lastChapterInWindow (totalChapters=$totalChapters, windowSize=$windowSize)")
             
-            // WindowBufferManager cache has been removed (deprecated)
-            // Fallback directly to pre-wrapped cache or generate HTML
+            // Check ConveyorBeltSystemViewModel cache first if conveyor is primary
+            if (isConveyorPrimary) {
+                val conveyorHtml = _conveyorBeltSystem?.getCachedWindowHtml(windowIndex)
+                if (conveyorHtml != null) {
+                    AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] Using ConveyorBeltSystemViewModel cached HTML for window $windowIndex (htmlLength=${conveyorHtml.length})")
+                    return WindowHtmlPayload(
+                        html = conveyorHtml,
+                        windowIndex = windowIndex,
+                        chapterIndex = firstChapterInWindow,
+                        inPageIndex = 0,
+                        windowSize = windowSize,
+                        totalChapters = totalChapters
+                    )
+                }
+            }
+            
+            // Check WindowBufferManager cache (if not using conveyor)
+            val bufferData = windowBufferManager?.getCachedWindow(windowIndex)
+            if (bufferData != null) {
+                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Using WindowBufferManager cached HTML for window $windowIndex (htmlLength=${bufferData.html.length})")
+                return WindowHtmlPayload(
+                    html = bufferData.html,
+                    windowIndex = windowIndex,
+                    chapterIndex = bufferData.firstChapter,
+                    inPageIndex = 0,
+                    windowSize = windowSize,
+                    totalChapters = totalChapters
+                )
+            }
             
             // Check pre-wrapped cache second (initial load optimization)
             val cachedHtml = preWrappedHtmlCache[windowIndex]

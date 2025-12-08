@@ -27,12 +27,13 @@ class ConveyorBeltSystemViewModelTest {
     // ========================================================================
     
     @Test
-    fun `initialize creates buffer with 5 consecutive windows starting from startWindow`() {
+    fun `initialize creates buffer centered around startWindow`() {
         viewModel.initialize(startWindow = 2, totalWindowCount = 10)
         
         val buffer = viewModel.buffer.value
         assertEquals(5, buffer.size)
-        assertEquals(listOf(2, 3, 4, 5, 6), buffer)
+        // Centered around 2 with offset of 2: [0, 1, 2, 3, 4]
+        assertEquals(listOf(0, 1, 2, 3, 4), buffer)
     }
     
     @Test
@@ -245,7 +246,8 @@ class ConveyorBeltSystemViewModelTest {
         
         // Should be back to STARTUP
         assertEquals(ConveyorPhase.STARTUP, viewModel.phase.value)
-        assertEquals(listOf(5, 6, 7, 8, 9), viewModel.buffer.value)
+        // Centered around 5 with offset of 2: [3, 4, 5, 6, 7]
+        assertEquals(listOf(3, 4, 5, 6, 7), viewModel.buffer.value)
     }
     
     @Test
