@@ -22,18 +22,21 @@ class FlexPaginator(private val repo: ChapterRepository) : WindowAssembler {
         windowIndex: WindowIndex,
         firstChapter: ChapterIndex,
         lastChapter: ChapterIndex
-    ): WindowData? = try {
-        WindowData(
-            html = buildHtml(windowIndex, firstChapter, lastChapter) ?: return null,
-            firstChapter = firstChapter,
-            lastChapter = lastChapter,
-            windowIndex = windowIndex
-        )
-    } catch (e: Exception) {
-        null
+    ): WindowData? {
+        return try {
+            val html = buildHtml(windowIndex, firstChapter, lastChapter) ?: return null
+            WindowData(
+                html = html,
+                firstChapter = firstChapter,
+                lastChapter = lastChapter,
+                windowIndex = windowIndex
+            )
+        } catch (e: Exception) {
+            null
+        }
     }
 
-    private suspend fun buildHtml(win: WindowIndex, first: ChapterIndex, last: ChapterIndex): String {
+    private suspend fun buildHtml(win: WindowIndex, first: ChapterIndex, last: ChapterIndex): String? {
         val sb = StringBuilder()
         sb.append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">")
         sb.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,user-scalable=no\">")
@@ -47,7 +50,8 @@ class FlexPaginator(private val repo: ChapterRepository) : WindowAssembler {
         sb.append("<div id=\"flex-root\" data-window-index=\"$win\">")
         
         for (i in first..last) {
-            repo.getChapterHtml(i)?.let { content ->
+            val content = repo.getChapterHtml(i)
+            if (content != null) {
                 sb.append("<section data-chapter=\"$i\">$content</section>")
             }
         }
