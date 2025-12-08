@@ -1936,10 +1936,8 @@ class ReaderPageFragment : Fragment() {
                         readerViewModel.updateWebViewPageState(newPage, totalPages)
                         
                         // Detect window transitions to prevent inappropriate buffer shifts
-                        val currentWindowIndex = readerViewModel.windowBufferManager?.getActiveWindowIndex()
-                        val isWindowTransition = currentWindowIndex != null && 
-                                                lastKnownWindowIndex != null && 
-                                                lastKnownWindowIndex != currentWindowIndex
+                        // WindowBufferManager has been deprecated - window transition detection removed
+                        val isWindowTransition = false
                         
                         if (isWindowTransition) {
                             windowTransitionTimestamp = System.currentTimeMillis()
@@ -1961,11 +1959,10 @@ class ReaderPageFragment : Fragment() {
                         // Buffer shift threshold is 2 pages, so check if within that range
                         // IMPORTANT: Skip shift checks during cooldown period after window transitions
                         // to prevent shifting backward when entering a new window at page 0
-                        val currentPhase = readerViewModel.windowBufferManager?.phase?.value
-                        val activeWindow = readerViewModel.windowBufferManager?.getActiveWindowIndex()
+                        // WindowBufferManager has been deprecated - these checks are no-ops
                         com.rifters.riftedreader.util.AppLogger.d(
                             "ReaderPageFragment",
-                            "[EDGE_CHECK] page=$newPage/$totalPages, phase=$currentPhase, window=$activeWindow, cooldown=$inCooldownPeriod"
+                            "[EDGE_CHECK] page=$newPage/$totalPages, cooldown=$inCooldownPeriod (WindowBufferManager deprecated)"
                         )
                         
                         if (totalPages > 0 && newPage >= totalPages - 2 && !inCooldownPeriod) {

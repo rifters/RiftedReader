@@ -174,15 +174,16 @@ class ConveyorBeltIntegrationBridge(
     
     /**
      * Log a comparison of the old WindowBufferManager state vs the isolated system.
+     * 
+     * WindowBufferManager has been deprecated and removed, so this now only logs
+     * the ConveyorBeltSystemViewModel state.
      */
     private fun logStateComparison(label: String) {
-        val wbm = readerViewModel.windowBufferManager
-        
-        // Use descriptive strings for unavailable values
-        val oldPhase = wbm?.phase?.value?.name ?: "NOT_AVAILABLE"
-        val oldActive = wbm?.getActiveWindowIndex()
-        val oldBuffer = wbm?.getBufferedWindows() ?: emptyList()
-        val oldCenter = wbm?.getCenterWindowIndex()
+        // WindowBufferManager has been deprecated and removed
+        val oldPhase = "DEPRECATED"
+        val oldActive = "N/A"
+        val oldBuffer = emptyList<Int>()
+        val oldCenter = "N/A"
         
         val newPhase = conveyorViewModel.phase.value.name
         val newActive = conveyorViewModel.activeWindow.value
@@ -204,14 +205,13 @@ class ConveyorBeltIntegrationBridge(
             appendLine("  center=${newCenter ?: "NOT_AVAILABLE"}")
             appendLine()
             appendLine("[DIFFERENCES]")
-            if (oldPhase != newPhase) appendLine("  ❌ Phase: $oldPhase vs $newPhase")
-            if (oldActive != newActive) appendLine("  ❌ Active: $oldActive vs $newActive")
-            if (oldBuffer != newBuffer) appendLine("  ❌ Buffer: $oldBuffer vs $newBuffer")
-            if (oldCenter != newCenter) appendLine("  ❌ Center: $oldCenter vs $newCenter")
-            if (oldPhase == newPhase && oldActive == newActive && 
-                oldBuffer == newBuffer && oldCenter == newCenter) {
-                appendLine("  ✓ States match!")
-            }
+            // WindowBufferManager has been deprecated - skip comparisons with old system
+            appendLine("  WindowBufferManager: DEPRECATED")
+            appendLine("  ConveyorBeltSystem: Active")
+            appendLine("  Phase: $newPhase")
+            appendLine("  Active: $newActive")
+            appendLine("  Buffer: $newBuffer")
+            appendLine("  Center: $newCenter")
             appendLine("========================")
         })
     }
