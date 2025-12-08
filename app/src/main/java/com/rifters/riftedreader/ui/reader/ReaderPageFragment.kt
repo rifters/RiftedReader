@@ -1939,20 +1939,8 @@ class ReaderPageFragment : Fragment() {
                         // WindowBufferManager has been deprecated - window transition detection removed
                         val isWindowTransition = false
                         
-                        if (isWindowTransition) {
-                            windowTransitionTimestamp = System.currentTimeMillis()
-                            com.rifters.riftedreader.util.AppLogger.d(
-                                "ReaderPageFragment",
-                                "[WINDOW_SHIFT] Window transition detected: " +
-                                "from $lastKnownWindowIndex to $currentWindowIndex, " +
-                                "entering cooldown period"
-                            )
-                        }
-                        lastKnownWindowIndex = currentWindowIndex
-                        
-                        // Calculate if cooldown period has elapsed since last window transition
-                        val timeSinceTransition = System.currentTimeMillis() - windowTransitionTimestamp
-                        val inCooldownPeriod = timeSinceTransition < WINDOW_TRANSITION_COOLDOWN_MS
+                        // Window transition tracking is deprecated - skip cooldown logic
+                        val inCooldownPeriod = false
                         
                         // Notify WindowBufferManager of position for potential buffer shifts
                         // Only call if near boundaries to reduce unnecessary method invocations

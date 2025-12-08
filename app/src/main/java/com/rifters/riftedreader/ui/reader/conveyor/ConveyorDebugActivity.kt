@@ -39,7 +39,7 @@ import kotlinx.coroutines.launch
  * 
  * - Validate that the conveyor belt logic works correctly in isolation
  * - Debug phase transition issues without interference from legacy code
- * - Compare behavior with the integrated WindowBufferManager
+ * - (WindowBufferManager has been deprecated and removed)
  * 
  * @see ConveyorBeltSystemViewModel for the underlying logic
  */
