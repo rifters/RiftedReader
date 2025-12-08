@@ -44,6 +44,16 @@
     const MIN_VIEWPORT_WIDTH = 10;
     const FALLBACK_VIEWPORT_WIDTH = 360;
     
+    // Height estimation constants
+    const CHARS_PER_LINE = 80;
+    const LINE_HEIGHT_PX = 24;
+    const PARAGRAPH_HEIGHT_PX = 48;  // ~2 lines
+    const HEADING1_HEIGHT_PX = 60;
+    const HEADING2_HEIGHT_PX = 48;
+    const HEADING3_HEIGHT_PX = 36;
+    const IMAGE_HEIGHT_PX = 200;
+    const BR_HEIGHT_PX = 24;
+    
     // ========================================================================
     // STATE
     // ========================================================================
@@ -275,9 +285,9 @@
                 const textNode = document.createTextNode(text);
                 targetPage.appendChild(textNode);
                 
-                // Estimate height (rough approximation: 1 line per 80 chars)
-                const lines = Math.max(1, Math.ceil(text.length / 80));
-                const height = lines * 24; // Assume 24px line height
+                // Estimate height (rough approximation)
+                const lines = Math.max(1, Math.ceil(text.length / CHARS_PER_LINE));
+                const height = lines * LINE_HEIGHT_PX;
                 onContentAdded(height, text.length);
             }
             return;
@@ -312,17 +322,17 @@
             let estimatedHeight = 0;
             const tagName = element.tagName.toLowerCase();
             if (tagName === 'p') {
-                estimatedHeight = 48; // ~2 lines
+                estimatedHeight = PARAGRAPH_HEIGHT_PX;
             } else if (tagName === 'h1') {
-                estimatedHeight = 60;
+                estimatedHeight = HEADING1_HEIGHT_PX;
             } else if (tagName === 'h2') {
-                estimatedHeight = 48;
+                estimatedHeight = HEADING2_HEIGHT_PX;
             } else if (tagName === 'h3') {
-                estimatedHeight = 36;
+                estimatedHeight = HEADING3_HEIGHT_PX;
             } else if (tagName === 'img') {
-                estimatedHeight = 200; // Rough estimate for images
+                estimatedHeight = IMAGE_HEIGHT_PX;
             } else if (tagName === 'br') {
-                estimatedHeight = 24;
+                estimatedHeight = BR_HEIGHT_PX;
             }
             
             if (estimatedHeight > 0) {

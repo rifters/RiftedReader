@@ -217,11 +217,8 @@ class FlexPaginatorTest {
         override fun canParse(file: File): Boolean = true
         
         override suspend fun getPageContent(file: File, page: Int): PageContent {
-            if (returnNull) throw IllegalStateException("Configured to return null")
-            // Return the chapter if it exists, otherwise return a PageContent with the chapter text if null is configured
-            return chapters.getOrElse(page) { 
-                if (returnNull) PageContent.EMPTY else chapters[page] ?: PageContent.EMPTY
-            }
+            if (returnNull) return PageContent.EMPTY
+            return chapters[page] ?: PageContent.EMPTY
         }
         
         override suspend fun getPageCount(file: File): Int = chapters.size
