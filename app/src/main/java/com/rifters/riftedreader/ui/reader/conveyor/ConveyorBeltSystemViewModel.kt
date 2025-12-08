@@ -353,9 +353,16 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         // Clamp start window to valid range
         val clampedStart = startWindow.coerceIn(0, (totalWindowCount - 1).coerceAtLeast(0))
         
-        // Calculate buffer bounds
-        val bufferEnd = (clampedStart + BUFFER_SIZE - 1).coerceAtMost(totalWindowCount - 1)
-        val bufferStart = (bufferEnd - BUFFER_SIZE + 1).coerceAtLeast(0)
+        // Calculate buffer bounds - try to center the buffer around the start window
+        // This ensures we have windows both before and after the start position when possible
+        val centerOffset = BUFFER_SIZE / 2
+        var bufferStart = (clampedStart - centerOffset).coerceAtLeast(0)
+        var bufferEnd = (bufferStart + BUFFER_SIZE - 1).coerceAtMost(totalWindowCount - 1)
+        
+        // Adjust bufferStart if we hit the end boundary and have room to shift left
+        if (bufferEnd - bufferStart + 1 < BUFFER_SIZE && totalWindowCount >= BUFFER_SIZE) {
+            bufferStart = (bufferEnd - BUFFER_SIZE + 1).coerceAtLeast(0)
+        }
         
         // Initialize buffer from start window
         _buffer.value = (bufferStart..bufferEnd).toList()
