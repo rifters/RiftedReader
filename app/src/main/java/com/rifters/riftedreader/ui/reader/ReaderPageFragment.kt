@@ -1936,36 +1936,21 @@ class ReaderPageFragment : Fragment() {
                         readerViewModel.updateWebViewPageState(newPage, totalPages)
                         
                         // Detect window transitions to prevent inappropriate buffer shifts
-                        val currentWindowIndex = readerViewModel.windowBufferManager?.getActiveWindowIndex()
-                        val isWindowTransition = currentWindowIndex != null && 
-                                                lastKnownWindowIndex != null && 
-                                                lastKnownWindowIndex != currentWindowIndex
+                        // WindowBufferManager has been deprecated - window transition detection removed
+                        val isWindowTransition = false
                         
-                        if (isWindowTransition) {
-                            windowTransitionTimestamp = System.currentTimeMillis()
-                            com.rifters.riftedreader.util.AppLogger.d(
-                                "ReaderPageFragment",
-                                "[WINDOW_SHIFT] Window transition detected: " +
-                                "from $lastKnownWindowIndex to $currentWindowIndex, " +
-                                "entering cooldown period"
-                            )
-                        }
-                        lastKnownWindowIndex = currentWindowIndex
-                        
-                        // Calculate if cooldown period has elapsed since last window transition
-                        val timeSinceTransition = System.currentTimeMillis() - windowTransitionTimestamp
-                        val inCooldownPeriod = timeSinceTransition < WINDOW_TRANSITION_COOLDOWN_MS
+                        // Window transition tracking is deprecated - skip cooldown logic
+                        val inCooldownPeriod = false
                         
                         // Notify WindowBufferManager of position for potential buffer shifts
                         // Only call if near boundaries to reduce unnecessary method invocations
                         // Buffer shift threshold is 2 pages, so check if within that range
                         // IMPORTANT: Skip shift checks during cooldown period after window transitions
                         // to prevent shifting backward when entering a new window at page 0
-                        val currentPhase = readerViewModel.windowBufferManager?.phase?.value
-                        val activeWindow = readerViewModel.windowBufferManager?.getActiveWindowIndex()
+                        // WindowBufferManager has been deprecated - these checks are no-ops
                         com.rifters.riftedreader.util.AppLogger.d(
                             "ReaderPageFragment",
-                            "[EDGE_CHECK] page=$newPage/$totalPages, phase=$currentPhase, window=$activeWindow, cooldown=$inCooldownPeriod"
+                            "[EDGE_CHECK] page=$newPage/$totalPages, cooldown=$inCooldownPeriod (WindowBufferManager deprecated)"
                         )
                         
                         if (totalPages > 0 && newPage >= totalPages - 2 && !inCooldownPeriod) {

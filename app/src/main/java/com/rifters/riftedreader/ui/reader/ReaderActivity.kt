@@ -637,44 +637,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
      * 
      * This includes a defensive warning if the visible window doesn't match
      * the buffer band, which would indicate a misalignment issue.
+     * 
+     * DEPRECATED: WindowBufferManager has been removed.
      */
     private fun logBufferSyncDiagnostics(syncedWindow: Int) {
-        val bufferManager = viewModel.windowBufferManager
-        if (bufferManager == null) {
-            AppLogger.w(
-                "ReaderActivity",
-                "[BUFFER_SYNC] WindowBufferManager not initialized - cannot validate buffer state"
-            )
-            return
-        }
-        
-        val bufferedWindows = bufferManager.getBufferedWindows()
-        val centerWindow = bufferManager.getCenterWindowIndex()
-        val currentPhase = bufferManager.phase.value
-        
+        // WindowBufferManager has been deprecated and removed
         AppLogger.d(
             "ReaderActivity",
-            "[BUFFER_SYNC] Diagnostics after sync: syncedWindow=$syncedWindow, " +
-            "bufferedWindows=$bufferedWindows, centerWindow=$centerWindow, phase=$currentPhase"
+            "[BUFFER_SYNC] WindowBufferManager deprecated - diagnostics skipped"
         )
-        
-        // Check if synced window is in buffer
-        val isInBuffer = bufferedWindows.contains(syncedWindow)
-        
-        if (!isInBuffer) {
-            AppLogger.w(
-                "ReaderActivity",
-                "[BUFFER_SYNC] WARNING: Visible window $syncedWindow is NOT in buffer band " +
-                "$bufferedWindows. This may cause phase transition issues. " +
-                "(centerWindow=$centerWindow, phase=$currentPhase)"
-            )
-        } else {
-            AppLogger.d(
-                "ReaderActivity",
-                "[BUFFER_SYNC] Initial sync complete: visibleWindow=$syncedWindow, " +
-                "buffer=$bufferedWindows, centerWindow=$centerWindow, phase=$currentPhase"
-            )
-        }
     }
     
     private fun observeViewModel() {
