@@ -1,10 +1,15 @@
 package com.rifters.riftedreader.ui.reader.conveyor
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.rifters.riftedreader.domain.pagination.ContinuousPaginator
+import com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider
+import com.rifters.riftedreader.domain.pagination.SlidingWindowManager
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.util.ArrayDeque
 
 class ConveyorBeltSystemViewModel : ViewModel() {
@@ -17,6 +22,14 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         private const val UNLOCK_WINDOW = 2
         private const val STEADY_TRIGGER_WINDOW = 3
     }
+    
+    // HTML loading dependencies (set via setHtmlLoadingDependencies)
+    private var continuousPaginator: ContinuousPaginator? = null
+    private var slidingWindowManager: SlidingWindowManager? = null
+    private var bookId: String? = null
+    
+    // HTML cache for loaded windows
+    private val htmlCache = mutableMapOf<Int, String>()
     
     private val _buffer = MutableStateFlow<List<Int>>((0..4).toList())
     val buffer: StateFlow<List<Int>> = _buffer.asStateFlow()
@@ -40,10 +53,117 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     
     private var shiftsUnlocked = false
     
+    /**
+     * Set dependencies needed for HTML loading.
+     * Must be called before window HTML loading can work.
+     */
+    fun setHtmlLoadingDependencies(
+        paginator: ContinuousPaginator,
+        windowManager: SlidingWindowManager,
+        bookId: String
+    ) {
+        this.continuousPaginator = paginator
+        this.slidingWindowManager = windowManager
+        this.bookId = bookId
+        log("INIT", "HTML loading dependencies set: bookId=$bookId")
+    }
+    
+    /**
+     * Get cached HTML for a window, if available.
+     */
+    fun getCachedWindowHtml(windowIndex: Int): String? {
+        return htmlCache[windowIndex]
+    }
+    
+    /**
+     * Load HTML for a window and cache it.
+     * This is called when a window enters the buffer or becomes visible.
+     */
+    private fun loadWindowHtml(windowIndex: Int) {
+        val paginator = continuousPaginator
+        val windowManager = slidingWindowManager
+        val bookId = bookId
+        
+        if (paginator == null || windowManager == null || bookId == null) {
+            log("HTML_LOAD", "Cannot load window $windowIndex: dependencies not set")
+            return
+        }
+        
+        // Skip if already cached
+        if (htmlCache.containsKey(windowIndex)) {
+            log("HTML_LOAD", "Window $windowIndex already cached")
+            return
+        }
+        
+        log("HTML_LOAD", "Loading HTML for window $windowIndex")
+        
+        viewModelScope.launch {
+            try {
+                val provider = ContinuousPaginatorWindowHtmlProvider(paginator, windowManager)
+                val html = provider.getWindowHtml(bookId, windowIndex)
+                
+                if (html != null) {
+                    htmlCache[windowIndex] = html
+                    log("HTML_LOAD", "Window $windowIndex loaded: ${html.length} chars")
+                } else {
+                    log("HTML_LOAD", "Window $windowIndex: HTML provider returned null")
+                }
+            } catch (e: Exception) {
+                log("HTML_LOAD", "Failed to load window $windowIndex: ${e.message}")
+                AppLogger.e(TAG, "Error loading window $windowIndex", e)
+            }
+        }
+    }
+    
+    /**
+     * Preload HTML for multiple windows asynchronously.
+     * This is called after buffer shifts to prepare upcoming windows.
+     */
+    private fun preloadWindows(windowIndices: List<Int>) {
+        val paginator = continuousPaginator
+        val windowManager = slidingWindowManager
+        val bookId = bookId
+        
+        if (paginator == null || windowManager == null || bookId == null) {
+            log("PRELOAD", "Cannot preload windows: dependencies not set")
+            return
+        }
+        
+        val toPreload = windowIndices.filter { !htmlCache.containsKey(it) }
+        if (toPreload.isEmpty()) {
+            log("PRELOAD", "All requested windows already cached")
+            return
+        }
+        
+        log("PRELOAD", "Preloading ${toPreload.size} windows: $toPreload")
+        
+        viewModelScope.launch {
+            toPreload.forEach { windowIndex ->
+                try {
+                    val provider = ContinuousPaginatorWindowHtmlProvider(paginator, windowManager)
+                    val html = provider.getWindowHtml(bookId, windowIndex)
+                    
+                    if (html != null) {
+                        htmlCache[windowIndex] = html
+                        log("PRELOAD", "Window $windowIndex preloaded: ${html.length} chars")
+                    } else {
+                        log("PRELOAD", "Window $windowIndex: HTML provider returned null")
+                    }
+                } catch (e: Exception) {
+                    log("PRELOAD", "Failed to preload window $windowIndex: ${e.message}")
+                    AppLogger.e(TAG, "Error preloading window $windowIndex", e)
+                }
+            }
+        }
+    }
+    
     fun onWindowEntered(windowIndex: Int) {
         log("STATE", "onWindowEntered($windowIndex)")
         log("STATE", "Current: buffer=${_buffer.value}, activeWindow=${_activeWindow.value}, phase=${_phase.value}")
         log("STATE", "shiftsUnlocked=$shiftsUnlocked")
+        
+        // Load HTML for the window that was just entered
+        loadWindowHtml(windowIndex)
         
         when (_phase.value) {
             ConveyorPhase.STARTUP -> {
@@ -91,11 +211,17 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("TRANSITION", "Current center: $currentCenterWindow, target: $windowIndex, shifts needed: $shiftCount")
         
+        val windowsToRemove = mutableListOf<Int>()
+        val windowsToAdd = mutableListOf<Int>()
+        
         while (shiftCount > 0) {
-            currentBuffer.removeAt(0)
-            currentBuffer.add(currentBuffer.last() + 1)
+            val removedWindow = currentBuffer.removeAt(0)
+            val newWindow = currentBuffer.last() + 1
+            currentBuffer.add(newWindow)
+            windowsToRemove.add(removedWindow)
+            windowsToAdd.add(newWindow)
             shiftCount--
-            log("SHIFT", "Shifted right: ${currentBuffer}, signal: remove ${currentBuffer[0]-1}, create ${currentBuffer.last()}")
+            log("SHIFT", "Shifted right: ${currentBuffer}, signal: remove $removedWindow, create $newWindow")
         }
         
         _buffer.value = currentBuffer
@@ -104,6 +230,9 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("TRANSITION", "*** PHASE TRANSITION: STARTUP → STEADY ***")
         log("TRANSITION", "New buffer: ${_buffer.value}, activeWindow: $windowIndex, center: ${_buffer.value[CENTER_INDEX]}")
+        
+        // Execute shift: drop old windows from cache, preload new windows
+        executeShift(windowsToRemove, windowsToAdd)
     }
     
     private fun handleSteadyNavigation(windowIndex: Int) {
@@ -136,10 +265,15 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     private fun handleSteadyForward(windowIndex: Int, buffer: MutableList<Int>, shiftCount: Int) {
         log("STEADY_FORWARD", "Navigating to window $windowIndex, shifts: $shiftCount")
         
+        val windowsToRemove = mutableListOf<Int>()
+        val windowsToAdd = mutableListOf<Int>()
+        
         repeat(shiftCount) { i ->
             val removedWindow = buffer.removeAt(0)
             val newWindow = buffer.last() + 1
             buffer.add(newWindow)
+            windowsToRemove.add(removedWindow)
+            windowsToAdd.add(newWindow)
             log("SHIFT", "$i: ${buffer}, signal: remove $removedWindow, create $newWindow")
         }
         
@@ -147,15 +281,23 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         _activeWindow.value = windowIndex
         
         log("STEADY_FORWARD", "Final buffer: ${_buffer.value}, activeWindow: $windowIndex")
+        
+        // Execute shift: drop old windows from cache, preload new windows
+        executeShift(windowsToRemove, windowsToAdd)
     }
     
     private fun handleSteadyBackward(windowIndex: Int, buffer: MutableList<Int>, shiftCount: Int) {
         log("STEADY_BACKWARD", "Navigating to window $windowIndex, shifts: $shiftCount")
         
+        val windowsToRemove = mutableListOf<Int>()
+        val windowsToAdd = mutableListOf<Int>()
+        
         repeat(shiftCount) { i ->
             val removedWindow = buffer.removeAt(buffer.size - 1)
             val newWindow = buffer.first() - 1
             buffer.add(0, newWindow)
+            windowsToRemove.add(removedWindow)
+            windowsToAdd.add(newWindow)
             log("SHIFT", "$i: ${buffer}, signal: remove $removedWindow, create $newWindow")
         }
         
@@ -163,6 +305,26 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         _activeWindow.value = windowIndex
         
         log("STEADY_BACKWARD", "Final buffer: ${_buffer.value}, activeWindow: $windowIndex")
+        
+        // Execute shift: drop old windows from cache, preload new windows
+        executeShift(windowsToRemove, windowsToAdd)
+    }
+    
+    /**
+     * Execute a buffer shift by removing old windows from cache and preloading new windows.
+     */
+    private fun executeShift(windowsToRemove: List<Int>, windowsToAdd: List<Int>) {
+        // Remove old windows from cache
+        windowsToRemove.forEach { windowIndex ->
+            if (htmlCache.remove(windowIndex) != null) {
+                log("SHIFT_EXEC", "Dropped window $windowIndex from cache")
+            }
+        }
+        
+        // Preload new windows
+        if (windowsToAdd.isNotEmpty()) {
+            preloadWindows(windowsToAdd)
+        }
     }
     
     private fun revertToStartup() {
@@ -175,6 +337,13 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("REVERT", "*** PHASE TRANSITION: STEADY → STARTUP ***")
         log("REVERT", "Buffer reverted: ${_buffer.value}, activeWindow: $UNLOCK_WINDOW")
+        
+        // Clear HTML cache on revert since we're going back to initial windows
+        htmlCache.clear()
+        log("REVERT", "HTML cache cleared")
+        
+        // Preload initial windows
+        preloadWindows(_buffer.value)
     }
     
     // Methods needed by ConveyorDebugActivity and ConveyorBeltIntegrationBridge
@@ -198,7 +367,13 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         _windowCount.value = totalWindowCount
         _isInitialized.value = true
         
+        // Clear any existing HTML cache
+        htmlCache.clear()
+        
         log("INIT", "Conveyor initialized: windowCount=$totalWindowCount, buffer=${_buffer.value}, isInitialized=true")
+        
+        // Preload initial buffer windows
+        preloadWindows(_buffer.value)
     }
     
     fun simulateNextWindow() {
