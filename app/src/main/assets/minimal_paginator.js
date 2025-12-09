@@ -199,12 +199,32 @@
         checkBoundary();
         log('NAV', `goToPage(${pageIndex}) -> ${validIndex}`);
         
-        // Reset isNavigating flag after 100ms to allow scroll animation to complete
-        // This timeout covers both instant scrolls (behavior: 'auto') and smooth scrolls (behavior: 'smooth')
-        // Browser smooth scroll animations typically take 100-200ms, so 100ms is a safe minimum
+        // Use scrollend event to detect when scrolling actually completes
+        // This ensures isNavigating flag is held until the smooth scroll animation finishes
+        let scrollEndFired = false;
+        
+        const onScrollEnd = function() {
+            if (!scrollEndFired) {
+                scrollEndFired = true;
+                state.isNavigating = false;
+                log('SCROLL_END', 'Scroll animation completed via scrollend event');
+                window.removeEventListener('scrollend', onScrollEnd);
+            }
+        };
+        
+        // Attach scrollend listener (supported in modern browsers)
+        window.addEventListener('scrollend', onScrollEnd, { once: true });
+        
+        // Fallback timeout for browsers that don't support scrollend
+        // 300ms covers typical smooth scroll animation duration (200-300ms)
         setTimeout(function() {
-            state.isNavigating = false;
-        }, 100);
+            if (!scrollEndFired) {
+                scrollEndFired = true;
+                state.isNavigating = false;
+                window.removeEventListener('scrollend', onScrollEnd);
+                log('SCROLL_END', 'Scroll animation completed via fallback timeout (300ms)');
+            }
+        }, 300);
     }
     
     /**
