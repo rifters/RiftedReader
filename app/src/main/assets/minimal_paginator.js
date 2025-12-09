@@ -58,7 +58,8 @@
         appliedColumnWidth: 0,
         pageCount: -1,
         columnContainer: null,
-        contentWrapper: null
+        contentWrapper: null,
+        isNavigating: false  // Flag to prevent scroll listener interference during programmatic navigation
     };
     
     // Character offset tracking (NEW)
@@ -182,6 +183,8 @@
         const validIndex = Math.max(0, Math.min(pageIndex, state.pageCount - 1));
         const scrollPos = validIndex * state.appliedColumnWidth;
         
+        // Set isNavigating flag to prevent scroll listener from interfering
+        state.isNavigating = true;
         state.currentPage = validIndex;
         
         window.scrollTo({
@@ -195,6 +198,11 @@
         
         checkBoundary();
         log('NAV', `goToPage(${pageIndex}) -> ${validIndex}`);
+        
+        // Reset isNavigating flag after 100ms to allow scroll animation to complete
+        setTimeout(function() {
+            state.isNavigating = false;
+        }, 100);
     }
     
     /**
@@ -372,6 +380,12 @@
     function setupScrollListener() {
         window.addEventListener('scroll', function() {
             if (!state.isPaginationReady) return;
+            
+            // Skip state updates during programmatic navigation to prevent interference
+            if (state.isNavigating) {
+                log('SCROLL', 'Scroll event ignored during programmatic navigation');
+                return;
+            }
             
             // Update current page based on scroll position
             const currentScrollLeft = window.scrollX || window.pageXOffset || 0;
