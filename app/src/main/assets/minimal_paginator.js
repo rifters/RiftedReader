@@ -218,7 +218,7 @@
         };
         
         // Attach scrollend listener
-        window.addEventListener('scrollend', onScrollEnd, { once: true });
+        window.addEventListener('scrollend', onScrollEnd);
         
         // Fallback timeout for browsers without scrollend support (300ms to cover smooth animations)
         scrollEndTimeout = setTimeout(function() {
