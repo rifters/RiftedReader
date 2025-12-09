@@ -200,6 +200,8 @@
         log('NAV', `goToPage(${pageIndex}) -> ${validIndex}`);
         
         // Reset isNavigating flag after 100ms to allow scroll animation to complete
+        // This timeout covers both instant scrolls (behavior: 'auto') and smooth scrolls (behavior: 'smooth')
+        // Browser smooth scroll animations typically take 100-200ms, so 100ms is a safe minimum
         setTimeout(function() {
             state.isNavigating = false;
         }, 100);
