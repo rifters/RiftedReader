@@ -382,13 +382,6 @@
             // ✅ ADD THIS: Notify Android when page actually changes
             if (state.currentPage !== prevPage) {
                 syncPaginationState();  // Sync first
-                
-                // Call onPageChanged for Conveyor edge detection
-                callAndroidBridge('onPageChanged', { 
-                    page: state.currentPage,
-                    pageCount: state.pageCount
-                });
-                
                 log('PAGE_CHANGE', `Manual scroll: ${prevPage} → ${state.currentPage}`);
             }
             
