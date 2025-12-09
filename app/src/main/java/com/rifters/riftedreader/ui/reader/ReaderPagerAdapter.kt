@@ -17,16 +17,18 @@ import com.rifters.riftedreader.util.AppLogger
  * In continuous mode, each page represents a window containing multiple chapters.
  * In chapter-based mode, each page represents a single chapter.
  * 
- * **Sliding Window Pagination:**
+ * **Sliding Window Pagination with Buffer Management:**
  * - Each window contains exactly 5 chapters (DEFAULT_CHAPTERS_PER_WINDOW)
- * - The adapter's itemCount equals the total window count
- * - Window index = adapter position
+ * - The adapter manages a sliding 5-window buffer (BUFFER_SIZE = 5)
+ * - Adapter's itemCount returns the buffer size (5), not the total window count
+ * - Window index = adapter position within the buffer
+ * - ConveyorBeltSystemViewModel manages the actual buffer and window shifting
  * 
  * Uses FragmentManager to manage fragment lifecycle within RecyclerView items.
  * Fragment tag format: "f{position}" (e.g., "f0", "f1", "f2")
  * 
  * Debug logging is included at key lifecycle points for pagination debugging:
- * - getItemCount: logs window count
+ * - getItemCount: logs buffer size
  * - onBindViewHolder: logs HTML binding to WebView
  * - notifyDataSetChanged: logs adapter state after update
  * - All logs are written to session_log_*.txt
@@ -49,56 +51,18 @@ class ReaderPagerAdapter(
     private var windowMismatchWarningLogged: Boolean = false
 
     override fun getItemCount(): Int {
-        // TASK 1: CONVEYOR AUTHORITATIVE TAKEOVER - Adapter routing
-        // When conveyor is primary, use its buffer size as authoritative window count
-        // TODO: Add unit test to verify adapter uses conveyor buffer size when isConveyorPrimary=true
-        if (viewModel.isConveyorPrimary && viewModel.conveyorBeltSystem != null) {
-            val conveyorCount = viewModel.conveyorBeltSystem!!.buffer.value.size
-            
-            // [CONVEYOR_ACTIVE] Log when using conveyor as authoritative source
-            if (conveyorCount != lastKnownItemCount) {
-                AppLogger.d("ReaderPagerAdapter", "[CONVEYOR_ACTIVE] Adapter using conveyor.buffer.size -> $conveyorCount windows")
-                lastKnownItemCount = conveyorCount
-            }
-            
-            return conveyorCount
+        // Adapter manages a sliding 5-window buffer
+        // The adapter's itemCount is the buffer size (5), not the total window count
+        // ConveyorBeltSystemViewModel manages the buffer and window count tracking
+        val bufferSize = 5
+        
+        // [PAGINATION_DEBUG] Log buffer size
+        if (bufferSize != lastKnownItemCount) {
+            AppLogger.d("ReaderPagerAdapter", "[ADAPTER] Adapter managing buffer of $bufferSize windows")
+            lastKnownItemCount = bufferSize
         }
         
-        // LEGACY PATH: Derive window count from SlidingWindowPaginator's window count
-        // This ensures adapter/VM use the same source of truth for chapter count when conveyor is not active
-        val count = viewModel.slidingWindowPaginator.getWindowCount()
-        
-        // [PAGINATION_DEBUG] Log window count changes with detailed context
-        if (count != lastKnownItemCount) {
-            AppLogger.d("ReaderPagerAdapter", "[LEGACY_ACTIVE] getItemCount CHANGED: " +
-                "$lastKnownItemCount -> $count windows, " +
-                "paginationMode=${viewModel.paginationMode}, " +
-                "chaptersPerWindow=${viewModel.chaptersPerWindow}")
-            lastKnownItemCount = count
-        }
-        
-        // [PAGINATION_DEBUG] Warn if zero windows (pagination may have failed)
-        if (count == 0) {
-            AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] WARNING: getItemCount=0 " +
-                "- book content may not have loaded or pagination failed")
-        }
-        
-        // [PAGINATION_DEBUG] Validate window count matches expected calculation (emit warning only once per session)
-        // Use visible chapter count (accounts for hidden chapters like cover, NAV, non-linear)
-        val visibleChapterCount = viewModel.visibleChapterCount
-        val spineCount = viewModel.chapterIndexProvider.spineCount
-        if (visibleChapterCount > 0 && viewModel.isContinuousMode && !windowMismatchWarningLogged) {
-            val expectedWindows = kotlin.math.ceil(visibleChapterCount.toDouble() / viewModel.chaptersPerWindow).toInt()
-            if (count != expectedWindows && count > 0) {
-                // Log both actual and expected counts in a single diagnostic message
-                AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] WINDOW_COUNT_MISMATCH (one-time): " +
-                    "actual=$count, expected=$expectedWindows based on visible chapters " +
-                    "(visibleChapters=$visibleChapterCount, spineAll=$spineCount, perWindow=${viewModel.chaptersPerWindow})")
-                windowMismatchWarningLogged = true
-            }
-        }
-        
-        return count
+        return bufferSize
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageViewHolder {
@@ -226,6 +190,10 @@ class ReaderPagerAdapter(
     /**
      * Log adapter state after data set change for debugging.
      * Call this method after notifyDataSetChanged to track pagination updates.
+     * 
+     * Note: itemCount (buffer size = 5) and windowCount (total windows) are intentionally
+     * different and should not match. The adapter manages a 5-window buffer while the
+     * ViewModel tracks the total window count for navigation and progress.
      */
     fun logAdapterStateAfterUpdate(caller: String) {
         val itemCount = itemCount
@@ -235,32 +203,24 @@ class ReaderPagerAdapter(
         
         AppLogger.d("ReaderPagerAdapter", 
             "[PAGINATION_DEBUG] Adapter state after update (caller=$caller): " +
-            "itemCount=$itemCount, " +
-            "windowCount=$windowCount, " +
+            "itemCount=$itemCount (buffer size), " +
+            "windowCount=$windowCount (total windows), " +
             "paginationMode=$paginationMode, " +
             "chaptersPerWindow=$chaptersPerWindow, " +
             "activeFragments=${activeFragments.size}"
         )
         
-        // [PAGINATION_DEBUG] Log mismatch warning
-        if (itemCount != windowCount) {
-            AppLogger.e("ReaderPagerAdapter", 
-                "[PAGINATION_DEBUG] ERROR: itemCount/windowCount MISMATCH: " +
-                "itemCount=$itemCount, windowCount=$windowCount")
-        }
-        
         // [PAGINATION_DEBUG] Log zero items warning
-        if (itemCount == 0 && windowCount > 0) {
+        if (itemCount == 0) {
             AppLogger.e("ReaderPagerAdapter", 
-                "[PAGINATION_DEBUG] ERROR: itemCount=0 but windowCount=$windowCount - " +
-                "adapter/viewModel mismatch!")
+                "[PAGINATION_DEBUG] ERROR: itemCount=0 - adapter has no buffer capacity!")
         }
         
         // Log success case
         if (itemCount > 0) {
             AppLogger.d("ReaderPagerAdapter", 
-                "[PAGINATION_DEBUG] Adapter has $itemCount windows ready for display " +
-                "(each with $chaptersPerWindow chapters)")
+                "[PAGINATION_DEBUG] Adapter has $itemCount buffer slots ready " +
+                "(managing sliding window from total $windowCount windows)")
         }
     }
     

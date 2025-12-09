@@ -399,15 +399,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             controlsManager.onUserInteraction()
                         }
                         
-                        // Notify WindowBufferManager that this window became visible
-                        // This triggers phase transition checks and potential buffer shifts
-                        if (position >= 0) {
-                            AppLogger.d(
-                                "ReaderActivity",
-                                "[CONVEYOR] Window $position became visible - checking buffer state"
-                            )
-                            viewModel.onWindowBecameVisible(position)
-                        }
+                        // Note: Window visibility tracking is now handled internally by ConveyorBeltSystemViewModel
+                        // No need to manually notify via onWindowBecameVisible() as it has been removed
                     }
                 }
             })
@@ -612,16 +605,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         AppLogger.d("ReaderActivity", "[BUFFER_SYNC] Scrolling to initial window: $initialWindow")
         setCurrentItem(initialWindow, false)
         
-        // Notify WindowBufferManager that this window became visible.
-        // This is intentionally called during initialization to trigger phase transition
-        // from STARTUP to STEADY. Unlike user-driven navigation (which triggers this via
-        // scroll listener), we need to explicitly call it here because:
-        // 1. The scroll is instant (no scroll animation = no scroll listener callback)
-        // 2. We need phase transition to occur for the buffer lifecycle to work correctly
-        // Note: This call is idempotent - calling it multiple times for the same window
-        // doesn't cause problems since WindowBufferManager tracks state internally.
-        AppLogger.d("ReaderActivity", "[BUFFER_SYNC] Notifying ViewModel: onWindowBecameVisible($initialWindow)")
-        viewModel.onWindowBecameVisible(initialWindow)
+        // Note: ConveyorBeltSystemViewModel handles window visibility tracking internally
+        // No manual notification needed - the conveyor system manages phase transitions automatically
         
         // Log buffer state for debugging
         logBufferSyncDiagnostics(initialWindow)
@@ -635,16 +620,14 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     /**
      * Log diagnostics after initial buffer sync for debugging phase transitions.
      * 
-     * This includes a defensive warning if the visible window doesn't match
-     * the buffer band, which would indicate a misalignment issue.
-     * 
-     * DEPRECATED: WindowBufferManager has been removed.
+     * WindowBufferManager has been removed - ConveyorBeltSystemViewModel now handles
+     * all buffer management internally.
      */
     private fun logBufferSyncDiagnostics(syncedWindow: Int) {
-        // WindowBufferManager has been deprecated and removed
         AppLogger.d(
             "ReaderActivity",
-            "[BUFFER_SYNC] WindowBufferManager deprecated - diagnostics skipped"
+            "[BUFFER_SYNC] Sync completed for window $syncedWindow. " +
+            "ConveyorBeltSystemViewModel handles buffer management internally."
         )
     }
     
