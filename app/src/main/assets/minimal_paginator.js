@@ -69,6 +69,10 @@
     let lastBoundaryDirection = null;
     let boundaryCheckInProgress = false;
     
+    // Scroll completion tracking
+    let scrollEndFired = false;
+    let scrollEndTimeout = null;
+    
     // ========================================================================
     // PUBLIC API
     // ========================================================================
@@ -187,6 +191,45 @@
         state.isNavigating = true;
         state.currentPage = validIndex;
         
+        // Clear any existing scroll end timeout
+        if (scrollEndTimeout !== null) {
+            clearTimeout(scrollEndTimeout);
+            scrollEndTimeout = null;
+        }
+        scrollEndFired = false;
+        
+        // Set up one-time scrollend event listener (modern browsers)
+        const onScrollEnd = function() {
+            if (scrollEndFired) return; // Prevent double-execution
+            scrollEndFired = true;
+            
+            // Clear fallback timeout
+            if (scrollEndTimeout !== null) {
+                clearTimeout(scrollEndTimeout);
+                scrollEndTimeout = null;
+            }
+            
+            // Reset isNavigating flag now that scroll animation is complete
+            state.isNavigating = false;
+            log('NAV', `scrollend event fired - navigation complete`);
+            
+            // Remove the event listener
+            window.removeEventListener('scrollend', onScrollEnd);
+        };
+        
+        // Attach scrollend listener
+        window.addEventListener('scrollend', onScrollEnd);
+        
+        // Fallback timeout for browsers without scrollend support (300ms to cover smooth animations)
+        scrollEndTimeout = setTimeout(function() {
+            if (!scrollEndFired) {
+                scrollEndFired = true;
+                state.isNavigating = false;
+                log('NAV', `fallback timeout fired (300ms) - navigation complete`);
+                window.removeEventListener('scrollend', onScrollEnd);
+            }
+        }, 300);
+        
         window.scrollTo({
             left: scrollPos,
             top: 0,
@@ -196,15 +239,9 @@
         // Sync state with Android bridge after page change
         syncPaginationState();
         
-        checkBoundary();
-        log('NAV', `goToPage(${pageIndex}) -> ${validIndex}`);
-        
-        // Reset isNavigating flag after 100ms to allow scroll animation to complete
-        // This timeout covers both instant scrolls (behavior: 'auto') and smooth scrolls (behavior: 'smooth')
-        // Browser smooth scroll animations typically take 100-200ms, so 100ms is a safe minimum
-        setTimeout(function() {
-            state.isNavigating = false;
-        }, 100);
+        // REMOVED: checkBoundary() call - let scroll listener handle boundary detection
+        // after scroll animation completes and state is properly updated
+        log('NAV', `goToPage(${pageIndex}) -> ${validIndex}, smooth=${smooth}`);
     }
     
     /**
