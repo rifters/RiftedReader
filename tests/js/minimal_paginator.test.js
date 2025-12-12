@@ -120,7 +120,7 @@ describe('minimal_paginator.js - scrollend fix', () => {
     const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
     
     // Find the applyColumnLayout function - it now delegates to applyColumnStylesWithWidth
-    const applyColumnLayoutMatch = scriptContent.match(/function applyColumnLayout\(\)[\s\S]*?\n    \}/);
+    const applyColumnLayoutMatch = scriptContent.match(/function applyColumnLayout\(\)[^}]*\}/);
     expect(applyColumnLayoutMatch).toBeTruthy();
     
     const applyColumnLayoutFunction = applyColumnLayoutMatch[0];
@@ -129,10 +129,29 @@ describe('minimal_paginator.js - scrollend fix', () => {
     expect(applyColumnLayoutFunction).toContain('applyColumnStylesWithWidth');
     
     // Now find the applyColumnStylesWithWidth helper function
-    const helperMatch = scriptContent.match(/function applyColumnStylesWithWidth\([\s\S]*?\n    \}/);
-    expect(helperMatch).toBeTruthy();
+    // Match from function declaration to its closing brace, accounting for nested braces
+    const helperStart = scriptContent.indexOf('function applyColumnStylesWithWidth(');
+    expect(helperStart).toBeGreaterThan(-1);
     
-    const helperFunction = helperMatch[0];
+    // Find matching closing brace by counting braces
+    let braceCount = 0;
+    let inFunction = false;
+    let helperEnd = helperStart;
+    
+    for (let i = helperStart; i < scriptContent.length; i++) {
+      if (scriptContent[i] === '{') {
+        braceCount++;
+        inFunction = true;
+      } else if (scriptContent[i] === '}') {
+        braceCount--;
+        if (inFunction && braceCount === 0) {
+          helperEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    const helperFunction = scriptContent.substring(helperStart, helperEnd);
     
     // Verify the critical fix is present in the helper with the exact calculations
     expect(helperFunction).toContain('var useWidth = columnWidth > 0 ? columnWidth : FALLBACK_WIDTH;');
@@ -152,11 +171,28 @@ describe('minimal_paginator.js - scrollend fix', () => {
   test('applyColumnStylesWithWidth should preserve font size', () => {
     const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
     
-    // Find the applyColumnStylesWithWidth function
-    const helperMatch = scriptContent.match(/function applyColumnStylesWithWidth\([\s\S]*?\n    \}/);
-    expect(helperMatch).toBeTruthy();
+    // Find the applyColumnStylesWithWidth function by counting braces
+    const helperStart = scriptContent.indexOf('function applyColumnStylesWithWidth(');
+    expect(helperStart).toBeGreaterThan(-1);
     
-    const helperFunction = helperMatch[0];
+    let braceCount = 0;
+    let inFunction = false;
+    let helperEnd = helperStart;
+    
+    for (let i = helperStart; i < scriptContent.length; i++) {
+      if (scriptContent[i] === '{') {
+        braceCount++;
+        inFunction = true;
+      } else if (scriptContent[i] === '}') {
+        braceCount--;
+        if (inFunction && braceCount === 0) {
+          helperEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    const helperFunction = scriptContent.substring(helperStart, helperEnd);
     
     // Verify font size preservation logic
     expect(helperFunction).toContain('var preservedFontSize = wrapper.style.fontSize;');
@@ -167,11 +203,28 @@ describe('minimal_paginator.js - scrollend fix', () => {
   test('applyColumnStylesWithWidth should use cssText for comprehensive style application', () => {
     const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
     
-    // Find the applyColumnStylesWithWidth function
-    const helperMatch = scriptContent.match(/function applyColumnStylesWithWidth\([\s\S]*?\n    \}/);
-    expect(helperMatch).toBeTruthy();
+    // Find the applyColumnStylesWithWidth function by counting braces
+    const helperStart = scriptContent.indexOf('function applyColumnStylesWithWidth(');
+    expect(helperStart).toBeGreaterThan(-1);
     
-    const helperFunction = helperMatch[0];
+    let braceCount = 0;
+    let inFunction = false;
+    let helperEnd = helperStart;
+    
+    for (let i = helperStart; i < scriptContent.length; i++) {
+      if (scriptContent[i] === '{') {
+        braceCount++;
+        inFunction = true;
+      } else if (scriptContent[i] === '}') {
+        braceCount--;
+        if (inFunction && braceCount === 0) {
+          helperEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    const helperFunction = scriptContent.substring(helperStart, helperEnd);
     
     // Verify it uses cssText for setting styles
     expect(helperFunction).toContain('wrapper.style.cssText');
