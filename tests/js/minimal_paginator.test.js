@@ -242,3 +242,205 @@ describe('minimal_paginator.js - scrollend fix', () => {
   });
   
 });
+
+describe('minimal_paginator.js - wrapExistingContentAsSegment and reflow functions', () => {
+  
+  test('wrapExistingContentAsSegment function should exist', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Verify the function exists
+    expect(scriptContent).toContain('function wrapExistingContentAsSegment()');
+  });
+  
+  test('wrapExistingContentAsSegment should check for pre-wrapped sections', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the function
+    const funcStart = scriptContent.indexOf('function wrapExistingContentAsSegment()');
+    expect(funcStart).toBeGreaterThan(-1);
+    
+    // Extract function body
+    let braceCount = 0;
+    let inFunction = false;
+    let funcEnd = funcStart;
+    
+    for (let i = funcStart; i < scriptContent.length; i++) {
+      if (scriptContent[i] === '{') {
+        braceCount++;
+        inFunction = true;
+      } else if (scriptContent[i] === '}') {
+        braceCount--;
+        if (inFunction && braceCount === 0) {
+          funcEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    const functionBody = scriptContent.substring(funcStart, funcEnd);
+    
+    // Verify it checks for existing sections
+    expect(functionBody).toContain('querySelectorAll');
+    expect(functionBody).toContain('section[data-chapter-index]');
+    expect(functionBody).toContain('Found');
+    expect(functionBody).toContain('pre-wrapped');
+  });
+  
+  test('wrapExistingContentAsSegment should be called in initialize()', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the initialize function
+    const initStart = scriptContent.indexOf('function initialize(htmlContent)');
+    expect(initStart).toBeGreaterThan(-1);
+    
+    // Extract initialize function
+    let braceCount = 0;
+    let inFunction = false;
+    let initEnd = initStart;
+    
+    for (let i = initStart; i < scriptContent.length; i++) {
+      if (scriptContent[i] === '{') {
+        braceCount++;
+        inFunction = true;
+      } else if (scriptContent[i] === '}') {
+        braceCount--;
+        if (inFunction && braceCount === 0) {
+          initEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    const initFunction = scriptContent.substring(initStart, initEnd);
+    
+    // Verify wrapExistingContentAsSegment is called
+    expect(initFunction).toContain('wrapExistingContentAsSegment()');
+    
+    // Verify it's called before applyColumnLayout
+    const wrapPos = initFunction.indexOf('wrapExistingContentAsSegment()');
+    const applyPos = initFunction.indexOf('applyColumnLayout()');
+    expect(wrapPos).toBeGreaterThan(-1);
+    expect(applyPos).toBeGreaterThan(-1);
+    expect(wrapPos).toBeLessThan(applyPos);
+  });
+  
+  test('reflow function should exist', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Verify the function exists
+    expect(scriptContent).toContain('function reflow(preservePosition)');
+  });
+  
+  test('reflow should handle position preservation', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the function
+    const funcStart = scriptContent.indexOf('function reflow(preservePosition)');
+    expect(funcStart).toBeGreaterThan(-1);
+    
+    // Extract function body
+    let braceCount = 0;
+    let inFunction = false;
+    let funcEnd = funcStart;
+    
+    for (let i = funcStart; i < scriptContent.length; i++) {
+      if (scriptContent[i] === '{') {
+        braceCount++;
+        inFunction = true;
+      } else if (scriptContent[i] === '}') {
+        braceCount--;
+        if (inFunction && braceCount === 0) {
+          funcEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    const functionBody = scriptContent.substring(funcStart, funcEnd);
+    
+    // Verify it handles preservePosition
+    expect(functionBody).toContain('preservePosition');
+    expect(functionBody).toContain('currentPageBeforeReflow');
+    expect(functionBody).toContain('currentCharOffset');
+    expect(functionBody).toContain('findPageByCharOffset');
+  });
+  
+  test('reflow should call applyColumnLayout and calculatePageCountAndOffsets', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the function
+    const funcStart = scriptContent.indexOf('function reflow(preservePosition)');
+    expect(funcStart).toBeGreaterThan(-1);
+    
+    // Extract function body
+    let braceCount = 0;
+    let inFunction = false;
+    let funcEnd = funcStart;
+    
+    for (let i = funcStart; i < scriptContent.length; i++) {
+      if (scriptContent[i] === '{') {
+        braceCount++;
+        inFunction = true;
+      } else if (scriptContent[i] === '}') {
+        braceCount--;
+        if (inFunction && braceCount === 0) {
+          funcEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    const functionBody = scriptContent.substring(funcStart, funcEnd);
+    
+    // Verify it calls the necessary functions
+    expect(functionBody).toContain('applyColumnLayout()');
+    expect(functionBody).toContain('calculatePageCountAndOffsets()');
+  });
+  
+  test('reflow should be in the public API', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the public API export
+    const apiStart = scriptContent.indexOf('window.minimalPaginator = {');
+    expect(apiStart).toBeGreaterThan(-1);
+    
+    // Extract the API object
+    const apiEnd = scriptContent.indexOf('};', apiStart);
+    const apiObject = scriptContent.substring(apiStart, apiEnd + 2);
+    
+    // Verify reflow is exported
+    expect(apiObject).toContain('reflow');
+  });
+  
+  test('setFontSize should call reflow()', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the setFontSize function
+    const funcStart = scriptContent.indexOf('function setFontSize(px)');
+    expect(funcStart).toBeGreaterThan(-1);
+    
+    // Extract function body
+    let braceCount = 0;
+    let inFunction = false;
+    let funcEnd = funcStart;
+    
+    for (let i = funcStart; i < scriptContent.length; i++) {
+      if (scriptContent[i] === '{') {
+        braceCount++;
+        inFunction = true;
+      } else if (scriptContent[i] === '}') {
+        braceCount--;
+        if (inFunction && braceCount === 0) {
+          funcEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    const functionBody = scriptContent.substring(funcStart, funcEnd);
+    
+    // Verify it calls reflow
+    expect(functionBody).toContain('reflow(');
+  });
+  
+});
