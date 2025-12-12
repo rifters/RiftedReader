@@ -162,6 +162,10 @@
             state.columnContainer.appendChild(state.contentWrapper);
             body.appendChild(state.columnContainer);
             
+            // Wrap content in <section data-chapter-index> tags if not already wrapped
+            // This is required for column layout to work correctly
+            wrapExistingContentAsSegment();
+            
             // Use window.innerWidth as viewport width (container will be full width)
             state.viewportWidth = window.innerWidth;
             state.appliedColumnWidth = state.viewportWidth;
@@ -328,16 +332,10 @@
         state.currentFontSize = px;
         state.contentWrapper.style.fontSize = px + 'px';
         
-        // Recalculate offsets and page count after font change
-        calculatePageCountAndOffsets();
+        // Use reflow() to handle layout recalculation and position preservation
+        const result = reflow(true);
         
-        // Stay approximately at same character offset
-        const currentOffset = charOffsets[state.currentPage] || 0;
-        const newPageIndex = findPageByCharOffset(currentOffset);
-        state.currentPage = newPageIndex;
-        
-        goToPage(newPageIndex, false);
-        log('FONT_CHANGE', `${px}px, newPage=${newPageIndex}`);
+        log('FONT_CHANGE', `${px}px, pageCount=${result.pageCount}, currentPage=${result.currentPage}`);
     }
     
     /**
@@ -374,6 +372,163 @@
     // ========================================================================
     // INTERNAL HELPERS
     // ========================================================================
+    
+    /**
+     * Wrap existing content in <section data-chapter-index> tags if not already wrapped.
+     * This is required for the column layout to work correctly.
+     * 
+     * Based on inpage_paginator.js wrapExistingContentAsSegment function.
+     * Adapted for minimal_paginator which uses state.contentWrapper.
+     */
+    function wrapExistingContentAsSegment() {
+        if (!state.contentWrapper) {
+            return;
+        }
+        
+        // Check if content already has section elements with data-chapter-index
+        // This happens in window mode when HTML is pre-wrapped with multiple chapters
+        const existingSections = state.contentWrapper.querySelectorAll('section[data-chapter-index]');
+        
+        if (existingSections.length > 0) {
+            // Validate that sections have valid chapter indices
+            let validSectionCount = 0;
+            for (let i = 0; i < existingSections.length; i++) {
+                const section = existingSections[i];
+                const chapterIndexAttr = section.getAttribute('data-chapter-index');
+                const chapterIndex = parseInt(chapterIndexAttr, 10);
+                
+                // Validate that chapter index is a valid non-negative integer
+                if (!isNaN(chapterIndex) && chapterIndex >= 0) {
+                    validSectionCount++;
+                } else {
+                    log('WARN', `Ignoring section with invalid data-chapter-index: ${chapterIndexAttr}`);
+                }
+            }
+            
+            if (validSectionCount > 0) {
+                // Content is already wrapped in valid chapter sections (window mode with pre-wrapped HTML)
+                log('WRAP', `Found ${validSectionCount} pre-wrapped chapter sections`);
+                return;
+            }
+        }
+        
+        // No valid pre-wrapped sections found - wrap all content in a single segment
+        // This is the behavior for non-wrapped window mode or single chapter content
+        log('WRAP', 'No valid pre-wrapped sections found, wrapping content as single segment');
+        const segment = document.createElement('section');
+        segment.className = 'chapter-segment';
+        
+        // Use windowIndex from config as the chapter index for this segment
+        const chapterIndex = config.windowIndex !== undefined ? config.windowIndex : 0;
+        
+        segment.setAttribute('data-chapter-index', chapterIndex);
+        const fragment = document.createDocumentFragment();
+        while (state.contentWrapper.firstChild) {
+            fragment.appendChild(state.contentWrapper.firstChild);
+        }
+        segment.appendChild(fragment);
+        state.contentWrapper.appendChild(segment);
+        
+        log('WRAP', `Wrapped content as chapter ${chapterIndex}`);
+    }
+    
+    /**
+     * Reflow the paginator - recalculate columns and page count.
+     * Called when layout changes (font size, content updates, orientation).
+     * 
+     * Based on inpage_paginator.js reflow function.
+     * Adapted for minimal_paginator state structure.
+     * 
+     * @param {boolean} preservePosition - Whether to maintain current page position (default: true)
+     * @returns {Object} - {success: boolean, pageCount: number, currentPage: number}
+     */
+    function reflow(preservePosition) {
+        if (preservePosition === undefined) {
+            preservePosition = true;
+        }
+        
+        if (!state.isInitialized || !state.columnContainer) {
+            log('WARN', 'Reflow called before initialization');
+            return { success: false, pageCount: 0 };
+        }
+        
+        log('REFLOW', `Triggered (preservePosition=${preservePosition})`);
+        
+        try {
+            // Save current state before reflow
+            let currentPageBeforeReflow = 0;
+            let currentCharOffset = 0;
+            
+            if (preservePosition) {
+                try {
+                    currentPageBeforeReflow = getCurrentPage();
+                    currentCharOffset = charOffsets[currentPageBeforeReflow] || 0;
+                    log('REFLOW', `Saving position - page=${currentPageBeforeReflow}, charOffset=${currentCharOffset}`);
+                } catch (e) {
+                    log('WARN', `Error saving position during reflow: ${e.message}`);
+                    preservePosition = false;
+                }
+            }
+            
+            if (!state.contentWrapper) {
+                log('ERROR', 'Content wrapper not found during reflow');
+                return { success: false, pageCount: 0 };
+            }
+            
+            // Force reflow by temporarily changing display property
+            const oldDisplay = state.columnContainer.style.display;
+            state.columnContainer.style.display = 'none';
+            state.columnContainer.offsetHeight; // Force reflow
+            state.columnContainer.style.display = oldDisplay || '';
+            
+            // Reapply column layout
+            applyColumnLayout();
+            
+            // Recalculate page count and character offsets
+            calculatePageCountAndOffsets();
+            
+            const pageCount = state.pageCount;
+            log('REFLOW', `Calculated new pageCount=${pageCount}`);
+            
+            // Restore position if requested
+            if (preservePosition && pageCount > 0) {
+                // Try to restore by character offset for better accuracy
+                const targetPage = findPageByCharOffset(currentCharOffset);
+                const clampedPage = Math.max(0, Math.min(targetPage, pageCount - 1));
+                log('REFLOW', `Restoring to page=${clampedPage} (via charOffset=${currentCharOffset})`);
+                goToPage(clampedPage, false);
+            } else {
+                // If not preserving position, sync from actual scroll
+                const scrollLeft = state.columnContainer.scrollLeft;
+                const newPage = Math.floor(scrollLeft / state.appliedColumnWidth);
+                state.currentPage = Math.max(0, Math.min(newPage, pageCount - 1));
+            }
+            
+            log('REFLOW', `Complete - pageCount=${pageCount}, currentPage=${state.currentPage}`);
+            
+            // Mark pagination as temporarily not ready, then restore after a brief delay
+            // This prevents race conditions with getPageCount() during reflow
+            state.isPaginationReady = false;
+            log('REFLOW', 'isPaginationReady temporarily set to false');
+            
+            setTimeout(() => {
+                state.isPaginationReady = true;
+                log('REFLOW', 'isPaginationReady set back to true');
+                
+                // Sync with Android bridge
+                syncPaginationState();
+                
+                // Notify Android if callback exists
+                callAndroidBridge('onPaginationReady', { pageCount: pageCount });
+            }, 0); // Execute ASAP but after current call stack
+            
+            return { success: true, pageCount: pageCount, currentPage: state.currentPage };
+        } catch (e) {
+            log('ERROR', `Reflow failed: ${e.message}`);
+            state.isPaginationReady = false;
+            return { success: false, pageCount: 0, error: e.message };
+        }
+    }
     
     /**
      * Apply column styles with a specific width.
@@ -853,7 +1008,8 @@
         setFontSize,
         getCharacterOffsetForPage,
         goToPageWithCharacterOffset,
-        isReady
+        isReady,
+        reflow
     };
     
     // Add 'inpagePaginator' alias for backward compatibility during transition
