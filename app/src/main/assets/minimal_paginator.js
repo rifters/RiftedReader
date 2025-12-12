@@ -488,7 +488,7 @@
         if (!state.isPaginationReady) return;
         
         const currentScrollLeft = window.scrollX || window.pageXOffset || 0;
-        const targetPage = Math.round(currentScrollLeft / state.appliedColumnWidth);
+        const targetPage = Math.floor(currentScrollLeft / state.appliedColumnWidth);
         const clampedPage = Math.max(0, Math.min(targetPage, state.pageCount - 1));
         const targetScrollPos = clampedPage * state.appliedColumnWidth;
         
