@@ -116,4 +116,28 @@ describe('minimal_paginator.js - scrollend fix', () => {
     expect(scriptContent).not.toContain('const targetPage = Math.round(currentScrollLeft / state.appliedColumnWidth);');
   });
   
+  test('applyColumnLayout should set wrapper width to exact multiple of viewport width', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the applyColumnLayout function
+    const applyColumnLayoutMatch = scriptContent.match(/function applyColumnLayout\(\)[\s\S]*?\n    \}/);
+    expect(applyColumnLayoutMatch).toBeTruthy();
+    
+    const applyColumnLayoutFunction = applyColumnLayoutMatch[0];
+    
+    // Verify the critical fix is present with the exact calculations
+    expect(applyColumnLayoutFunction).toContain('var useWidth = state.appliedColumnWidth > 0 ? state.appliedColumnWidth : FALLBACK_WIDTH;');
+    expect(applyColumnLayoutFunction).toContain('var scrollWidth = state.contentWrapper.scrollWidth;');
+    expect(applyColumnLayoutFunction).toContain('var pageCount = Math.max(1, Math.ceil(scrollWidth / useWidth));');
+    expect(applyColumnLayoutFunction).toContain('var exactWidth = pageCount * useWidth;');
+    expect(applyColumnLayoutFunction).toContain("state.contentWrapper.style.width = exactWidth + 'px';");
+    
+    // Verify the comment explaining the fix (checking multi-line comment separately)
+    expect(applyColumnLayoutFunction).toContain('CRITICAL FIX');
+    expect(applyColumnLayoutFunction).toContain('horizontal grid alignment');
+    // Check that both parts of the phrase are present (may be on different lines)
+    expect(applyColumnLayoutFunction).toContain('prevents');
+    expect(applyColumnLayoutFunction).toContain('vertical stacking');
+  });
+  
 });

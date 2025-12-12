@@ -343,7 +343,24 @@
         };
         
         Object.assign(state.contentWrapper.style, styles);
-        log('LAYOUT', `columns applied: ${state.appliedColumnWidth}px width`);
+        
+        // CRITICAL FIX: Force reflow before measurement to get accurate scrollWidth
+        state.contentWrapper.offsetHeight;
+        
+        // CRITICAL FIX: Compute page count and set wrapper width to an exact multiple
+        // of viewport width. This guarantees horizontal grid alignment and prevents
+        // vertical stacking that breaks horizontal paging.
+        var useWidth = state.appliedColumnWidth > 0 ? state.appliedColumnWidth : FALLBACK_WIDTH;
+        var scrollWidth = state.contentWrapper.scrollWidth;
+        var pageCount = Math.max(1, Math.ceil(scrollWidth / useWidth));
+        var exactWidth = pageCount * useWidth;
+        
+        state.contentWrapper.style.width = exactWidth + 'px';
+        
+        // Force another reflow after setting width to ensure layout is stable
+        state.contentWrapper.offsetHeight;
+        
+        log('LAYOUT', `columns applied: ${state.appliedColumnWidth}px width, wrapper width set to ${exactWidth}px (pageCount=${pageCount}, scrollWidth=${scrollWidth})`);
     }
     
     /**
