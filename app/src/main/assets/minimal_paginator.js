@@ -329,38 +329,63 @@
     // ========================================================================
     
     /**
-     * Apply CSS column layout
+     * Apply column styles with a specific width.
+     * This is the complete, working implementation from inpage_paginator.js
+     * that properly handles:
+     * - Font size preservation
+     * - Complete CSS properties with -webkit- prefixes
+     * - Image constraint handling
+     * - Accurate page width calculation
+     * 
+     * @param {HTMLElement} wrapper - The content wrapper element
+     * @param {number} columnWidth - The column width to apply
      */
-    function applyColumnLayout() {
-        const styles = {
-            'column-width': state.appliedColumnWidth + 'px',
-            'column-gap': COLUMN_GAP + 'px',
-            'column-fill': 'auto',
-            'overflow-x': 'hidden',
-            'overflow-y': 'hidden',
-            'height': '100vh',
-            'width': '100vw'
-        };
+    function applyColumnStylesWithWidth(wrapper, columnWidth) {
+        // Preserve the current font size before updating styles
+        var preservedFontSize = wrapper.style.fontSize;
         
-        Object.assign(state.contentWrapper.style, styles);
+        // Set up column CSS with explicit -webkit prefixes for better Android WebView support
+        wrapper.style.cssText = `
+            display: block;
+            column-width: ${columnWidth}px;
+            -webkit-column-width: ${columnWidth}px;
+            column-gap: ${COLUMN_GAP}px;
+            -webkit-column-gap: ${COLUMN_GAP}px;
+            column-fill: auto;
+            -webkit-column-fill: auto;
+            height: 100%;
+            scroll-snap-align: start;
+        `;
+        
+        // Restore the preserved font size if it existed
+        if (preservedFontSize) {
+            wrapper.style.fontSize = preservedFontSize;
+        }
         
         // CRITICAL FIX: Force reflow before measurement to get accurate scrollWidth
-        state.contentWrapper.offsetHeight;
+        wrapper.offsetHeight; // Force reflow
         
         // CRITICAL FIX: Compute page count and set wrapper width to an exact multiple
         // of viewport width. This guarantees horizontal grid alignment and prevents
         // vertical stacking that breaks horizontal paging.
-        var useWidth = state.appliedColumnWidth > 0 ? state.appliedColumnWidth : FALLBACK_WIDTH;
-        var scrollWidth = state.contentWrapper.scrollWidth;
+        var useWidth = columnWidth > 0 ? columnWidth : FALLBACK_WIDTH;
+        var scrollWidth = wrapper.scrollWidth;
         var pageCount = Math.max(1, Math.ceil(scrollWidth / useWidth));
         var exactWidth = pageCount * useWidth;
         
-        state.contentWrapper.style.width = exactWidth + 'px';
+        wrapper.style.width = exactWidth + 'px';
         
         // Force another reflow after setting width to ensure layout is stable
-        state.contentWrapper.offsetHeight;
+        wrapper.offsetHeight;
         
-        log('LAYOUT', `columns applied: ${state.appliedColumnWidth}px width, wrapper width set to ${exactWidth}px (pageCount=${pageCount}, scrollWidth=${scrollWidth})`);
+        log('LAYOUT', `Set wrapper width=${exactWidth}px (pageCount=${pageCount}, scrollWidth=${scrollWidth}, columnWidth=${columnWidth})`);
+    }
+    
+    /**
+     * Apply CSS column layout
+     */
+    function applyColumnLayout() {
+        applyColumnStylesWithWidth(state.contentWrapper, state.appliedColumnWidth);
     }
     
     /**

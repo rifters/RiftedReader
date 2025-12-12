@@ -119,25 +119,126 @@ describe('minimal_paginator.js - scrollend fix', () => {
   test('applyColumnLayout should set wrapper width to exact multiple of viewport width', () => {
     const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
     
-    // Find the applyColumnLayout function
-    const applyColumnLayoutMatch = scriptContent.match(/function applyColumnLayout\(\)[\s\S]*?\n    \}/);
+    // Find the applyColumnLayout function - it now delegates to applyColumnStylesWithWidth
+    const applyColumnLayoutMatch = scriptContent.match(/function applyColumnLayout\(\)[^}]*\}/);
     expect(applyColumnLayoutMatch).toBeTruthy();
     
     const applyColumnLayoutFunction = applyColumnLayoutMatch[0];
     
-    // Verify the critical fix is present with the exact calculations
-    expect(applyColumnLayoutFunction).toContain('var useWidth = state.appliedColumnWidth > 0 ? state.appliedColumnWidth : FALLBACK_WIDTH;');
-    expect(applyColumnLayoutFunction).toContain('var scrollWidth = state.contentWrapper.scrollWidth;');
-    expect(applyColumnLayoutFunction).toContain('var pageCount = Math.max(1, Math.ceil(scrollWidth / useWidth));');
-    expect(applyColumnLayoutFunction).toContain('var exactWidth = pageCount * useWidth;');
-    expect(applyColumnLayoutFunction).toContain("state.contentWrapper.style.width = exactWidth + 'px';");
+    // Verify it calls applyColumnStylesWithWidth
+    expect(applyColumnLayoutFunction).toContain('applyColumnStylesWithWidth');
+    
+    // Now find the applyColumnStylesWithWidth helper function
+    // Match from function declaration to its closing brace, accounting for nested braces
+    const helperStart = scriptContent.indexOf('function applyColumnStylesWithWidth(');
+    expect(helperStart).toBeGreaterThan(-1);
+    
+    // Find matching closing brace by counting braces
+    let braceCount = 0;
+    let inFunction = false;
+    let helperEnd = helperStart;
+    
+    for (let i = helperStart; i < scriptContent.length; i++) {
+      if (scriptContent[i] === '{') {
+        braceCount++;
+        inFunction = true;
+      } else if (scriptContent[i] === '}') {
+        braceCount--;
+        if (inFunction && braceCount === 0) {
+          helperEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    const helperFunction = scriptContent.substring(helperStart, helperEnd);
+    
+    // Verify the critical fix is present in the helper with the exact calculations
+    expect(helperFunction).toContain('var useWidth = columnWidth > 0 ? columnWidth : FALLBACK_WIDTH;');
+    expect(helperFunction).toContain('var scrollWidth = wrapper.scrollWidth;');
+    expect(helperFunction).toContain('var pageCount = Math.max(1, Math.ceil(scrollWidth / useWidth));');
+    expect(helperFunction).toContain('var exactWidth = pageCount * useWidth;');
+    expect(helperFunction).toContain("wrapper.style.width = exactWidth + 'px';");
     
     // Verify the comment explaining the fix (checking multi-line comment separately)
-    expect(applyColumnLayoutFunction).toContain('CRITICAL FIX');
-    expect(applyColumnLayoutFunction).toContain('horizontal grid alignment');
+    expect(helperFunction).toContain('CRITICAL FIX');
+    expect(helperFunction).toContain('horizontal grid alignment');
     // Check that both parts of the phrase are present (may be on different lines)
-    expect(applyColumnLayoutFunction).toContain('prevents');
-    expect(applyColumnLayoutFunction).toContain('vertical stacking');
+    expect(helperFunction).toContain('prevents');
+    expect(helperFunction).toContain('vertical stacking');
+  });
+  
+  test('applyColumnStylesWithWidth should preserve font size', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the applyColumnStylesWithWidth function by counting braces
+    const helperStart = scriptContent.indexOf('function applyColumnStylesWithWidth(');
+    expect(helperStart).toBeGreaterThan(-1);
+    
+    let braceCount = 0;
+    let inFunction = false;
+    let helperEnd = helperStart;
+    
+    for (let i = helperStart; i < scriptContent.length; i++) {
+      if (scriptContent[i] === '{') {
+        braceCount++;
+        inFunction = true;
+      } else if (scriptContent[i] === '}') {
+        braceCount--;
+        if (inFunction && braceCount === 0) {
+          helperEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    const helperFunction = scriptContent.substring(helperStart, helperEnd);
+    
+    // Verify font size preservation logic
+    expect(helperFunction).toContain('var preservedFontSize = wrapper.style.fontSize;');
+    expect(helperFunction).toContain('if (preservedFontSize)');
+    expect(helperFunction).toContain('wrapper.style.fontSize = preservedFontSize;');
+  });
+  
+  test('applyColumnStylesWithWidth should use cssText for comprehensive style application', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the applyColumnStylesWithWidth function by counting braces
+    const helperStart = scriptContent.indexOf('function applyColumnStylesWithWidth(');
+    expect(helperStart).toBeGreaterThan(-1);
+    
+    let braceCount = 0;
+    let inFunction = false;
+    let helperEnd = helperStart;
+    
+    for (let i = helperStart; i < scriptContent.length; i++) {
+      if (scriptContent[i] === '{') {
+        braceCount++;
+        inFunction = true;
+      } else if (scriptContent[i] === '}') {
+        braceCount--;
+        if (inFunction && braceCount === 0) {
+          helperEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    const helperFunction = scriptContent.substring(helperStart, helperEnd);
+    
+    // Verify it uses cssText for setting styles
+    expect(helperFunction).toContain('wrapper.style.cssText');
+    
+    // Verify complete CSS properties are present
+    expect(helperFunction).toContain('display: block');
+    expect(helperFunction).toContain('column-width:');
+    expect(helperFunction).toContain('-webkit-column-width:');
+    expect(helperFunction).toContain('column-gap:');
+    expect(helperFunction).toContain('-webkit-column-gap:');
+    expect(helperFunction).toContain('column-fill: auto');
+    expect(helperFunction).toContain('-webkit-column-fill: auto');
+    expect(helperFunction).toContain('height: 100%');
+    expect(helperFunction).toContain('scroll-snap-align: start');
   });
   
 });
