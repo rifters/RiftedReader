@@ -79,8 +79,8 @@ describe('minimal_paginator.js - scrollend fix', () => {
   test('should sync pagination state before checking boundaries', () => {
     const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
     
-    // Find the scroll listener
-    const scrollListenerMatch = scriptContent.match(/window\.addEventListener\('scroll'[\s\S]*?}, false\);/);
+    // Find the scroll listener - updated to use columnContainer instead of window
+    const scrollListenerMatch = scriptContent.match(/state\.columnContainer\.addEventListener\('scroll'[\s\S]*?}, false\);/);
     expect(scrollListenerMatch).toBeTruthy();
     
     const scrollListener = scrollListenerMatch[0];
@@ -94,8 +94,8 @@ describe('minimal_paginator.js - scrollend fix', () => {
   test('isNavigating flag should prevent scroll listener interference', () => {
     const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
     
-    // Find the scroll listener
-    const scrollListenerMatch = scriptContent.match(/window\.addEventListener\('scroll'[\s\S]*?}, false\);/);
+    // Find the scroll listener - updated to use columnContainer instead of window
+    const scrollListenerMatch = scriptContent.match(/state\.columnContainer\.addEventListener\('scroll'[\s\S]*?}, false\);/);
     expect(scrollListenerMatch).toBeTruthy();
     
     const scrollListener = scrollListenerMatch[0];

@@ -96,28 +96,74 @@
      */
     function initialize(htmlContent) {
         try {
-            // Set up container
-            state.columnContainer = document.documentElement;
-            state.contentWrapper = document.body;
+            // ARCHITECTURE FIX: Create dedicated container divs like inpage_paginator
+            // This isolates scroll handling and prevents window-level scroll interference
             
-            if (!state.contentWrapper) {
+            const body = document.body;
+            if (!body) {
                 log('ERROR', 'No body element found');
                 return false;
             }
             
-            // Only set innerHTML if htmlContent is provided
-            // If not provided, assume HTML is already in the DOM (loaded via loadDataWithBaseURL)
+            // Normalize html/body CSS for full viewport with no scrolling
+            const html = document.documentElement;
+            if (html) {
+                html.style.margin = '0';
+                html.style.padding = '0';
+                html.style.width = '100%';
+                html.style.height = '100%';
+                html.style.overflow = 'hidden';
+            }
+            
+            body.style.margin = '0';
+            body.style.padding = '0';
+            body.style.width = '100%';
+            body.style.height = '100%';
+            body.style.overflow = 'hidden';
+            body.style.webkitTapHighlightColor = 'transparent';
+            
+            // Create dedicated column container with scroll capability
+            state.columnContainer = document.createElement('div');
+            state.columnContainer.id = 'paginator-container';
+            state.columnContainer.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                overflow-x: auto;
+                overflow-y: hidden;
+                scroll-snap-type: x mandatory;
+                -webkit-overflow-scrolling: touch;
+            `;
+            
+            // Create content wrapper for columns
+            state.contentWrapper = document.createElement('div');
+            state.contentWrapper.id = 'paginator-content';
+            
+            // Move all body children to content wrapper OR inject htmlContent
             if (htmlContent !== undefined && htmlContent !== null && htmlContent.length > 0) {
                 state.contentWrapper.innerHTML = htmlContent;
                 log('INIT', 'HTML content injected from parameter');
             } else {
-                log('INIT', 'Using existing HTML in DOM (htmlContent not provided)');
+                // Move existing body content to wrapper
+                while (body.firstChild) {
+                    const child = body.firstChild;
+                    if (child) {
+                        state.contentWrapper.appendChild(child);
+                    } else {
+                        break;
+                    }
+                }
+                log('INIT', 'Moved existing body content to wrapper');
             }
             
-            // CRITICAL FIX: Use measured content width instead of window.innerWidth
-            // This ensures consistency between pageCount calculation and navigation
-            const measuredWidth = state.contentWrapper.clientWidth || state.contentWrapper.getBoundingClientRect().width;
-            state.viewportWidth = Math.max(measuredWidth, MIN_CLIENT_WIDTH);
+            // Add wrappers to DOM
+            state.columnContainer.appendChild(state.contentWrapper);
+            body.appendChild(state.columnContainer);
+            
+            // Use window.innerWidth as viewport width (container will be full width)
+            state.viewportWidth = window.innerWidth;
             state.appliedColumnWidth = state.viewportWidth;
             
             log('INIT', `Using measured content width: ${state.viewportWidth}px (clientWidth=${state.contentWrapper.clientWidth}, boundingWidth=${state.contentWrapper.getBoundingClientRect().width})`);
@@ -223,11 +269,11 @@
             log('NAV', `scrollend event fired - navigation complete`);
             
             // Remove the event listener
-            window.removeEventListener('scrollend', onScrollEnd);
+            state.columnContainer.removeEventListener('scrollend', onScrollEnd);
         };
         
-        // Attach scrollend listener
-        window.addEventListener('scrollend', onScrollEnd);
+        // Attach scrollend listener to container (not window)
+        state.columnContainer.addEventListener('scrollend', onScrollEnd);
         
         // Fallback timeout for browsers without scrollend support (300ms to cover smooth animations)
         scrollEndTimeout = setTimeout(function() {
@@ -235,11 +281,12 @@
                 scrollEndFired = true;
                 state.isNavigating = false;
                 log('NAV', `fallback timeout fired (300ms) - navigation complete`);
-                window.removeEventListener('scrollend', onScrollEnd);
+                state.columnContainer.removeEventListener('scrollend', onScrollEnd);
             }
         }, 300);
         
-        window.scrollTo({
+        // Use columnContainer.scrollTo() instead of window.scrollTo()
+        state.columnContainer.scrollTo({
             left: scrollPos,
             top: 0,
             behavior: smooth ? 'smooth' : 'auto'
@@ -470,7 +517,8 @@
     function setupScrollListener() {
         let scrollEndTimeout = null;
         
-        window.addEventListener('scroll', function() {
+        // Use columnContainer.scroll instead of window.scroll
+        state.columnContainer.addEventListener('scroll', function() {
             if (!state.isPaginationReady) return;
             
             // Skip state updates during programmatic navigation to prevent interference
@@ -479,8 +527,8 @@
                 return;
             }
             
-            // Update current page based on scroll position
-            const currentScrollLeft = window.scrollX || window.pageXOffset || 0;
+            // Update current page based on container scroll position
+            const currentScrollLeft = state.columnContainer.scrollLeft;
             const newPage = Math.round(currentScrollLeft / state.appliedColumnWidth);
             const prevPage = state.currentPage;  // ← TRACK PREVIOUS
             state.currentPage = Math.max(0, Math.min(newPage, state.pageCount - 1));
@@ -506,8 +554,8 @@
             
         }, false);
         
-        // Modern browsers: use scrollend event for better performance
-        window.addEventListener('scrollend', function() {
+        // Modern browsers: use scrollend event for better performance on container
+        state.columnContainer.addEventListener('scrollend', function() {
             if (!state.isPaginationReady || state.isNavigating) return;
             
             // Clear fallback timeout since scrollend fired
@@ -519,7 +567,7 @@
             snapToNearestPage();
         }, false);
         
-        log('SCROLL_LISTENER', 'Scroll event listener with snap-to-page attached');
+        log('SCROLL_LISTENER', 'Scroll event listener with snap-to-page attached to columnContainer');
     }
     
     /**
@@ -529,7 +577,8 @@
     function snapToNearestPage() {
         if (!state.isPaginationReady) return;
         
-        const currentScrollLeft = window.scrollX || window.pageXOffset || 0;
+        // Use columnContainer.scrollLeft instead of window scroll
+        const currentScrollLeft = state.columnContainer.scrollLeft;
         const targetPage = Math.floor(currentScrollLeft / state.appliedColumnWidth);
         const clampedPage = Math.max(0, Math.min(targetPage, state.pageCount - 1));
         const targetScrollPos = clampedPage * state.appliedColumnWidth;
@@ -539,8 +588,8 @@
         if (Math.abs(currentScrollLeft - targetScrollPos) > tolerance) {
             log('SNAP', `Snapping to page ${clampedPage} (scroll: ${currentScrollLeft.toFixed(1)} → ${targetScrollPos})`);
             
-            // Snap without smooth animation to be instant
-            window.scrollTo({
+            // Snap without smooth animation to be instant - use columnContainer.scrollTo()
+            state.columnContainer.scrollTo({
                 left: targetScrollPos,
                 top: 0,
                 behavior: 'auto'
@@ -654,7 +703,7 @@
         
         const oldPageCount = state.pageCount;
         const oldCurrentPage = state.currentPage;
-        const oldScrollPos = window.scrollX || window.pageXOffset || 0;
+        const oldScrollPos = state.columnContainer.scrollLeft;
         
         // Recalculate page count
         calculatePageCountAndOffsets();
@@ -671,7 +720,7 @@
             const targetScrollPos = state.currentPage * state.appliedColumnWidth;
             if (Math.abs(oldScrollPos - targetScrollPos) > 5) {
                 log('RECOMPUTE_SNAP', `Snapping to page ${state.currentPage} after recompute`);
-                window.scrollTo({
+                state.columnContainer.scrollTo({
                     left: targetScrollPos,
                     top: 0,
                     behavior: 'auto'
