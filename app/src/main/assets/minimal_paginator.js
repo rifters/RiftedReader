@@ -67,6 +67,9 @@
     // Character offset tracking (NEW)
     let charOffsets = [];  // [page0_offset, page1_offset, page2_offset, ...]
     
+    // Chapter segments (section elements with data-chapter-index)
+    let chapterSegments = [];
+    
     // Boundary detection state
     let lastBoundaryDirection = null;
     let boundaryCheckInProgress = false;
@@ -157,6 +160,9 @@
                 }
                 log('INIT', 'Moved existing body content to wrapper');
             }
+            
+            // Wrap content in section elements with data-chapter-index
+            wrapExistingContentAsSegment();
             
             // Add wrappers to DOM
             state.columnContainer.appendChild(state.contentWrapper);
@@ -374,6 +380,74 @@
     // ========================================================================
     // INTERNAL HELPERS
     // ========================================================================
+    
+    /**
+     * Wrap existing content in section elements with data-chapter-index attributes.
+     * This function ensures content is properly structured before applying column layout.
+     * 
+     * - If content already has valid section[data-chapter-index] elements, they are used
+     * - Otherwise, all content is wrapped in a single section with appropriate chapter index
+     */
+    function wrapExistingContentAsSegment() {
+        if (!state.contentWrapper) {
+            return;
+        }
+        
+        // Check if content already has section elements with data-chapter-index
+        // This happens in window mode when HTML is pre-wrapped with multiple chapters
+        const existingSections = state.contentWrapper.querySelectorAll('section[data-chapter-index]');
+        
+        if (existingSections.length > 0) {
+            // Validate that sections have valid chapter indices
+            const validSections = [];
+            for (let i = 0; i < existingSections.length; i++) {
+                const section = existingSections[i];
+                const chapterIndexAttr = section.getAttribute('data-chapter-index');
+                const chapterIndex = parseInt(chapterIndexAttr, 10);
+                
+                // Validate that chapter index is a valid non-negative integer
+                if (!isNaN(chapterIndex) && chapterIndex >= 0) {
+                    validSections.push(section);
+                } else {
+                    log('CONFIG', 'Ignoring section with invalid data-chapter-index: ' + chapterIndexAttr);
+                }
+            }
+            
+            if (validSections.length > 0) {
+                // Content is already wrapped in valid chapter sections (window mode with pre-wrapped HTML)
+                log('CONFIG', 'Found ' + validSections.length + ' pre-wrapped chapter sections');
+                chapterSegments = validSections;
+                
+                // Log the chapter indices for debugging
+                const chapterIndices = chapterSegments.map(function(seg) {
+                    return seg.getAttribute('data-chapter-index');
+                }).join(', ');
+                log('CONFIG', 'Pre-wrapped chapters: ' + chapterIndices);
+                
+                return;
+            }
+        }
+        
+        // No valid pre-wrapped sections found - wrap all content in a single segment
+        // Use windowIndex as the chapter index
+        log('CONFIG', 'No valid pre-wrapped sections found, wrapping content as single segment');
+        const segment = document.createElement('section');
+        segment.className = 'chapter-segment';
+        
+        // Use windowIndex from config as the chapter index
+        const chapterIndex = config.windowIndex !== undefined ? config.windowIndex : 0;
+        
+        segment.setAttribute('data-chapter-index', chapterIndex);
+        const fragment = document.createDocumentFragment();
+        while (state.contentWrapper.firstChild) {
+            fragment.appendChild(state.contentWrapper.firstChild);
+        }
+        segment.appendChild(fragment);
+        state.contentWrapper.appendChild(segment);
+        chapterSegments = [segment];
+        
+        log('CONFIG', 'Wrapped content as chapter ' + chapterIndex);
+    }
     
     /**
      * Apply column styles with a specific width.

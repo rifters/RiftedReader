@@ -241,4 +241,43 @@ describe('minimal_paginator.js - scrollend fix', () => {
     expect(helperFunction).toContain('scroll-snap-align: start');
   });
   
+  test('wrapExistingContentAsSegment function should exist and wrap content', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Verify function exists
+    expect(scriptContent).toContain('function wrapExistingContentAsSegment()');
+    
+    // Verify it checks for existing sections with data-chapter-index
+    expect(scriptContent).toContain('querySelectorAll(\'section[data-chapter-index]\')');
+    
+    // Verify it creates a new section element if none exist
+    expect(scriptContent).toContain('document.createElement(\'section\')');
+    expect(scriptContent).toContain('setAttribute(\'data-chapter-index\'');
+    
+    // Verify it populates chapterSegments array
+    expect(scriptContent).toContain('chapterSegments =');
+  });
+  
+  test('wrapExistingContentAsSegment should be called in initialize', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the initialize function
+    const initMatch = scriptContent.match(/function initialize\([\s\S]*?(?=\n    function \w+|$)/);
+    expect(initMatch).toBeTruthy();
+    
+    const initFunction = initMatch[0];
+    
+    // Verify wrapExistingContentAsSegment is called
+    expect(initFunction).toContain('wrapExistingContentAsSegment()');
+    
+    // Verify it's called after content is moved to wrapper
+    const wrapCallIndex = initFunction.indexOf('wrapExistingContentAsSegment()');
+    const moveContentIndex = initFunction.indexOf('Moved existing body content to wrapper');
+    expect(wrapCallIndex).toBeGreaterThan(moveContentIndex);
+    
+    // Verify it's called before applyColumnLayout
+    const applyLayoutIndex = initFunction.indexOf('applyColumnLayout()');
+    expect(wrapCallIndex).toBeLessThan(applyLayoutIndex);
+  });
+  
 });
