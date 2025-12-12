@@ -59,7 +59,9 @@
         pageCount: -1,
         columnContainer: null,
         contentWrapper: null,
-        isNavigating: false  // Flag to prevent scroll listener interference during programmatic navigation
+        isNavigating: false,  // Flag to prevent scroll listener interference during programmatic navigation
+        lastRecomputeTime: null,  // Track last recompute for debouncing
+        mutationObserver: null  // MutationObserver for dynamic content changes
     };
     
     // Character offset tracking (NEW)
@@ -112,9 +114,13 @@
                 log('INIT', 'Using existing HTML in DOM (htmlContent not provided)');
             }
             
-            // Get viewport width
-            state.viewportWidth = Math.max(window.innerWidth, MIN_CLIENT_WIDTH);
+            // CRITICAL FIX: Use measured content width instead of window.innerWidth
+            // This ensures consistency between pageCount calculation and navigation
+            const measuredWidth = state.contentWrapper.clientWidth || state.contentWrapper.getBoundingClientRect().width;
+            state.viewportWidth = Math.max(measuredWidth, MIN_CLIENT_WIDTH);
             state.appliedColumnWidth = state.viewportWidth;
+            
+            log('INIT', `Using measured content width: ${state.viewportWidth}px (clientWidth=${state.contentWrapper.clientWidth}, boundingWidth=${state.contentWrapper.getBoundingClientRect().width})`);
             
             // Apply CSS columns
             applyColumnLayout();
@@ -133,7 +139,7 @@
             syncPaginationState();
             
             if (state.isPaginationReady) {
-                log('INIT_SUCCESS', `pageCount=${state.pageCount}, charOffsets=${charOffsets.length}`);
+                log('INIT_SUCCESS', `pageCount=${state.pageCount}, charOffsets=${charOffsets.length}, pageWidth=${state.appliedColumnWidth}px`);
                 callAndroidBridge('onPaginationReady', { pageCount: state.pageCount });
                 
                 // Dispatch DOM CustomEvent for other consumers
@@ -145,6 +151,9 @@
                 } catch (e) {
                     log('ERROR', `Failed to dispatch paginator-ready event: ${e.message}`);
                 }
+                
+                // Schedule post-initialization recompute to handle dynamic content (images, fonts)
+                schedulePostInitRecompute();
             } else {
                 log('INIT_INCOMPLETE', 'Pagination not ready');
             }
@@ -414,9 +423,11 @@
     }
     
     /**
-     * Setup scroll event listener to detect boundary changes
+     * Setup scroll event listener to detect boundary changes and snap to pages
      */
     function setupScrollListener() {
+        let scrollEndTimeout = null;
+        
         window.addEventListener('scroll', function() {
             if (!state.isPaginationReady) return;
             
@@ -441,9 +452,199 @@
             // Check if boundary was reached
             checkBoundary();
             
+            // Clear existing timeout
+            if (scrollEndTimeout) {
+                clearTimeout(scrollEndTimeout);
+            }
+            
+            // Set new timeout for scroll end (fallback for browsers without scrollend)
+            scrollEndTimeout = setTimeout(function() {
+                snapToNearestPage();
+            }, 150);
+            
         }, false);
         
-        log('SCROLL_LISTENER', 'Scroll event listener attached');
+        // Modern browsers: use scrollend event for better performance
+        window.addEventListener('scrollend', function() {
+            if (!state.isPaginationReady || state.isNavigating) return;
+            
+            // Clear fallback timeout since scrollend fired
+            if (scrollEndTimeout) {
+                clearTimeout(scrollEndTimeout);
+                scrollEndTimeout = null;
+            }
+            
+            snapToNearestPage();
+        }, false);
+        
+        log('SCROLL_LISTENER', 'Scroll event listener with snap-to-page attached');
+    }
+    
+    /**
+     * Snap to nearest page boundary after scroll ends
+     * Ensures clean page alignment and recalculates if layout changed
+     */
+    function snapToNearestPage() {
+        if (!state.isPaginationReady) return;
+        
+        const currentScrollLeft = window.scrollX || window.pageXOffset || 0;
+        const targetPage = Math.round(currentScrollLeft / state.appliedColumnWidth);
+        const clampedPage = Math.max(0, Math.min(targetPage, state.pageCount - 1));
+        const targetScrollPos = clampedPage * state.appliedColumnWidth;
+        
+        // Check if we need to snap (allow small tolerance)
+        const tolerance = 5; // pixels
+        if (Math.abs(currentScrollLeft - targetScrollPos) > tolerance) {
+            log('SNAP', `Snapping to page ${clampedPage} (scroll: ${currentScrollLeft.toFixed(1)} → ${targetScrollPos})`);
+            
+            // Snap without smooth animation to be instant
+            window.scrollTo({
+                left: targetScrollPos,
+                top: 0,
+                behavior: 'auto'
+            });
+            
+            // Update state
+            state.currentPage = clampedPage;
+            syncPaginationState();
+        }
+        
+        // After snap, verify page count is still accurate (images may have loaded)
+        // Use a short delay to allow any layout changes to settle
+        setTimeout(function() {
+            recomputeIfNeeded();
+        }, 50);
+    }
+    
+    /**
+     * Schedule post-initialization recompute to handle dynamic content
+     * Images, web fonts, and other async resources may load after initial pagination
+     */
+    function schedulePostInitRecompute() {
+        // Short delay after initial pagination to catch early layout changes
+        setTimeout(function() {
+            log('POST_INIT_RECOMPUTE', 'Running scheduled recompute after 300ms');
+            recomputeIfNeeded();
+        }, 300);
+        
+        // Set up MutationObserver to detect image loads and layout changes
+        if (typeof MutationObserver !== 'undefined') {
+            const observer = new MutationObserver(function(mutations) {
+                // Debounce: only recompute if we haven't recomputed recently
+                const now = Date.now();
+                if (!state.lastRecomputeTime || (now - state.lastRecomputeTime) > 500) {
+                    log('MUTATION_DETECTED', 'Layout changed, scheduling recompute');
+                    setTimeout(function() {
+                        recomputeIfNeeded();
+                    }, 100);
+                }
+            });
+            
+            observer.observe(state.contentWrapper, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['style', 'class', 'width', 'height']
+            });
+            
+            log('MUTATION_OBSERVER', 'Watching for layout changes');
+            
+            // Store observer reference for cleanup
+            state.mutationObserver = observer;
+        }
+        
+        // Also listen for image load events
+        const images = state.contentWrapper.querySelectorAll('img');
+        let loadedImages = 0;
+        const totalImages = images.length;
+        
+        if (totalImages > 0) {
+            log('IMAGE_LOADING', `Detected ${totalImages} images, monitoring load events`);
+            
+            images.forEach(function(img) {
+                // Check if already loaded
+                if (img.complete && img.naturalHeight > 0) {
+                    loadedImages++;
+                } else {
+                    img.addEventListener('load', function() {
+                        loadedImages++;
+                        log('IMAGE_LOADED', `Image ${loadedImages}/${totalImages} loaded`);
+                        
+                        // When all images loaded, do final recompute
+                        if (loadedImages === totalImages) {
+                            setTimeout(function() {
+                                log('ALL_IMAGES_LOADED', 'Final recompute after all images loaded');
+                                recomputeIfNeeded();
+                            }, 100);
+                        }
+                    });
+                    
+                    img.addEventListener('error', function() {
+                        loadedImages++;
+                        log('IMAGE_ERROR', `Image ${loadedImages}/${totalImages} failed to load`);
+                        
+                        if (loadedImages === totalImages) {
+                            setTimeout(function() {
+                                log('ALL_IMAGES_PROCESSED', 'Final recompute after all images processed');
+                                recomputeIfNeeded();
+                            }, 100);
+                        }
+                    });
+                }
+            });
+            
+            // Check if all images were already loaded
+            if (loadedImages === totalImages) {
+                log('ALL_IMAGES_ALREADY_LOADED', 'All images already loaded, recomputing now');
+                setTimeout(function() {
+                    recomputeIfNeeded();
+                }, 100);
+            }
+        }
+    }
+    
+    /**
+     * Recompute page count if layout has changed
+     * Preserves current reading position by calculating nearest page
+     */
+    function recomputeIfNeeded() {
+        if (!state.isPaginationReady) return;
+        
+        const oldPageCount = state.pageCount;
+        const oldCurrentPage = state.currentPage;
+        const oldScrollPos = window.scrollX || window.pageXOffset || 0;
+        
+        // Recalculate page count
+        calculatePageCountAndOffsets();
+        
+        // Check if page count changed
+        if (state.pageCount !== oldPageCount) {
+            log('RECOMPUTE', `Page count changed: ${oldPageCount} → ${state.pageCount}`);
+            
+            // Calculate new page based on scroll position
+            const newPage = Math.round(oldScrollPos / state.appliedColumnWidth);
+            state.currentPage = Math.max(0, Math.min(newPage, state.pageCount - 1));
+            
+            // Snap to the new page boundary
+            const targetScrollPos = state.currentPage * state.appliedColumnWidth;
+            if (Math.abs(oldScrollPos - targetScrollPos) > 5) {
+                log('RECOMPUTE_SNAP', `Snapping to page ${state.currentPage} after recompute`);
+                window.scrollTo({
+                    left: targetScrollPos,
+                    top: 0,
+                    behavior: 'auto'
+                });
+            }
+            
+            // Notify Android of the change
+            syncPaginationState();
+            callAndroidBridge('onPaginationReady', { pageCount: state.pageCount });
+            
+            log('RECOMPUTE_COMPLETE', `Page ${oldCurrentPage}/${oldPageCount} → ${state.currentPage}/${state.pageCount}`);
+        }
+        
+        // Track recompute time for debouncing
+        state.lastRecomputeTime = Date.now();
     }
     
     /**

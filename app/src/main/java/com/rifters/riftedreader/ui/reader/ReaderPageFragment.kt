@@ -31,8 +31,10 @@ import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.util.EpubImageAssetHelper
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONArray
 import java.io.File
+import kotlin.coroutines.resume
 import kotlin.math.abs
 
 class ReaderPageFragment : Fragment() {
@@ -2213,8 +2215,9 @@ class ReaderPageFragment : Fragment() {
      * 1. In-page navigation (when not at edge)
      * 2. Edge detection and handover to window navigation
      * 
-     * Checks paginator readiness and uses cached page info from WebViewPaginatorBridge.
-     * When at an edge, calls into ReaderActivity to move to the adjacent window.
+     * CRITICAL: Re-reads pageCount and currentPage immediately before navigation
+     * to ensure we're using fresh, stable values from the JavaScript paginator.
+     * Guards against unstable paginator state (pageCount <= 0).
      * 
      * @param isNext true for next/forward navigation, false for previous/backward
      * @param source Logging tag to identify the navigation source (e.g., "HARDWARE_KEY", "FLING", "SCROLL")
@@ -2231,24 +2234,44 @@ class ReaderPageFragment : Fragment() {
         }
         
         try {
-            // Get page info from cached values (synchronized with JS)
-            val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
-            val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
+            // CRITICAL FIX: Re-read page info immediately before navigation
+            // Force a fresh sync from JavaScript to get the most current values
+            // This prevents using stale cached values during rapid navigation
+            val freshPageCount = binding.pageWebView.evaluateJavascriptSuspend(
+                "window.minimalPaginator ? window.minimalPaginator.getPageCount() : -1"
+            ).toIntOrNull() ?: -1
+            
+            val freshCurrentPage = binding.pageWebView.evaluateJavascriptSuspend(
+                "window.minimalPaginator ? window.minimalPaginator.getCurrentPage() : 0"
+            ).toIntOrNull() ?: 0
+            
+            // GUARD: Bail if paginator not ready or page count is invalid
+            if (freshPageCount <= 0) {
+                com.rifters.riftedreader.util.AppLogger.w(
+                    "ReaderPageFragment",
+                    "$source navigation BLOCKED: freshPageCount=$freshPageCount (paginator not ready or unstable) [NAV_GUARD]"
+                )
+                return false
+            }
+            
+            // Validate currentPage is within bounds
+            val validCurrentPage = freshCurrentPage.coerceIn(0, freshPageCount - 1)
+            
             val paginationMode = readerViewModel.paginationMode
             val currentWindow = readerViewModel.currentWindowIndex.value
             
             com.rifters.riftedreader.util.AppLogger.d(
                 "ReaderPageFragment",
-                "$source navigation: windowIndex=$pageIndex, inPage=$currentPage/$pageCount, " +
+                "$source navigation: windowIndex=$pageIndex, inPage=$validCurrentPage/$freshPageCount (fresh read), " +
                 "paginationMode=$paginationMode, currentWindow=$currentWindow, isNext=$isNext [EDGE_AWARE_NAV]"
             )
             
             if (isNext) {
-                if (currentPage < pageCount - 1) {
+                if (validCurrentPage < freshPageCount - 1) {
                     // Not at last in-page, navigate within WebView
                     com.rifters.riftedreader.util.AppLogger.userAction(
                         "ReaderPageFragment",
-                        "$source: next in-page (${currentPage + 1}/$pageCount) within window $pageIndex [IN_PAGE_NAV]",
+                        "$source: next in-page (${validCurrentPage + 1}/$freshPageCount) within window $pageIndex [IN_PAGE_NAV]",
                         "ui/webview/pagination"
                     )
                     WebViewPaginatorBridge.nextPage(binding.pageWebView)
@@ -2262,7 +2285,7 @@ class ReaderPageFragment : Fragment() {
                     // At last in-page, edge handover to next window
                     com.rifters.riftedreader.util.AppLogger.d(
                         "ReaderPageFragment",
-                        "EDGE_HIT: last in-page ($currentPage/$pageCount), requesting next window from window $pageIndex [EDGE_FORWARD]"
+                        "EDGE_HIT: last in-page ($validCurrentPage/$freshPageCount), requesting next window from window $pageIndex [EDGE_FORWARD]"
                     )
                     // Capture position before window transition
                     captureAndPersistPosition()
@@ -2270,11 +2293,11 @@ class ReaderPageFragment : Fragment() {
                     return true
                 }
             } else {
-                if (currentPage > 0) {
+                if (validCurrentPage > 0) {
                     // Not at first in-page, navigate within WebView
                     com.rifters.riftedreader.util.AppLogger.userAction(
                         "ReaderPageFragment",
-                        "$source: prev in-page (${currentPage - 1}/$pageCount) within window $pageIndex [IN_PAGE_NAV]",
+                        "$source: prev in-page (${validCurrentPage - 1}/$freshPageCount) within window $pageIndex [IN_PAGE_NAV]",
                         "ui/webview/pagination"
                     )
                     WebViewPaginatorBridge.prevPage(binding.pageWebView)
@@ -2288,7 +2311,7 @@ class ReaderPageFragment : Fragment() {
                     // At first in-page, edge handover to previous window with jump-to-last
                     com.rifters.riftedreader.util.AppLogger.d(
                         "ReaderPageFragment",
-                        "EDGE_HIT: first in-page ($currentPage/$pageCount), requesting previous window+last page from window $pageIndex [EDGE_BACKWARD]"
+                        "EDGE_HIT: first in-page ($validCurrentPage/$freshPageCount), requesting previous window+last page from window $pageIndex [EDGE_BACKWARD]"
                     )
                     // Capture position before window transition
                     captureAndPersistPosition()
@@ -2500,6 +2523,24 @@ class ReaderPageFragment : Fragment() {
             )
         }
     }
+    
+    /**
+     * Extension function to evaluate JavaScript and suspend until result is available.
+     * Returns the result as a String with quotes removed.
+     */
+    private suspend fun WebView.evaluateJavascriptSuspend(script: String): String =
+        suspendCancellableCoroutine { continuation ->
+            post {
+                try {
+                    evaluateJavascript(script) { result ->
+                        val cleanResult = result?.trim()?.removeSurrounding("\"") ?: "null"
+                        continuation.resume(cleanResult)
+                    }
+                } catch (e: Exception) {
+                    continuation.cancel(e)
+                }
+            }
+        }
 
     companion object {
         private const val ARG_PAGE_INDEX = "arg_page_index" // This is window index in continuous mode
