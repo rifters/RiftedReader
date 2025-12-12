@@ -105,4 +105,15 @@ describe('minimal_paginator.js - scrollend fix', () => {
     expect(scrollListener).toContain('return');
   });
   
+  test('snapToNearestPage should use Math.floor to prevent backward snapping', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Verify the exact calculation line exists with Math.floor
+    expect(scriptContent).toContain('const targetPage = Math.floor(currentScrollLeft / state.appliedColumnWidth);');
+    
+    // Verify Math.round is NOT used in the targetPage calculation
+    // This is a more direct check that won't break if function structure changes
+    expect(scriptContent).not.toContain('const targetPage = Math.round(currentScrollLeft / state.appliedColumnWidth);');
+  });
+  
 });
