@@ -211,7 +211,7 @@
                 // Dispatch DOM CustomEvent for other consumers
                 try {
                     const event = new CustomEvent('paginator-ready', {
-                        detail: { pageCount: state.pageCount, windowIndex: config.windowIndex }
+                        detail: { pageCount: getPageCount(), windowIndex: config.windowIndex }
                     });
                     document.dispatchEvent(event);
                 } catch (e) {
