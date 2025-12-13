@@ -743,8 +743,9 @@ class ReaderPageFragment : Fragment() {
 
         // For CONTINUOUS mode, metadata will be resolved when renderBaseContent() runs
         // This avoids duplicate getWindowHtml() calls
-        // Initialize with defaults - will be updated when window HTML is fetched
-        resolvedChapterIndex = windowIndex  // Use windowIndex as fallback until payload is fetched
+        // Initialize with null - will be updated when window HTML is fetched
+        // Note: windowIndex represents a window (group of chapters), not a chapter index
+        resolvedChapterIndex = null
         targetInPageIndex = 0
         pendingInitialInPageIndex = null
         currentInPageIndex = 0
