@@ -31,6 +31,7 @@ import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.util.AppLoggerBridge
 import com.rifters.riftedreader.util.EpubImageAssetHelper
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -331,19 +332,13 @@ class ReaderPageFragment : Fragment() {
             )
             
             viewLifecycleOwner.lifecycleScope.launch {
-                // Wait for conveyor readiness just once using first() to properly terminate collection
-                readerViewModel.isConveyorReady.first { ready ->
-                    if (ready) {
-                        com.rifters.riftedreader.util.AppLogger.d(
-                            "ReaderPageFragment",
-                            "[CONTENT_LOAD] Conveyor ready - rendering window $windowIndex from preloaded cache"
-                        )
-                        renderBaseContent()
-                        true  // Predicate satisfied, stop collecting
-                    } else {
-                        false  // Keep collecting until ready
-                    }
-                }
+                // Wait for conveyor readiness just once - filter for true, then take first
+                readerViewModel.isConveyorReady.filter { it }.first()
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "[CONTENT_LOAD] Conveyor ready - rendering window $windowIndex from preloaded cache"
+                )
+                renderBaseContent()
             }
         } else {
             // Chapter-based mode: use PageContent observables as before
