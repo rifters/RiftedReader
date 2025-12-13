@@ -931,10 +931,6 @@
         if (currentProgress >= BOUNDARY_THRESHOLD && lastBoundaryDirection !== 'FORWARD') {
             // Call onBoundary with JSON format for PaginatorBridge
             callAndroidBridge('onBoundary', { direction: 'NEXT' });
-            // Also call legacy onBoundaryReached for backward compatibility
-            if (window.AndroidBridge && typeof window.AndroidBridge.onBoundaryReached === 'function') {
-                window.AndroidBridge.onBoundaryReached('NEXT', state.currentPage, state.pageCount);
-            }
             // Dispatch DOM CustomEvent for other consumers
             try {
                 const event = new CustomEvent('paginator-boundary', {
@@ -949,10 +945,6 @@
         } else if (currentProgress <= (1 - BOUNDARY_THRESHOLD) && lastBoundaryDirection !== 'BACKWARD') {
             // Call onBoundary with JSON format for PaginatorBridge
             callAndroidBridge('onBoundary', { direction: 'PREVIOUS' });
-            // Also call legacy onBoundaryReached for backward compatibility
-            if (window.AndroidBridge && typeof window.AndroidBridge.onBoundaryReached === 'function') {
-                window.AndroidBridge.onBoundaryReached('PREVIOUS', state.currentPage, state.pageCount);
-            }
             // Dispatch DOM CustomEvent for other consumers
             try {
                 const event = new CustomEvent('paginator-boundary', {

@@ -214,9 +214,6 @@ class ReaderPageFragment : Fragment() {
                     com.rifters.riftedreader.util.AppLogger.event("ReaderPageFragment", "WebView onPageFinished for page $pageIndex", "ui/webview/lifecycle")
                     isWebViewReady = true
                     
-                    // Configure the paginator before it initializes
-                    configurePaginator()
-                    
                     // Configure minimal paginator
                     val settings = readerViewModel.readerSettings.value
                     val mode = when (readerViewModel.paginationMode) {
@@ -465,7 +462,6 @@ class ReaderPageFragment : Fragment() {
                 webViewClient = WebViewClient()
                 // Remove JavaScript interfaces
                 removeJavascriptInterface("AndroidTtsBridge")
-                removeJavascriptInterface("AndroidBridge")
                 // Remove PaginatorBridge (always registered now)
                 removeJavascriptInterface("PaginatorBridge")
                 // Call paginatorStop to cleanup JS state
@@ -781,21 +777,6 @@ class ReaderPageFragment : Fragment() {
     // Deprecated: Chapter context managed by Conveyor Belt system
     // Phase 3 bridge handles pagination only, not chapters
     
-    /**
-     * Configure the JavaScript paginator with the appropriate mode and context.
-     * This must be called before the paginator initializes to ensure proper behavior.
-     * 
-     * NOTE: Configuration and initialization now handled directly in onPageFinished
-     * via direct JavaScript calls. This function kept for compatibility but does nothing.
-     */
-    private fun configurePaginator() {
-        // Configuration now done in onPageFinished via evaluateJavascript
-        // See onPageFinished for minimal_paginator.configure() and initialize() calls
-        com.rifters.riftedreader.util.AppLogger.d(
-            "ReaderPageFragment",
-            "[PAGINATION_DEBUG] configurePaginator called (no-op - configuration done in onPageFinished)"
-        )
-    }
 
     private fun applyHighlight(range: IntRange?) {
         if (_binding == null) return
