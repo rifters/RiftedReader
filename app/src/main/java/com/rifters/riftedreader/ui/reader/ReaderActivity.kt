@@ -1645,12 +1645,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             // Get the WebView from the fragment and navigate
             lifecycleScope.launch {
                 try {
-                    // Use the bridge to navigate to the target page
+                    // Use direct JavaScript to navigate to the target page
                     val webView = frag.view?.findViewById<android.webkit.WebView>(
                         R.id.pageWebView
                     )
                     if (webView != null) {
-                        WebViewPaginatorBridge.goToPage(webView, pageIndex, smooth = true)
+                        webView.evaluateJavascript(
+                            "if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage($pageIndex, true); }",
+                            null
+                        )
                     }
                 } catch (e: Exception) {
                     AppLogger.e(
