@@ -29,6 +29,7 @@ import com.rifters.riftedreader.R
 import com.rifters.riftedreader.databinding.FragmentReaderPageBinding
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.PageContent
+import com.rifters.riftedreader.util.AppLoggerBridge
 import com.rifters.riftedreader.util.EpubImageAssetHelper
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -155,6 +156,9 @@ class ReaderPageFragment : Fragment() {
             
             // Add JavaScript interface for TTS communication
             addJavascriptInterface(TtsWebBridge(), "AndroidTtsBridge")
+            
+            // Add JavaScript interface for logging from JavaScript
+            addJavascriptInterface(AppLoggerBridge(), "AppLogger")
             
             // Pagination System: Uses minimal_paginator.js with PaginatorBridge
             // Legacy WebViewPaginatorBridge and PaginationBridge inner class have been removed

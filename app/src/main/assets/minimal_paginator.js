@@ -1130,13 +1130,25 @@
     }
     
     /**
-     * Logging utility
+     * Logging utility - routes to Android AppLogger if available, falls back to console
      * @param {string} tag - Log tag
      * @param {string} message - Log message
      */
     function log(tag, message) {
-        const prefix = `[MIN_PAGINATOR:${tag}]`;
-        console.log(prefix, message);
+        const fullTag = `MIN_PAGINATOR:${tag}`;
+        
+        try {
+            // Use AppLogger bridge if available (routes to Android logcat and log files)
+            if (window.AppLogger && typeof window.AppLogger.d === 'function') {
+                window.AppLogger.d(fullTag, message);
+                return;
+            }
+        } catch (e) {
+            // Fallback to console if bridge not available or throws error
+        }
+        
+        // Fallback to console.log for development/testing outside Android
+        console.log(`[${fullTag}]`, message);
     }
     
     // ========================================================================
