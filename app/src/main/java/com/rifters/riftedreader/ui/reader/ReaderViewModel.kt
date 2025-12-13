@@ -170,6 +170,17 @@ class ReaderViewModel(
     val isConveyorPrimary: Boolean
         get() = _conveyorBeltSystem != null
     
+    // Fallback StateFlow for when conveyor system is not initialized
+    private val _fallbackConveyorReady = MutableStateFlow(false).asStateFlow()
+    
+    /**
+     * StateFlow indicating whether the conveyor system is ready (initialized and preloaded).
+     * Fragments should wait for this to become true before requesting window HTML in continuous mode.
+     * This ensures getWindowHtml() calls hit the preloaded cache instead of triggering regeneration.
+     */
+    val isConveyorReady: StateFlow<Boolean>
+        get() = _conveyorBeltSystem?.isInitialized ?: _fallbackConveyorReady
+    
     // Cache for pre-wrapped HTML to enable fast access for windows 0-4 during initial load
     private val preWrappedHtmlCache = mutableMapOf<Int, String>()
     
