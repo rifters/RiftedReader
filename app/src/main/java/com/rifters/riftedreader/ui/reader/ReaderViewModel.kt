@@ -163,14 +163,12 @@ class ReaderViewModel(
     
     /**
      * Check if the conveyor system is active and should be the authoritative window manager.
-     * Returns true when:
-     * - enableMinimalPaginator flag is true in settings
-     * - conveyorBeltSystem is not null
+     * Returns true when conveyorBeltSystem is not null.
      * 
-     * TODO: Add unit test to verify isConveyorPrimary returns correct value based on flag and conveyor state
+     * NOTE: enableMinimalPaginator flag removed - conveyor is now always used.
      */
     val isConveyorPrimary: Boolean
-        get() = readerSettings.value.enableMinimalPaginator && _conveyorBeltSystem != null
+        get() = _conveyorBeltSystem != null
     
     // Cache for pre-wrapped HTML to enable fast access for windows 0-4 during initial load
     private val preWrappedHtmlCache = mutableMapOf<Int, String>()
@@ -433,8 +431,9 @@ class ReaderViewModel(
      * and smooth horizontal scrolling through the book content.
      * 
      * Each window contains up to 5 chapters of content, and windows are managed in
-     * a 5-window buffer (STARTUP and STEADY phases) by the ConveyorBeltSystemViewModel
-     * when enableMinimalPaginator is true.
+     * a 5-window buffer (STARTUP and STEADY phases) by the ConveyorBeltSystemViewModel.
+     *
+     * NOTE: minimal paginator is now always used - legacy paginator removed.
      */
     private fun initializeHorizontalWindowedPagination() {
         viewModelScope.launch {

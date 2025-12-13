@@ -128,19 +128,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         viewModel.setConveyorBeltSystem(conveyorBeltSystem)
         
         // DIAGNOSTICS: Log ConveyorPrimary status at startup
-        val isConveyorPrimary = readerPreferences.settings.value.enableMinimalPaginator
-        val conveyorStatus = if (isConveyorPrimary) "CONVEYOR_PRIMARY=true" else "CONVEYOR_PRIMARY=false"
+        // Conveyor is now always enabled - minimal paginator is the only system
         AppLogger.d(
             "ReaderActivity",
-            "[CONVEYOR_ACTIVE] $conveyorStatus - Conveyor is ${if (isConveyorPrimary) "authoritative window manager" else "inactive (legacy mode)"}"
-        )
-        
-        // Log startup information about minimal paginator default state
-        val enabledStatus = if (readerPreferences.settings.value.enableMinimalPaginator) "ENABLED" else "DISABLED"
-        AppLogger.d(
-            "ReaderActivity",
-            "[MINIMAL_PAGINATOR_DEFAULT] Minimal paginator is now DEFAULT for development: $enabledStatus. " +
-            "ConveyorBeltSystemViewModel wired to ReaderViewModel. Toggle via ADB if needed."
+            "[CONVEYOR_ACTIVE] CONVEYOR_PRIMARY=true - Conveyor is authoritative window manager (minimal paginator always enabled)"
         )
         
         // Debug log: assert initial pagination mode and window count

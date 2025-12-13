@@ -50,19 +50,9 @@ data class ReaderSettings(
      * 
      * Only active in debug builds. Default is false.
      */
-    val debugWindowRenderingEnabled: Boolean = false,
-    /**
-     * Feature flag to enable the minimal paginator integration.
-     * When enabled:
-     * - Uses robust minimal_paginator.js with improved stability detection
-     * - Registers PaginatorBridge for pagination-ready and boundary events
-     * - Provides explicit boundary detection for window transitions
-     * - Ensures totalPages > 0 before reporting ready (avoids race conditions)
-     * 
-     * Default is true for development. All QA and dev work tests the new pipeline.
-     * Can be toggled to false via ADB or code for legacy paginator testing.
-     */
-    val enableMinimalPaginator: Boolean = true
+    val debugWindowRenderingEnabled: Boolean = false
+    // NOTE: enableMinimalPaginator feature flag has been removed
+    // minimal_paginator.js with PaginatorBridge is now the ONLY pagination system
 )
 
 enum class ReaderTheme {
@@ -106,7 +96,7 @@ class ReaderPreferences(context: Context) {
         val streamingEnabled = prefs.getBoolean(KEY_CONTINUOUS_STREAMING, true)
         val diagnosticsEnabled = prefs.getBoolean(KEY_PAGINATION_DIAGNOSTICS, false)
         val debugWindowRendering = prefs.getBoolean(KEY_DEBUG_WINDOW_RENDERING, false)
-        val enableMinimalPaginator = prefs.getBoolean(KEY_ENABLE_MINIMAL_PAGINATOR, true)
+        // enableMinimalPaginator removed - minimal paginator is now always used
         
         // Read chapter visibility settings
         val includeCover = prefs.getBoolean(KEY_INCLUDE_COVER, false)
@@ -127,8 +117,7 @@ class ReaderPreferences(context: Context) {
             continuousStreamingEnabled = streamingEnabled,
             paginationDiagnosticsEnabled = diagnosticsEnabled,
             chapterVisibility = chapterVisibility,
-            debugWindowRenderingEnabled = debugWindowRendering,
-            enableMinimalPaginator = enableMinimalPaginator
+            debugWindowRenderingEnabled = debugWindowRendering
         )
     }
 
@@ -142,7 +131,7 @@ class ReaderPreferences(context: Context) {
             putBoolean(KEY_CONTINUOUS_STREAMING, settings.continuousStreamingEnabled)
             putBoolean(KEY_PAGINATION_DIAGNOSTICS, settings.paginationDiagnosticsEnabled)
             putBoolean(KEY_DEBUG_WINDOW_RENDERING, settings.debugWindowRenderingEnabled)
-            putBoolean(KEY_ENABLE_MINIMAL_PAGINATOR, settings.enableMinimalPaginator)
+            // enableMinimalPaginator removed - minimal paginator is now always used
             
             // Save chapter visibility settings
             putBoolean(KEY_INCLUDE_COVER, settings.chapterVisibility.includeCover)
