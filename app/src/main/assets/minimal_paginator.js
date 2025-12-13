@@ -972,7 +972,7 @@
                 window.PaginatorBridge[method](JSON.stringify(data));
                 log('BRIDGE', `Called PaginatorBridge.${method}(${JSON.stringify(data)})`);
             } else {
-                log('ERROR', `PaginatorBridge.${method} not available - pagination callbacks will fail`);
+                log('ERROR', `PaginatorBridge not found - ensure PaginatorBridge is registered as JavaScript interface before calling pagination methods`);
             }
         } catch (e) {
             log('ERROR', `Bridge call failed: ${e.message}`);

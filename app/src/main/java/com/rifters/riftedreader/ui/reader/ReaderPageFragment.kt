@@ -460,9 +460,8 @@ class ReaderPageFragment : Fragment() {
                 // Fix: Replace webViewClient BEFORE calling loadUrl to prevent onPageFinished callback
                 // This prevents race condition where onPageFinished could trigger prepareTtsChunks
                 webViewClient = WebViewClient()
-                // Remove JavaScript interfaces
+                // Remove JavaScript interfaces to clean up
                 removeJavascriptInterface("AndroidTtsBridge")
-                // Remove PaginatorBridge (always registered now)
                 removeJavascriptInterface("PaginatorBridge")
                 // Call paginatorStop to cleanup JS state
                 evaluateJavascript("if (window.paginatorStop) { window.paginatorStop(); }", null)

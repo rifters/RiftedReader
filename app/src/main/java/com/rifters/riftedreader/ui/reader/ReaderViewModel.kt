@@ -163,9 +163,9 @@ class ReaderViewModel(
     
     /**
      * Check if the conveyor system is active and should be the authoritative window manager.
-     * Returns true when conveyorBeltSystem is not null.
+     * Returns true when the conveyorBeltSystem is initialized and not null.
      * 
-     * NOTE: enableMinimalPaginator flag removed - conveyor is now always used.
+     * The conveyor system manages the 5-window sliding buffer for continuous reading mode.
      */
     val isConveyorPrimary: Boolean
         get() = _conveyorBeltSystem != null
