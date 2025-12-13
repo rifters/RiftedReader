@@ -322,13 +322,28 @@ class ReaderPageFragment : Fragment() {
         
         // Separate content loading based on pagination mode
         if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
-            // Continuous mode: directly render content from window buffer
-            // Fragment creation → renderBaseContent() → getWindowHtml(windowIndex) → buffer → HTML → WebView
+            // Continuous mode: wait for conveyor to preload windows before rendering
+            // This ensures getWindowHtml() hits the cache instead of regenerating HTML
             com.rifters.riftedreader.util.AppLogger.d(
                 "ReaderPageFragment",
-                "[CONTENT_LOAD] Continuous mode: directly rendering window $windowIndex from buffer"
+                "[CONTENT_LOAD] Continuous mode: waiting for conveyor readiness before rendering window $windowIndex"
             )
-            renderBaseContent()
+            
+            viewLifecycleOwner.lifecycleScope.launch {
+                repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    readerViewModel.isConveyorReady.collect { ready ->
+                        if (ready) {
+                            com.rifters.riftedreader.util.AppLogger.d(
+                                "ReaderPageFragment",
+                                "[CONTENT_LOAD] Conveyor ready - rendering window $windowIndex from preloaded cache"
+                            )
+                            renderBaseContent()
+                            // Stop collecting after first successful render
+                            return@collect
+                        }
+                    }
+                }
+            }
         } else {
             // Chapter-based mode: use PageContent observables as before
             // Still uses _pages, pageContentCache, and observePageContent
@@ -725,34 +740,17 @@ class ReaderPageFragment : Fragment() {
             return
         }
 
-        // For CONTINUOUS mode, get window metadata which has the correct entry position
-        viewLifecycleOwner.lifecycleScope.launch {
-            val windowPayload = readerViewModel.getWindowHtml(windowIndex)
-            if (windowPayload != null) {
-                // Use the window's entry chapter and page (where reading should start in this window)
-                val chapterIndex = windowPayload.chapterIndex
-                val inPage = windowPayload.inPageIndex
-                resolvedChapterIndex = chapterIndex
-                targetInPageIndex = inPage
-                pendingInitialInPageIndex = inPage.takeIf { it > 0 }
-                currentInPageIndex = inPage
-                com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
-                    "[WINDOW_INIT] Window $windowIndex initialized: chapter=$chapterIndex, inPage=$inPage"
-                )
-                if (isWebViewReady) {
-                    applyPendingInitialInPage()
-                }
-            } else {
-                // Fallback if window payload unavailable
-                com.rifters.riftedreader.util.AppLogger.w("ReaderPageFragment",
-                    "[WINDOW_INIT] No window payload for window $windowIndex, using defaults"
-                )
-                resolvedChapterIndex = pageIndex
-                targetInPageIndex = 0
-                pendingInitialInPageIndex = null
-                currentInPageIndex = 0
-            }
-        }
+        // For CONTINUOUS mode, metadata will be resolved when renderBaseContent() runs
+        // This avoids duplicate getWindowHtml() calls
+        // Initialize with defaults - will be updated when window HTML is fetched
+        resolvedChapterIndex = null
+        targetInPageIndex = 0
+        pendingInitialInPageIndex = null
+        currentInPageIndex = 0
+        
+        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
+            "[WINDOW_INIT] Window $windowIndex - metadata will be resolved from cached window payload"
+        )
     }
 
     private fun applyPendingInitialInPage() {
@@ -918,13 +916,17 @@ class ReaderPageFragment : Fragment() {
             // Otherwise use the single chapter HTML as before
             viewLifecycleOwner.lifecycleScope.launch {
                 try {
+                    // Cache window payload to avoid duplicate calls
+                    var cachedWindowPayload: com.rifters.riftedreader.domain.pagination.WindowHtmlPayload? = null
+                    
                     val contentHtml = if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
-                        // Get window HTML containing multiple chapters
-                        // windowIndex is the RecyclerView position, directly used as window index
+                        // Get window HTML containing multiple chapters (from preloaded cache)
                         com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
                             "[WINDOW_HTML] Requesting window HTML for windowIndex=$windowIndex [BEFORE_CALL]"
                         )
                         val windowPayload = readerViewModel.getWindowHtml(windowIndex)
+                        cachedWindowPayload = windowPayload  // Cache for reuse below
+                        
                         com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
                             "[WINDOW_HTML] Received window payload: windowIndex=$windowIndex, payload=${if (windowPayload != null) "NOT_NULL" else "NULL"} [AFTER_CALL]"
                         )
@@ -943,6 +945,16 @@ class ReaderPageFragment : Fragment() {
                         )
                         
                         if (windowPayload != null) {
+                            // Update resolved location metadata now that we have the payload
+                            resolvedChapterIndex = windowPayload.chapterIndex
+                            targetInPageIndex = windowPayload.inPageIndex
+                            pendingInitialInPageIndex = windowPayload.inPageIndex.takeIf { it > 0 }
+                            currentInPageIndex = windowPayload.inPageIndex
+                            
+                            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+                                "[WINDOW_INIT] Window $windowIndex metadata resolved: chapter=${windowPayload.chapterIndex}, inPage=${windowPayload.inPageIndex}"
+                            )
+                            
                             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
                                 "[PAGINATION_DEBUG] Using window HTML for windowIndex=$windowIndex: window=${windowPayload.windowIndex}, " +
                                 "firstChapter=${windowPayload.chapterIndex} (${windowPayload.windowSize} chapters per window, totalChapters=${windowPayload.totalChapters}), " +
@@ -950,12 +962,13 @@ class ReaderPageFragment : Fragment() {
                             )
                             windowPayload.html
                         } else {
-                            com.rifters.riftedreader.util.AppLogger.w("ReaderPageFragment", "[WINDOW_HTML] NULL PAYLOAD: Failed to get window HTML for windowIndex=$windowIndex, falling back to single chapter")
+                            com.rifters.riftedreader.util.AppLogger.w("ReaderPageFragment", 
+                                "[WINDOW_HTML] NULL PAYLOAD: Failed to get window HTML for windowIndex=$windowIndex, falling back to single chapter"
+                            )
                             html
                         }
                     } else {
                         // Chapter-based mode: use single chapter HTML as before
-                        // In this mode, windowIndex equals chapter index
                         com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
                             "[PAGINATION_DEBUG] Using chapter HTML for chapterIndex=$windowIndex, htmlLength=${html.length}"
                         )
@@ -963,9 +976,9 @@ class ReaderPageFragment : Fragment() {
                     }
                     
                     // Prepare debug window info if enabled (for HTML debug banner)
+                    // REUSE cachedWindowPayload instead of calling getWindowHtml() again
                     val debugWindowInfo = if (settings.debugWindowRenderingEnabled && readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
-                        val windowPayload = readerViewModel.getWindowHtml(windowIndex)
-                        windowPayload?.let { payload ->
+                        cachedWindowPayload?.let { payload ->  // Use cached payload
                             val firstChapter = payload.chapterIndex
                             val lastChapter = firstChapter + payload.windowSize - 1
                             com.rifters.riftedreader.domain.reader.DebugWindowInfo(
