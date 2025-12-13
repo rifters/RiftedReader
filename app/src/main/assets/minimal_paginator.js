@@ -206,12 +206,12 @@
                     );
                 }
                 
-                callAndroidBridge('onPaginationReady', { pageCount: state.pageCount });
+                callAndroidBridge('onPaginationReady', { pageCount: getPageCount() });
                 
                 // Dispatch DOM CustomEvent for other consumers
                 try {
                     const event = new CustomEvent('paginator-ready', {
-                        detail: { pageCount: state.pageCount, windowIndex: config.windowIndex }
+                        detail: { pageCount: getPageCount(), windowIndex: config.windowIndex }
                     });
                     document.dispatchEvent(event);
                 } catch (e) {
@@ -580,7 +580,8 @@
                 log('REFLOW', 'isPaginationReady set back to true');
                 
                 // Notify Android if callback exists
-                callAndroidBridge('onPaginationReady', { pageCount: pageCount });
+                const freshPageCount = getPageCount();
+                callAndroidBridge('onPaginationReady', { pageCount: freshPageCount });
             }, 0); // Execute ASAP but after current call stack
             
             return { success: true, pageCount: pageCount, currentPage: state.currentPage };
@@ -962,7 +963,7 @@
             }
             
             // Notify Android of the change
-            callAndroidBridge('onPaginationReady', { pageCount: state.pageCount });
+            callAndroidBridge('onPaginationReady', { pageCount: getPageCount() });
             
             log('RECOMPUTE_COMPLETE', `Page ${oldCurrentPage}/${oldPageCount} → ${state.currentPage}/${state.pageCount}`);
         }
@@ -1081,7 +1082,7 @@
         log('RECHECK', 'Pagination recheck requested');
         calculatePageCountAndOffsets();
         if (state.isPaginationReady) {
-            callAndroidBridge('onPaginationReady', { pageCount: state.pageCount });
+            callAndroidBridge('onPaginationReady', { pageCount: getPageCount() });
         }
     };
     
