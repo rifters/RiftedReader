@@ -192,6 +192,9 @@ object ReaderHtmlWrapper {
                     /* Section styling for window-based chapters */
                     section[data-chapter-index] {
                         margin-bottom: 2em;
+                        break-before: column;
+                        -webkit-column-break-before: always;
+                        page-break-before: always;
                     }
                     h1, h2, h3, h4, h5, h6 {
                         margin: 1em 0 0.5em 0;
