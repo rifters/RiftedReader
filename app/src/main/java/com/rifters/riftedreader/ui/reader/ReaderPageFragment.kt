@@ -917,7 +917,7 @@ class ReaderPageFragment : Fragment() {
             viewLifecycleOwner.lifecycleScope.launch {
                 try {
                     // Cache window payload to avoid duplicate calls
-                    var cachedWindowPayload: com.rifters.riftedreader.domain.pagination.WindowHtmlPayload? = null
+                    var cachedWindowPayload: WindowHtmlPayload? = null
                     
                     val contentHtml = if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
                         // Get window HTML containing multiple chapters (from preloaded cache)
@@ -977,23 +977,26 @@ class ReaderPageFragment : Fragment() {
                     
                     // Prepare debug window info if enabled (for HTML debug banner)
                     // REUSE cachedWindowPayload instead of calling getWindowHtml() again
-                    val debugWindowInfo = if (settings.debugWindowRenderingEnabled && readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
-                        cachedWindowPayload?.let { payload ->  // Use cached payload
-                            val firstChapter = payload.chapterIndex
-                            val lastChapter = firstChapter + payload.windowSize - 1
+                    val debugWindowInfo = if (settings.debugWindowRenderingEnabled) {
+                        if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS && cachedWindowPayload != null) {
+                            // Continuous mode: use cached payload
+                            val firstChapter = cachedWindowPayload.chapterIndex
+                            val lastChapter = firstChapter + cachedWindowPayload.windowSize - 1
                             com.rifters.riftedreader.domain.reader.DebugWindowInfo(
                                 windowIndex = windowIndex,
                                 firstChapterIndex = firstChapter,
-                                lastChapterIndex = lastChapter.coerceAtMost(payload.totalChapters - 1)
+                                lastChapterIndex = lastChapter.coerceAtMost(cachedWindowPayload.totalChapters - 1)
                             )
+                        } else if (readerViewModel.paginationMode == PaginationMode.CHAPTER_BASED) {
+                            // Chapter-based mode: window = chapter
+                            com.rifters.riftedreader.domain.reader.DebugWindowInfo(
+                                windowIndex = windowIndex,
+                                firstChapterIndex = windowIndex,
+                                lastChapterIndex = windowIndex
+                            )
+                        } else {
+                            null
                         }
-                    } else if (settings.debugWindowRenderingEnabled) {
-                        // Chapter-based mode: window = chapter
-                        com.rifters.riftedreader.domain.reader.DebugWindowInfo(
-                            windowIndex = windowIndex,
-                            firstChapterIndex = windowIndex,
-                            lastChapterIndex = windowIndex
-                        )
                     } else {
                         null
                     }
