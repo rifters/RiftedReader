@@ -249,27 +249,42 @@
         
         // RECALCULATE from DOM (matches inpage_paginator.js behavior)
         const scrollWidth = state.contentWrapper.scrollWidth;
-        const clientWidth = state.contentWrapper.clientWidth || state.viewportWidth;
+        const clientWidth = state.contentWrapper.clientWidth;
         
+        // Check for invalid width first, then try fallback
         if (clientWidth <= 0) {
-            log('WARN', 'getPageCount: clientWidth <= 0, returning cached value');
-            return state.pageCount > 0 ? state.pageCount : -1;
+            const fallbackWidth = state.viewportWidth;
+            if (fallbackWidth <= 0) {
+                log('WARN', 'getPageCount: clientWidth and viewportWidth both <= 0, returning cached value');
+                return state.pageCount > 0 ? state.pageCount : -1;
+            }
+            // Use fallback but log the issue
+            log('WARN', `getPageCount: clientWidth=${clientWidth}, using viewportWidth=${fallbackWidth} as fallback`);
+            const computed = Math.max(1, Math.ceil(scrollWidth / fallbackWidth));
+            
+            // Update cached value for diagnostics and fallback
+            if (computed > 0 && state.isPaginationReady) {
+                state.pageCount = computed;
+            }
+            
+            return computed;
         }
         
         // Calculate page count from current DOM state
         const computed = Math.max(1, Math.ceil(scrollWidth / clientWidth));
         
-        // Update cached value for diagnostics and fallback
-        if (computed > 0 && state.isPaginationReady) {
-            state.pageCount = computed;
-        }
-        
         // Log if significant change from cached value (diagnostic)
-        if (state.pageCount > 0 && Math.abs(computed - state.pageCount) > 1) {
+        // Only log if pagination is ready and we have a reliable cached value
+        if (state.isPaginationReady && state.pageCount > 0 && Math.abs(computed - state.pageCount) > 1) {
             log('PAGE_COUNT_CHANGE', 
                 `Recalculated pageCount changed: ${state.pageCount} -> ${computed} ` +
                 `(scrollWidth=${scrollWidth}, clientWidth=${clientWidth})`
             );
+        }
+        
+        // Update cached value for diagnostics and fallback
+        if (computed > 0 && state.isPaginationReady) {
+            state.pageCount = computed;
         }
         
         return computed;
