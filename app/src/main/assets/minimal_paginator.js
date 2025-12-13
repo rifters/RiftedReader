@@ -446,7 +446,6 @@
         try {
             const contentRect = state.contentWrapper.getBoundingClientRect();
             const pageWidth = state.contentWrapper.clientWidth;
-            const scrollWidth = state.contentWrapper.scrollWidth;
             
             if (pageWidth === 0) {
                 return [];

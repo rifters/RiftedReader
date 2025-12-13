@@ -10,6 +10,38 @@ const path = require('path');
 // Path to the actual minimal_paginator.js file
 const paginatorPath = path.join(__dirname, '../../app/src/main/assets/minimal_paginator.js');
 
+/**
+ * Helper function to extract a function body by counting braces
+ * @param {string} scriptContent - The full script content
+ * @param {string} functionName - The function name to extract
+ * @returns {string|null} - The function body or null if not found
+ */
+function extractFunctionBody(scriptContent, functionName) {
+  const funcStart = scriptContent.indexOf(`function ${functionName}(`);
+  if (funcStart === -1) {
+    return null;
+  }
+  
+  let braceCount = 0;
+  let inFunction = false;
+  let funcEnd = funcStart;
+  
+  for (let i = funcStart; i < scriptContent.length; i++) {
+    if (scriptContent[i] === '{') {
+      braceCount++;
+      inFunction = true;
+    } else if (scriptContent[i] === '}') {
+      braceCount--;
+      if (inFunction && braceCount === 0) {
+        funcEnd = i + 1;
+        break;
+      }
+    }
+  }
+  
+  return scriptContent.substring(funcStart, funcEnd);
+}
+
 describe('minimal_paginator.js - scrollend fix', () => {
   
   test('goToPage function should use scrollend event listener', () => {
@@ -458,29 +490,8 @@ describe('minimal_paginator.js - multi-chapter window logic', () => {
   test('wrapExistingContentAsSegment should store valid sections in chapterSegments', () => {
     const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
     
-    // Find the wrapExistingContentAsSegment function
-    const funcStart = scriptContent.indexOf('function wrapExistingContentAsSegment()');
-    expect(funcStart).toBeGreaterThan(-1);
-    
-    // Find the function body by counting braces
-    let braceCount = 0;
-    let inFunction = false;
-    let funcEnd = funcStart;
-    
-    for (let i = funcStart; i < scriptContent.length; i++) {
-      if (scriptContent[i] === '{') {
-        braceCount++;
-        inFunction = true;
-      } else if (scriptContent[i] === '}') {
-        braceCount--;
-        if (inFunction && braceCount === 0) {
-          funcEnd = i + 1;
-          break;
-        }
-      }
-    }
-    
-    const functionBody = scriptContent.substring(funcStart, funcEnd);
+    const functionBody = extractFunctionBody(scriptContent, 'wrapExistingContentAsSegment');
+    expect(functionBody).toBeTruthy();
     
     // Verify it stores valid sections in chapterSegments array
     expect(functionBody).toContain('chapterSegments = validSections');
@@ -496,29 +507,8 @@ describe('minimal_paginator.js - multi-chapter window logic', () => {
     // Verify function exists
     expect(scriptContent).toContain('function getSegmentDiagnostics()');
     
-    // Find the function
-    const funcStart = scriptContent.indexOf('function getSegmentDiagnostics()');
-    expect(funcStart).toBeGreaterThan(-1);
-    
-    // Find the function body by counting braces
-    let braceCount = 0;
-    let inFunction = false;
-    let funcEnd = funcStart;
-    
-    for (let i = funcStart; i < scriptContent.length; i++) {
-      if (scriptContent[i] === '{') {
-        braceCount++;
-        inFunction = true;
-      } else if (scriptContent[i] === '}') {
-        braceCount--;
-        if (inFunction && braceCount === 0) {
-          funcEnd = i + 1;
-          break;
-        }
-      }
-    }
-    
-    const functionBody = scriptContent.substring(funcStart, funcEnd);
+    const functionBody = extractFunctionBody(scriptContent, 'getSegmentDiagnostics');
+    expect(functionBody).toBeTruthy();
     
     // Verify it checks chapterSegments length
     expect(functionBody).toContain('chapterSegments.length');
@@ -547,29 +537,8 @@ describe('minimal_paginator.js - multi-chapter window logic', () => {
     // Verify function exists
     expect(scriptContent).toContain('function getChapterBoundaries()');
     
-    // Find the function
-    const funcStart = scriptContent.indexOf('function getChapterBoundaries()');
-    expect(funcStart).toBeGreaterThan(-1);
-    
-    // Find the function body by counting braces
-    let braceCount = 0;
-    let inFunction = false;
-    let funcEnd = funcStart;
-    
-    for (let i = funcStart; i < scriptContent.length; i++) {
-      if (scriptContent[i] === '{') {
-        braceCount++;
-        inFunction = true;
-      } else if (scriptContent[i] === '}') {
-        braceCount--;
-        if (inFunction && braceCount === 0) {
-          funcEnd = i + 1;
-          break;
-        }
-      }
-    }
-    
-    const functionBody = scriptContent.substring(funcStart, funcEnd);
+    const functionBody = extractFunctionBody(scriptContent, 'getChapterBoundaries');
+    expect(functionBody).toBeTruthy();
     
     // Verify it checks chapterSegments length
     expect(functionBody).toContain('chapterSegments.length');
