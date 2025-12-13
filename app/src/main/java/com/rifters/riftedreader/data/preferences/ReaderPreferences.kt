@@ -185,7 +185,7 @@ class ReaderPreferences(context: Context) {
         private const val KEY_CONTINUOUS_STREAMING = "continuous_streaming_enabled"
         private const val KEY_PAGINATION_DIAGNOSTICS = "pagination_diagnostics_enabled"
         private const val KEY_DEBUG_WINDOW_RENDERING = "debug_window_rendering_enabled"
-        private const val KEY_ENABLE_MINIMAL_PAGINATOR = "enable_minimal_paginator"
+        // KEY_ENABLE_MINIMAL_PAGINATOR removed - minimal paginator is now always used
         private const val KEY_TAP_ACTIONS = "reader_tap_actions"
         
         // Chapter visibility settings keys
