@@ -444,3 +444,225 @@ describe('minimal_paginator.js - wrapExistingContentAsSegment and reflow functio
   });
   
 });
+
+describe('minimal_paginator.js - multi-chapter window logic', () => {
+  
+  test('should have chapterSegments array at module level', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Verify chapterSegments array is declared
+    expect(scriptContent).toContain('let chapterSegments = []');
+    expect(scriptContent).toContain('Chapter segment tracking');
+  });
+  
+  test('wrapExistingContentAsSegment should store valid sections in chapterSegments', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the wrapExistingContentAsSegment function
+    const funcStart = scriptContent.indexOf('function wrapExistingContentAsSegment()');
+    expect(funcStart).toBeGreaterThan(-1);
+    
+    // Find the function body by counting braces
+    let braceCount = 0;
+    let inFunction = false;
+    let funcEnd = funcStart;
+    
+    for (let i = funcStart; i < scriptContent.length; i++) {
+      if (scriptContent[i] === '{') {
+        braceCount++;
+        inFunction = true;
+      } else if (scriptContent[i] === '}') {
+        braceCount--;
+        if (inFunction && braceCount === 0) {
+          funcEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    const functionBody = scriptContent.substring(funcStart, funcEnd);
+    
+    // Verify it stores valid sections in chapterSegments array
+    expect(functionBody).toContain('chapterSegments = validSections');
+    expect(functionBody).toContain('validSections.push(section)');
+    
+    // Verify it also stores single wrapped segment
+    expect(functionBody).toContain('chapterSegments = [segment]');
+  });
+  
+  test('should have getSegmentDiagnostics function', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Verify function exists
+    expect(scriptContent).toContain('function getSegmentDiagnostics()');
+    
+    // Find the function
+    const funcStart = scriptContent.indexOf('function getSegmentDiagnostics()');
+    expect(funcStart).toBeGreaterThan(-1);
+    
+    // Find the function body by counting braces
+    let braceCount = 0;
+    let inFunction = false;
+    let funcEnd = funcStart;
+    
+    for (let i = funcStart; i < scriptContent.length; i++) {
+      if (scriptContent[i] === '{') {
+        braceCount++;
+        inFunction = true;
+      } else if (scriptContent[i] === '}') {
+        braceCount--;
+        if (inFunction && braceCount === 0) {
+          funcEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    const functionBody = scriptContent.substring(funcStart, funcEnd);
+    
+    // Verify it checks chapterSegments length
+    expect(functionBody).toContain('chapterSegments.length');
+    
+    // Verify it uses state containers
+    expect(functionBody).toContain('state.contentWrapper');
+    expect(functionBody).toContain('state.columnContainer');
+    
+    // Verify it calculates page boundaries
+    expect(functionBody).toContain('startPage');
+    expect(functionBody).toContain('endPage');
+    expect(functionBody).toContain('pageCount');
+    expect(functionBody).toContain('chapterIndex');
+    
+    // Verify it maps over chapterSegments
+    expect(functionBody).toContain('chapterSegments.map');
+    
+    // Verify it uses correct calculations
+    expect(functionBody).toContain('Math.floor(Math.max(0, offsetLeft) / pageWidth)');
+    expect(functionBody).toContain('Math.ceil((offsetLeft + segmentRect.width) / pageWidth)');
+  });
+  
+  test('should have getChapterBoundaries function', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Verify function exists
+    expect(scriptContent).toContain('function getChapterBoundaries()');
+    
+    // Find the function
+    const funcStart = scriptContent.indexOf('function getChapterBoundaries()');
+    expect(funcStart).toBeGreaterThan(-1);
+    
+    // Find the function body by counting braces
+    let braceCount = 0;
+    let inFunction = false;
+    let funcEnd = funcStart;
+    
+    for (let i = funcStart; i < scriptContent.length; i++) {
+      if (scriptContent[i] === '{') {
+        braceCount++;
+        inFunction = true;
+      } else if (scriptContent[i] === '}') {
+        braceCount--;
+        if (inFunction && braceCount === 0) {
+          funcEnd = i + 1;
+          break;
+        }
+      }
+    }
+    
+    const functionBody = scriptContent.substring(funcStart, funcEnd);
+    
+    // Verify it checks chapterSegments length
+    expect(functionBody).toContain('chapterSegments.length');
+    
+    // Verify it uses state containers
+    expect(functionBody).toContain('state.contentWrapper');
+    expect(functionBody).toContain('state.columnContainer');
+    
+    // Verify it gets total page count
+    expect(functionBody).toContain('getPageCount()');
+    
+    // Verify it calculates page boundaries
+    expect(functionBody).toContain('startPage');
+    expect(functionBody).toContain('endPage');
+    expect(functionBody).toContain('pageCount');
+    expect(functionBody).toContain('chapterIndex');
+    
+    // Verify it maps over chapterSegments
+    expect(functionBody).toContain('chapterSegments.map');
+    
+    // Verify it clamps endPage to totalPages
+    expect(functionBody).toContain('Math.min(totalPages');
+    expect(functionBody).toContain('Clamp endPage to totalPages');
+  });
+  
+  test('getSegmentDiagnostics should be exported in public API', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the window.minimalPaginator export
+    const exportMatch = scriptContent.match(/window\.minimalPaginator\s*=\s*\{[\s\S]*?\}/);
+    expect(exportMatch).toBeTruthy();
+    
+    const exportBlock = exportMatch[0];
+    
+    // Verify getSegmentDiagnostics is exported
+    expect(exportBlock).toContain('getSegmentDiagnostics');
+  });
+  
+  test('getChapterBoundaries should be exported in public API', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the window.minimalPaginator export
+    const exportMatch = scriptContent.match(/window\.minimalPaginator\s*=\s*\{[\s\S]*?\}/);
+    expect(exportMatch).toBeTruthy();
+    
+    const exportBlock = exportMatch[0];
+    
+    // Verify getChapterBoundaries is exported
+    expect(exportBlock).toContain('getChapterBoundaries');
+  });
+  
+  test('getSegmentDiagnostics should return empty array when no segments', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the function
+    const funcStart = scriptContent.indexOf('function getSegmentDiagnostics()');
+    const funcMatch = scriptContent.substring(funcStart).match(/function getSegmentDiagnostics\(\)[\s\S]*?^    \}/m);
+    expect(funcMatch).toBeTruthy();
+    
+    const functionBody = funcMatch[0];
+    
+    // Verify early return when no chapterSegments
+    expect(functionBody).toMatch(/if\s*\(!chapterSegments\.length\)\s*\{\s*return\s*\[\]\s*;\s*\}/);
+  });
+  
+  test('getChapterBoundaries should return empty array when no segments', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Find the function
+    const funcStart = scriptContent.indexOf('function getChapterBoundaries()');
+    const funcMatch = scriptContent.substring(funcStart).match(/function getChapterBoundaries\(\)[\s\S]*?^    \}/m);
+    expect(funcMatch).toBeTruthy();
+    
+    const functionBody = funcMatch[0];
+    
+    // Verify early return when no chapterSegments
+    expect(functionBody).toMatch(/if\s*\(!chapterSegments\.length\)\s*\{\s*return\s*\[\]\s*;\s*\}/);
+  });
+  
+  test('both functions should have error handling', () => {
+    const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
+    
+    // Check getSegmentDiagnostics has try-catch
+    const segDiagMatch = scriptContent.match(/function getSegmentDiagnostics\(\)[\s\S]*?^    \}/m);
+    expect(segDiagMatch).toBeTruthy();
+    expect(segDiagMatch[0]).toContain('try {');
+    expect(segDiagMatch[0]).toContain('catch');
+    
+    // Check getChapterBoundaries has try-catch
+    const chapterBoundMatch = scriptContent.match(/function getChapterBoundaries\(\)[\s\S]*?^    \}/m);
+    expect(chapterBoundMatch).toBeTruthy();
+    expect(chapterBoundMatch[0]).toContain('try {');
+    expect(chapterBoundMatch[0]).toContain('catch');
+  });
+  
+});
