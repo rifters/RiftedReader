@@ -31,6 +31,7 @@ import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.util.AppLoggerBridge
 import com.rifters.riftedreader.util.EpubImageAssetHelper
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONArray
@@ -330,16 +331,17 @@ class ReaderPageFragment : Fragment() {
             )
             
             viewLifecycleOwner.lifecycleScope.launch {
-                // Wait for conveyor readiness just once, then render
-                readerViewModel.isConveyorReady.collect { ready ->
+                // Wait for conveyor readiness just once using first() to properly terminate collection
+                readerViewModel.isConveyorReady.first { ready ->
                     if (ready) {
                         com.rifters.riftedreader.util.AppLogger.d(
                             "ReaderPageFragment",
                             "[CONTENT_LOAD] Conveyor ready - rendering window $windowIndex from preloaded cache"
                         )
                         renderBaseContent()
-                        // Cancel the collection after first successful render
-                        return@collect
+                        true  // Predicate satisfied, stop collecting
+                    } else {
+                        false  // Keep collecting until ready
                     }
                 }
             }
@@ -742,7 +744,7 @@ class ReaderPageFragment : Fragment() {
         // For CONTINUOUS mode, metadata will be resolved when renderBaseContent() runs
         // This avoids duplicate getWindowHtml() calls
         // Initialize with defaults - will be updated when window HTML is fetched
-        resolvedChapterIndex = null
+        resolvedChapterIndex = windowIndex  // Use windowIndex as fallback until payload is fetched
         targetInPageIndex = 0
         pendingInitialInPageIndex = null
         currentInPageIndex = 0
