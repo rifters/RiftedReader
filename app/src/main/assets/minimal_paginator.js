@@ -178,6 +178,15 @@
             // Calculate initial page count and character offsets
             calculatePageCountAndOffsets();
             
+            // DIAGNOSTIC: Log initialization complete with measurements
+            log('INIT_COMPLETE', 
+                `viewportWidth=${state.viewportWidth}px, ` +
+                `scrollWidth=${state.contentWrapper.scrollWidth}px, ` +
+                `clientWidth=${state.contentWrapper.clientWidth}px, ` +
+                `appliedColumnWidth=${state.appliedColumnWidth}px, ` +
+                `calculated pageCount=${state.pageCount}`
+            );
+            
             state.isInitialized = true;
             state.isPaginationReady = state.pageCount > 0;
             state.currentPage = 0;
@@ -185,11 +194,18 @@
             // Add scroll listener to detect boundary changes during user scrolling
             setupScrollListener();
             
-            // Sync pagination state with Android bridge (for synchronized access)
-            syncPaginationState();
-            
             if (state.isPaginationReady) {
                 log('INIT_SUCCESS', `pageCount=${state.pageCount}, charOffsets=${charOffsets.length}, pageWidth=${state.appliedColumnWidth}px`);
+                
+                // DIAGNOSTIC: Warn if only 1 page for content that should paginate
+                if (state.pageCount === 1 && state.contentWrapper.scrollWidth === state.contentWrapper.clientWidth) {
+                    log('WARN_SINGLE_PAGE', 
+                        'Content calculated as 1 page. ' +
+                        'scrollWidth equals clientWidth - columns may not be wrapping. ' +
+                        'Check if content is long enough or if CSS column layout is working correctly.'
+                    );
+                }
+                
                 callAndroidBridge('onPaginationReady', { pageCount: state.pageCount });
                 
                 // Dispatch DOM CustomEvent for other consumers
@@ -295,9 +311,6 @@
             top: 0,
             behavior: smooth ? 'smooth' : 'auto'
         });
-        
-        // Sync state with Android bridge after page change
-        syncPaginationState();
         
         // REMOVED: checkBoundary() call - let scroll listener handle boundary detection
         // after scroll animation completes and state is properly updated
@@ -515,9 +528,6 @@
                 state.isPaginationReady = true;
                 log('REFLOW', 'isPaginationReady set back to true');
                 
-                // Sync with Android bridge
-                syncPaginationState();
-                
                 // Notify Android if callback exists
                 callAndroidBridge('onPaginationReady', { pageCount: pageCount });
             }, 0); // Execute ASAP but after current call stack
@@ -580,6 +590,13 @@
         // Force another reflow after setting width to ensure layout is stable
         wrapper.offsetHeight;
         
+        // DIAGNOSTIC: Verify layout after setting width
+        log('LAYOUT_VERIFY', 
+            `columnWidth=${columnWidth}px set, ` +
+            `wrapper.style.columnWidth='${wrapper.style.columnWidth}', ` +
+            `computed scrollWidth=${wrapper.scrollWidth}px after layout`
+        );
+        
         log('LAYOUT', `Set wrapper width=${exactWidth}px (pageCount=${pageCount}, scrollWidth=${scrollWidth}, columnWidth=${columnWidth})`);
     }
     
@@ -601,6 +618,13 @@
             const scrollWidth = state.contentWrapper.scrollWidth;
             const clientWidth = state.contentWrapper.clientWidth;
             
+            // DIAGNOSTIC: Log raw measurements
+            log('CALC_PAGES_RAW', 
+                `scrollWidth=${scrollWidth}px, ` +
+                `clientWidth=${clientWidth}px, ` +
+                `appliedColumnWidth=${state.appliedColumnWidth}px`
+            );
+            
             if (clientWidth <= 0) {
                 log('WARN', 'clientWidth <= 0, cannot calculate pages');
                 state.pageCount = -1;
@@ -611,6 +635,12 @@
             // Page count = how many column widths fit in scroll width
             const pageCount = Math.ceil(scrollWidth / clientWidth);
             state.pageCount = Math.max(1, pageCount);
+            
+            // DIAGNOSTIC: Log calculation result
+            log('CALC_PAGES_RESULT', 
+                `Math.ceil(${scrollWidth} / ${clientWidth}) = ${pageCount}, ` +
+                `final pageCount=${state.pageCount}`
+            );
             
             // Build character offset array
             charOffsets = buildCharacterOffsets();
@@ -690,7 +720,6 @@
             
             // ✅ ADD THIS: Notify Android when page actually changes
             if (state.currentPage !== prevPage) {
-                syncPaginationState();  // Sync first
                 log('PAGE_CHANGE', `Manual scroll: ${prevPage} → ${state.currentPage}`);
             }
             
@@ -752,7 +781,6 @@
             
             // Update state
             state.currentPage = clampedPage;
-            syncPaginationState();
         }
         
         // After snap, verify page count is still accurate (images may have loaded)
@@ -883,7 +911,6 @@
             }
             
             // Notify Android of the change
-            syncPaginationState();
             callAndroidBridge('onPaginationReady', { pageCount: state.pageCount });
             
             log('RECOMPUTE_COMPLETE', `Page ${oldCurrentPage}/${oldPageCount} → ${state.currentPage}/${state.pageCount}`);
@@ -904,10 +931,6 @@
         if (currentProgress >= BOUNDARY_THRESHOLD && lastBoundaryDirection !== 'FORWARD') {
             // Call onBoundary with JSON format for PaginatorBridge
             callAndroidBridge('onBoundary', { direction: 'NEXT' });
-            // Also call legacy onBoundaryReached for backward compatibility
-            if (window.AndroidBridge && typeof window.AndroidBridge.onBoundaryReached === 'function') {
-                window.AndroidBridge.onBoundaryReached('NEXT', state.currentPage, state.pageCount);
-            }
             // Dispatch DOM CustomEvent for other consumers
             try {
                 const event = new CustomEvent('paginator-boundary', {
@@ -922,10 +945,6 @@
         } else if (currentProgress <= (1 - BOUNDARY_THRESHOLD) && lastBoundaryDirection !== 'BACKWARD') {
             // Call onBoundary with JSON format for PaginatorBridge
             callAndroidBridge('onBoundary', { direction: 'PREVIOUS' });
-            // Also call legacy onBoundaryReached for backward compatibility
-            if (window.AndroidBridge && typeof window.AndroidBridge.onBoundaryReached === 'function') {
-                window.AndroidBridge.onBoundaryReached('PREVIOUS', state.currentPage, state.pageCount);
-            }
             // Dispatch DOM CustomEvent for other consumers
             try {
                 const event = new CustomEvent('paginator-boundary', {
@@ -943,40 +962,17 @@
     }
     
     /**
-     * Sync pagination state with Android for synchronized access.
-     * Called by Kotlin code via WebViewPaginatorBridge._syncPaginationState()
-     * This allows Kotlin to read page state synchronously without async callbacks.
-     */
-    function syncPaginationState() {
-        try {
-            if (window.AndroidBridge && typeof window.AndroidBridge._syncPaginationState === 'function') {
-                window.AndroidBridge._syncPaginationState(
-                    state.pageCount,
-                    state.currentPage
-                );
-                log('SYNC', `Synced with Android: pageCount=${state.pageCount}, currentPage=${state.currentPage}`);
-            }
-        } catch (e) {
-            log('SYNC_ERROR', `Failed to sync: ${e.message}`);
-        }
-    }
-    
-    /**
      * Call Android bridge
      * @param {string} method - Method name
      * @param {Object} data - Data object
      */
     function callAndroidBridge(method, data) {
         try {
-            // Try new PaginatorBridge first (for feature-flagged integration)
             if (window.PaginatorBridge && typeof window.PaginatorBridge[method] === 'function') {
                 window.PaginatorBridge[method](JSON.stringify(data));
                 log('BRIDGE', `Called PaginatorBridge.${method}(${JSON.stringify(data)})`);
-            }
-            // Fall back to AndroidBridge for backward compatibility
-            else if (window.AndroidBridge && typeof window.AndroidBridge[method] === 'function') {
-                window.AndroidBridge[method](JSON.stringify(data));
-                log('BRIDGE', `Called AndroidBridge.${method}(${JSON.stringify(data)})`);
+            } else {
+                log('ERROR', `PaginatorBridge not found - ensure PaginatorBridge is registered as JavaScript interface before calling pagination methods`);
             }
         } catch (e) {
             log('ERROR', `Bridge call failed: ${e.message}`);
@@ -1033,7 +1029,6 @@
     window.paginatorRecheck = function() {
         log('RECHECK', 'Pagination recheck requested');
         calculatePageCountAndOffsets();
-        syncPaginationState();
         if (state.isPaginationReady) {
             callAndroidBridge('onPaginationReady', { pageCount: state.pageCount });
         }

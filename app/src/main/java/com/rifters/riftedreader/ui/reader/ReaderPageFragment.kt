@@ -156,34 +156,32 @@ class ReaderPageFragment : Fragment() {
             // Add JavaScript interface for TTS communication
             addJavascriptInterface(TtsWebBridge(), "AndroidTtsBridge")
             
-            // Add JavaScript interface for pagination callbacks
-            addJavascriptInterface(PaginationBridge(), "AndroidBridge")
-            
-            // Add minimal paginator bridge if feature flag is enabled
-            val settings = readerViewModel.readerSettings.value
-            if (settings.enableMinimalPaginator) {
-                val minimalPaginatorBridge = PaginatorBridge(
-                    windowIndex = windowIndex,
-                    onPaginationReady = { wIdx, totalPages ->
-                        // Set paginator initialized flag (same as existing PaginationBridge)
-                        isPaginatorInitialized = true
-                        com.rifters.riftedreader.util.AppLogger.d(
-                            "ReaderPageFragment",
-                            "[MIN_PAGINATOR] isPaginatorInitialized set to true for windowIndex=$wIdx"
-                        )
-                        // Forward to ViewModel for state updates and conveyor integration
-                        readerViewModel.onWindowPaginationReady(wIdx, totalPages)
-                    },
-                    onBoundary = { wIdx, direction ->
-                        handleMinimalPaginatorBoundary(wIdx, direction)
-                    }
-                )
-                addJavascriptInterface(minimalPaginatorBridge, "PaginatorBridge")
-                com.rifters.riftedreader.util.AppLogger.d(
-                    "ReaderPageFragment",
-                    "[MIN_PAGINATOR] Registered PaginatorBridge for windowIndex=$windowIndex"
-                )
-            }
+            // Pagination System: Uses minimal_paginator.js with PaginatorBridge
+            // Legacy WebViewPaginatorBridge and PaginationBridge inner class have been removed
+            // All pagination logic now flows through PaginatorBridge callbacks:
+            //   - onPaginationReady: When JS paginator completes initialization
+            //   - onBoundary: When user reaches window edge (triggers window navigation)
+            val minimalPaginatorBridge = PaginatorBridge(
+                windowIndex = windowIndex,
+                onPaginationReady = { wIdx, totalPages ->
+                    // Set paginator initialized flag
+                    isPaginatorInitialized = true
+                    com.rifters.riftedreader.util.AppLogger.d(
+                        "ReaderPageFragment",
+                        "[MIN_PAGINATOR] isPaginatorInitialized set to true for windowIndex=$wIdx"
+                    )
+                    // Forward to ViewModel for state updates and conveyor integration
+                    readerViewModel.onWindowPaginationReady(wIdx, totalPages)
+                },
+                onBoundary = { wIdx, direction ->
+                    handleMinimalPaginatorBoundary(wIdx, direction)
+                }
+            )
+            addJavascriptInterface(minimalPaginatorBridge, "PaginatorBridge")
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "[MIN_PAGINATOR] Registered PaginatorBridge for windowIndex=$windowIndex"
+            )
             
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(
@@ -216,91 +214,42 @@ class ReaderPageFragment : Fragment() {
                     com.rifters.riftedreader.util.AppLogger.event("ReaderPageFragment", "WebView onPageFinished for page $pageIndex", "ui/webview/lifecycle")
                     isWebViewReady = true
                     
-                    // Configure the paginator before it initializes
-                    configurePaginator()
-                    
-                    // Initialize minimal paginator if feature flag is enabled
+                    // Configure minimal paginator
                     val settings = readerViewModel.readerSettings.value
-                    if (settings.enableMinimalPaginator) {
-                        // Configure minimal paginator
-                        val mode = when (readerViewModel.paginationMode) {
-                            PaginationMode.CONTINUOUS -> "window"
-                            PaginationMode.CHAPTER_BASED -> "chapter"
-                        }
-                        binding.pageWebView.evaluateJavascript(
-                            """
-                            if (window.minimalPaginator) {
-                                window.minimalPaginator.configure({
-                                    mode: '$mode',
-                                    windowIndex: $windowIndex
-                                });
-                            }
-                            """.trimIndent(),
-                            null
-                        )
-                        
-                        // Call window.initPaginator() to initialize the minimal paginator
-                        binding.pageWebView.evaluateJavascript(
-                            "if (window.initPaginator) { window.initPaginator('#window-root'); }",
-                            null
-                        )
-                        com.rifters.riftedreader.util.AppLogger.d(
-                            "ReaderPageFragment",
-                            "[MIN_PAGINATOR] Configured and initialized for windowIndex=$windowIndex, mode=$mode"
-                        )
+                    val mode = when (readerViewModel.paginationMode) {
+                        PaginationMode.CONTINUOUS -> "window"
+                        PaginationMode.CHAPTER_BASED -> "chapter"
                     }
-                    
-                    // Initialize the in-page paginator
-                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "[PAGINATION_DEBUG] Initializing paginator with fontSize=${settings.textSizeSp}px")
-                    
-                    // Set font size, which will trigger a reflow
-                    WebViewPaginatorBridge.setFontSize(binding.pageWebView, settings.textSizeSp.toInt())
-                    
-                    // After font size is set and reflow completes, restore to saved in-page position
-                    // Use a longer delay to ensure paginator initialization and reflow complete
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        // Wait for paginator to be ready
-                        var attempts = 0
-                        while (attempts < 20) { // Try for up to 1 second (20 * 50ms)
-                            kotlinx.coroutines.delay(50)
-                            try {
-                                if (WebViewPaginatorBridge.isReady(binding.pageWebView)) {
-                                    com.rifters.riftedreader.util.AppLogger.d(
-                                        "ReaderPageFragment",
-                                        "Paginator ready after ${(attempts + 1) * 50}ms"
-                                    )
-                                    break
-                                }
-                            } catch (e: Exception) {
-                                com.rifters.riftedreader.util.AppLogger.d(
-                                    "ReaderPageFragment",
-                                    "Waiting for paginator readiness (attempt ${attempts + 1})"
-                                )
-                            }
-                            attempts++
+                    binding.pageWebView.evaluateJavascript(
+                        """
+                        if (window.minimalPaginator) {
+                            window.minimalPaginator.configure({
+                                mode: '$mode',
+                                windowIndex: $windowIndex
+                            });
                         }
-                        
-                        // Additional delay after ready check to ensure reflow completes
-                        kotlinx.coroutines.delay(100)
-                        
-                        try {
-                            val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
-                            if (pageCount > 0 && currentInPageIndex > 0) {
-                                val targetPage = currentInPageIndex.coerceIn(0, pageCount - 1)
-                                com.rifters.riftedreader.util.AppLogger.d(
-                                    "ReaderPageFragment",
-                                    "Restoring to saved in-page position: $targetPage/$pageCount"
-                                )
-                                WebViewPaginatorBridge.goToPage(binding.pageWebView, targetPage, smooth = false)
-                            }
-                        } catch (e: Exception) {
-                            com.rifters.riftedreader.util.AppLogger.e(
-                                "ReaderPageFragment",
-                                "Error restoring in-page position after font size init",
-                                e
-                            )
-                        }
-                    }
+                        """.trimIndent(),
+                        null
+                    )
+                    
+                    // Call window.initPaginator() to initialize the minimal paginator
+                    binding.pageWebView.evaluateJavascript(
+                        "if (window.initPaginator) { window.initPaginator('#window-root'); }",
+                        null
+                    )
+                    com.rifters.riftedreader.util.AppLogger.d(
+                        "ReaderPageFragment",
+                        "[MIN_PAGINATOR] Configured and initialized for windowIndex=$windowIndex, mode=$mode"
+                    )
+                    
+                    // Set font size directly via JavaScript
+                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "[PAGINATION_DEBUG] Setting font size via JS: ${settings.textSizeSp}px")
+                    binding.pageWebView.evaluateJavascript(
+                        "if (window.minimalPaginator) { window.minimalPaginator.setFontSize(${settings.textSizeSp.toInt()}); }",
+                        null
+                    )
+                    
+                    // Position restoration now handled by minimal_paginator.js automatically
                     applyPendingInitialInPage()
                     
                     // Initialize TTS chunks when page is loaded
@@ -315,36 +264,30 @@ class ReaderPageFragment : Fragment() {
                         // Clear the flag immediately to prevent re-triggering
                         readerViewModel.clearJumpToLastPageFlag()
                         
-                        // Jump to last page after paginator is ready
+                        // Jump to last page via PaginatorBridge callback
+                        // The minimal_paginator will call onPaginationReady when ready
+                        // At that point we can jump to the last page
                         viewLifecycleOwner.lifecycleScope.launch {
-                            // Wait for paginator to be ready
-                            var attempts = 0
-                            while (attempts < 20) {
-                                kotlinx.coroutines.delay(50)
-                                try {
-                                    if (WebViewPaginatorBridge.isReady(binding.pageWebView)) {
-                                        break
-                                    }
-                                } catch (e: Exception) {
-                                    // Continue waiting
-                                }
-                                attempts++
-                            }
-                            
-                            // Additional delay to ensure reflow completes
-                            kotlinx.coroutines.delay(100)
-                            
+                            kotlinx.coroutines.delay(200) // Wait for paginator initialization
                             try {
-                                val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
-                                if (pageCount > 0) {
-                                    val lastPage = pageCount - 1
-                                    com.rifters.riftedreader.util.AppLogger.userAction(
-                                        "ReaderPageFragment",
-                                        "Jumping to last internal page ($lastPage) of chapter $pageIndex after backward navigation",
-                                        "ui/webview/pagination"
-                                    )
-                                    WebViewPaginatorBridge.goToPage(binding.pageWebView, lastPage, smooth = false)
-                                }
+                                binding.pageWebView.evaluateJavascript(
+                                    """
+                                    (function() {
+                                        if (window.minimalPaginator && window.minimalPaginator.isReady()) {
+                                            var pageCount = window.minimalPaginator.getPageCount();
+                                            if (pageCount > 0) {
+                                                window.minimalPaginator.goToPage(pageCount - 1, false);
+                                            }
+                                        }
+                                    })();
+                                    """.trimIndent(),
+                                    null
+                                )
+                                com.rifters.riftedreader.util.AppLogger.userAction(
+                                    "ReaderPageFragment",
+                                    "Jumping to last internal page of chapter $pageIndex after backward navigation",
+                                    "ui/webview/pagination"
+                                )
                             } catch (e: Exception) {
                                 com.rifters.riftedreader.util.AppLogger.e(
                                     "ReaderPageFragment",
@@ -456,53 +399,24 @@ class ReaderPageFragment : Fragment() {
                             // This preserves reading position without reloading
                             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Applying font size change without reload")
                             if (isWebViewReady && binding.pageWebView.visibility == View.VISIBLE) {
-                                // Save current position before font size change
+                                // Apply font size change directly via JavaScript
+                                // minimal_paginator.js handles position preservation automatically
                                 viewLifecycleOwner.lifecycleScope.launch {
                                     try {
-                                        val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
-                                        currentInPageIndex = currentPage
                                         com.rifters.riftedreader.util.AppLogger.d(
                                             "ReaderPageFragment",
-                                            "Saved current in-page position before font size change: $currentPage"
+                                            "Applying font size change via JS: ${settings.textSizeSp}px"
                                         )
                                         
-                                        // Apply font size change
-                                        WebViewPaginatorBridge.setFontSize(binding.pageWebView, settings.textSizeSp.toInt())
-                                        
-                                        // Wait for paginator to be ready after reflow
-                                        var attempts = 0
-                                        while (attempts < 20) {
-                                            kotlinx.coroutines.delay(50)
-                                            try {
-                                                if (WebViewPaginatorBridge.isReady(binding.pageWebView)) {
-                                                    com.rifters.riftedreader.util.AppLogger.d(
-                                                        "ReaderPageFragment",
-                                                        "Paginator ready after font size change (${(attempts + 1) * 50}ms)"
-                                                    )
-                                                    break
-                                                }
-                                            } catch (e: Exception) {
-                                                // Continue waiting
-                                            }
-                                            attempts++
-                                        }
-                                        
-                                        // Additional delay to ensure reflow completes
-                                        kotlinx.coroutines.delay(100)
-                                        
-                                        val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
-                                        if (pageCount > 0 && currentInPageIndex > 0) {
-                                            val targetPage = currentInPageIndex.coerceIn(0, pageCount - 1)
-                                            com.rifters.riftedreader.util.AppLogger.d(
-                                                "ReaderPageFragment",
-                                                "Restoring to saved in-page position after font size change: $targetPage/$pageCount"
-                                            )
-                                            WebViewPaginatorBridge.goToPage(binding.pageWebView, targetPage, smooth = false)
-                                        }
+                                        // setFontSize in minimal_paginator automatically preserves position via character offsets
+                                        binding.pageWebView.evaluateJavascript(
+                                            "if (window.minimalPaginator) { window.minimalPaginator.setFontSize(${settings.textSizeSp.toInt()}); }",
+                                            null
+                                        )
                                     } catch (e: Exception) {
                                         com.rifters.riftedreader.util.AppLogger.e(
                                             "ReaderPageFragment",
-                                            "Error preserving position during font size change",
+                                            "Error applying font size change via JS",
                                             e
                                         )
                                     }
@@ -546,15 +460,11 @@ class ReaderPageFragment : Fragment() {
                 // Fix: Replace webViewClient BEFORE calling loadUrl to prevent onPageFinished callback
                 // This prevents race condition where onPageFinished could trigger prepareTtsChunks
                 webViewClient = WebViewClient()
-                // Remove JavaScript interfaces
+                // Remove JavaScript interfaces to clean up
                 removeJavascriptInterface("AndroidTtsBridge")
-                removeJavascriptInterface("AndroidBridge")
-                // Remove PaginatorBridge if it was registered
-                if (readerViewModel.readerSettings.value.enableMinimalPaginator) {
-                    removeJavascriptInterface("PaginatorBridge")
-                    // Call paginatorStop to cleanup JS state
-                    evaluateJavascript("if (window.paginatorStop) { window.paginatorStop(); }", null)
-                }
+                removeJavascriptInterface("PaginatorBridge")
+                // Call paginatorStop to cleanup JS state
+                evaluateJavascript("if (window.paginatorStop) { window.paginatorStop(); }", null)
                 // Load blank page to clear memory
                 loadUrl("about:blank")
                 // Clear history and cache
@@ -846,15 +756,11 @@ class ReaderPageFragment : Fragment() {
         if (_binding == null || !isWebViewReady) return
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                var attempts = 0
-                while (attempts < 20) {
-                    if (WebViewPaginatorBridge.isReady(binding.pageWebView)) {
-                        break
-                    }
-                    kotlinx.coroutines.delay(25)
-                    attempts++
-                }
-                WebViewPaginatorBridge.goToPage(binding.pageWebView, target, smooth = false)
+                kotlinx.coroutines.delay(200) // Wait for paginator initialization
+                binding.pageWebView.evaluateJavascript(
+                    "if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage($target, false); }",
+                    null
+                )
                 currentInPageIndex = target
                 pendingInitialInPageIndex = null
             } catch (e: Exception) {
@@ -870,54 +776,6 @@ class ReaderPageFragment : Fragment() {
     // Deprecated: Chapter context managed by Conveyor Belt system
     // Phase 3 bridge handles pagination only, not chapters
     
-    /**
-     * Configure the JavaScript paginator with the appropriate mode and context.
-     * This must be called before the paginator initializes to ensure proper behavior.
-     */
-    private fun configurePaginator() {
-        if (_binding == null || !isWebViewReady) {
-            com.rifters.riftedreader.util.AppLogger.d(
-                "ReaderPageFragment",
-                "[PAGINATION_DEBUG] configurePaginator skipped: _binding=${_binding != null}, isWebViewReady=$isWebViewReady"
-            )
-            return
-        }
-        
-        // Create paginator configuration based on pagination mode
-        val paginatorConfig = when (readerViewModel.paginationMode) {
-            PaginationMode.CONTINUOUS -> {
-                // Window mode: paginate across multiple chapters in the window
-                com.rifters.riftedreader.domain.pagination.PaginatorConfig(
-                    mode = com.rifters.riftedreader.domain.pagination.PaginatorMode.WINDOW,
-                    windowIndex = pageIndex,
-                    chapterIndex = null,
-                    rootSelector = "#window-root"
-                )
-            }
-            PaginationMode.CHAPTER_BASED -> {
-                // Chapter mode: paginate within a single chapter
-                val chapterIndex = resolvedChapterIndex ?: pageIndex
-                com.rifters.riftedreader.domain.pagination.PaginatorConfig(
-                    mode = com.rifters.riftedreader.domain.pagination.PaginatorMode.CHAPTER,
-                    windowIndex = pageIndex,
-                    chapterIndex = chapterIndex,
-                    rootSelector = null
-                )
-            }
-        }
-        
-        com.rifters.riftedreader.util.AppLogger.d(
-            "ReaderPageFragment",
-            "[PAGINATION_DEBUG] Configuring paginator: mode=${paginatorConfig.mode}, " +
-            "windowIndex=${paginatorConfig.windowIndex}, chapterIndex=${paginatorConfig.chapterIndex}, " +
-            "rootSelector=${paginatorConfig.rootSelector}"
-        )
-        
-        WebViewPaginatorBridge.configure(binding.pageWebView, paginatorConfig)
-        
-        // CRITICAL: Initialize the paginator to set up columns and calculate page count
-        WebViewPaginatorBridge.initialize(binding.pageWebView)
-    }
 
     private fun applyHighlight(range: IntRange?) {
         if (_binding == null) return
@@ -1810,323 +1668,6 @@ class ReaderPageFragment : Fragment() {
         Toast.makeText(appContext, message, Toast.LENGTH_LONG).show()
     }
     
-    /**
-     * JavaScript interface for pagination callbacks from the WebView paginator.
-     * Called by inpage_paginator.js to notify Android of page changes.
-     */
-    private inner class PaginationBridge {
-        @JavascriptInterface
-        fun onPaginationReady(totalPages: Int) {
-            // Called when pagination is complete and total page count is known
-            activity?.runOnUiThread {
-                // [PAGINATION_DEBUG] Enhanced logging for pagination ready callback
-                val webViewWidth = _binding?.pageWebView?.width ?: 0
-                val webViewHeight = _binding?.pageWebView?.height ?: 0
-                com.rifters.riftedreader.util.AppLogger.d(
-                    "ReaderPageFragment",
-                    "[PAGINATION_DEBUG] onPaginationReady callback: windowIndex=$pageIndex, totalPages=$totalPages, " +
-                    "webViewSize=${webViewWidth}x${webViewHeight}, paginationMode=${readerViewModel.paginationMode}"
-                )
-                
-                // [PAGINATION_DEBUG] Warn if zero pages returned
-                if (totalPages == 0) {
-                    com.rifters.riftedreader.util.AppLogger.w(
-                        "ReaderPageFragment",
-                        "[PAGINATION_DEBUG] WARNING: onPaginationReady reported 0 pages for windowIndex=$pageIndex - pagination may have failed"
-                    )
-                }
-                
-                // CRITICAL: Set paginator initialized flag now that JS paginator is ready
-                // This prevents navigation logic from using stale/default values
-                isPaginatorInitialized = true
-                com.rifters.riftedreader.util.AppLogger.d(
-                    "ReaderPageFragment",
-                    "[PAGINATION_DEBUG] isPaginatorInitialized set to true for windowIndex=$pageIndex"
-                )
-                
-                if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
-                    // Check if view still exists - fragment may be destroyed after callback scheduled
-                    val viewLifecycleOwnerOrNull = try {
-                        viewLifecycleOwner
-                    } catch (e: IllegalStateException) {
-                        com.rifters.riftedreader.util.AppLogger.w(
-                            "ReaderPageFragment",
-                            "[PAGINATION_DEBUG] Fragment view destroyed, skipping onPaginationReady metrics update"
-                        )
-                        null
-                    }
-                    
-                    viewLifecycleOwnerOrNull?.lifecycleScope?.launch {
-                        try {
-                            // Phase 3: Chapter metrics now managed by Conveyor Belt
-                            // Use ViewModel's chapter pagination metrics instead
-                            com.rifters.riftedreader.util.AppLogger.d(
-                                "ReaderPageFragment",
-                                "[CHAPTER_METRICS] onPaginationReady: Chapter metrics available from ViewModel"
-                            )
-                            
-                            // Update chapter pagination metrics
-                            // For the current chapter in this window
-                            try {
-                                val location = readerViewModel.getPageLocation(pageIndex)
-                                val chapterIndex = location?.chapterIndex ?: resolvedChapterIndex ?: pageIndex
-                                readerViewModel.updateChapterPaginationMetrics(chapterIndex, totalPages)
-                            } catch (e: Exception) {
-                                com.rifters.riftedreader.util.AppLogger.e(
-                                    "ReaderPageFragment",
-                                    "[CHAPTER_METRICS] Error updating chapter pagination metrics in onPaginationReady",
-                                    e
-                                )
-                            }
-                        } catch (e: Exception) {
-                            com.rifters.riftedreader.util.AppLogger.e(
-                                "ReaderPageFragment",
-                                "Error in onPaginationReady chapter metrics update",
-                                e
-                            )
-                        }
-                    }
-                }
-                
-                // Update ViewModel with initial pagination state
-                // Check if view still exists before accessing lifecycle
-                try {
-                    val vlo = viewLifecycleOwner
-                    vlo.lifecycleScope.launch {
-                        try {
-                            val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
-                            // Initialize tracked position if it's the first pagination
-                            if (currentInPageIndex == 0) {
-                                currentInPageIndex = currentPage
-                            }
-                            readerViewModel.updateWebViewPageState(currentPage, totalPages)
-                        } catch (e: Exception) {
-                            com.rifters.riftedreader.util.AppLogger.e(
-                                "ReaderPageFragment",
-                                "Error getting current page in onPaginationReady",
-                                e
-                            )
-                        }
-                    }
-                } catch (e: IllegalStateException) {
-                    com.rifters.riftedreader.util.AppLogger.w(
-                        "ReaderPageFragment",
-                        "[PAGINATION_DEBUG] Fragment view destroyed, skipping onPaginationReady page state update"
-                    )
-                }
-            }
-        }
-        
-        @JavascriptInterface
-        fun onPageChanged(newPage: Int) {
-            // Called when user navigates to a different page within the chapter
-            activity?.runOnUiThread {
-                // Update tracked in-page position
-                currentInPageIndex = newPage
-                
-                // Update ViewModel with new page position
-                viewLifecycleOwner.lifecycleScope.launch {
-                    try {
-                        val totalPages = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
-                        // Phase 3: Chapter information now managed by Conveyor Belt
-                        
-                        com.rifters.riftedreader.util.AppLogger.d(
-                            "ReaderPageFragment",
-                            "PaginationBridge.onPageChanged: fragmentPage=$pageIndex, inPage=$newPage/$totalPages"
-                        )
-                        
-                        readerViewModel.updateWebViewPageState(newPage, totalPages)
-                        
-                        // Detect window transitions to prevent inappropriate buffer shifts
-                        // WindowBufferManager has been deprecated - window transition detection removed
-                        val isWindowTransition = false
-                        
-                        // Window transition tracking is deprecated - skip cooldown logic
-                        val inCooldownPeriod = false
-                        
-                        // Notify WindowBufferManager of position for potential buffer shifts
-                        // Only call if near boundaries to reduce unnecessary method invocations
-                        // Buffer shift threshold is 2 pages, so check if within that range
-                        // IMPORTANT: Skip shift checks during cooldown period after window transitions
-                        // to prevent shifting backward when entering a new window at page 0
-                        // WindowBufferManager has been deprecated - these checks are no-ops
-                        com.rifters.riftedreader.util.AppLogger.d(
-                            "ReaderPageFragment",
-                            "[EDGE_CHECK] page=$newPage/$totalPages, cooldown=$inCooldownPeriod (WindowBufferManager deprecated)"
-                        )
-                        
-                        if (totalPages > 0 && newPage >= totalPages - 2 && !inCooldownPeriod) {
-                            com.rifters.riftedreader.util.AppLogger.d(
-                                "ReaderPageFragment",
-                                "[CONVEYOR] Near window END: page $newPage/$totalPages - CALLING maybeShiftForward()"
-                            )
-                            readerViewModel.maybeShiftForward(newPage, totalPages)
-                        } else if (totalPages > 0 && newPage >= totalPages - 2) {
-                            com.rifters.riftedreader.util.AppLogger.d(
-                                "ReaderPageFragment",
-                                "[CONVEYOR] BLOCKED: Near END but IN_COOLDOWN: page=$newPage/$totalPages"
-                            )
-                        }
-                        
-                        if (newPage < 2 && !inCooldownPeriod) {
-                            com.rifters.riftedreader.util.AppLogger.d(
-                                "ReaderPageFragment",
-                                "[CONVEYOR] Near window START: page $newPage/$totalPages - CALLING maybeShiftBackward()"
-                            )
-                            readerViewModel.maybeShiftBackward(newPage)
-                        }
-                    } catch (e: Exception) {
-                        com.rifters.riftedreader.util.AppLogger.e(
-                            "ReaderPageFragment",
-                            "Error getting page/chapter info in onPageChanged",
-                            e
-                        )
-                    }
-                }
-            }
-        }
-
-        @JavascriptInterface
-        fun onBoundaryReached(direction: String?, boundaryPage: Int, totalPages: Int) {
-            val resolvedDirection = BoundaryDirection.fromRaw(direction)
-            if (resolvedDirection == null) {
-                com.rifters.riftedreader.util.AppLogger.e(
-                    "ReaderPageFragment",
-                    "Unknown boundary direction from JS: $direction",
-                    null
-                )
-                return
-            }
-
-            activity?.runOnUiThread {
-                readerViewModel.updateWebViewPageState(boundaryPage, totalPages)
-                if (skipNextBoundaryDirection == resolvedDirection) {
-                    skipNextBoundaryDirection = null
-                    return@runOnUiThread
-                }
-                handleChapterBoundary(resolvedDirection, boundaryPage, totalPages)
-            }
-        }
-
-        @JavascriptInterface
-        fun onStreamingRequest(direction: String?, boundaryPage: Int, totalPages: Int) {
-            val resolvedDirection = BoundaryDirection.fromRaw(direction)
-            if (resolvedDirection == null) {
-                com.rifters.riftedreader.util.AppLogger.e(
-                    "ReaderPageFragment",
-                    "Unknown streaming direction from JS: $direction",
-                    null
-                )
-                return
-            }
-
-            activity?.runOnUiThread {
-                handleStreamingRequest(resolvedDirection, boundaryPage, totalPages)
-            }
-        }
-
-        @JavascriptInterface
-        fun onSegmentEvicted(chapterIndex: Int) {
-            activity?.runOnUiThread {
-                viewLifecycleOwner.lifecycleScope.launch {
-                    try {
-                        // Phase 3: Chapter eviction now managed by Conveyor Belt
-                        com.rifters.riftedreader.util.AppLogger.event(
-                            "ReaderPageFragment",
-                            "[SEGMENT_EVICTED] chapter=$chapterIndex removed from sliding window " +
-                            "(page=$pageIndex)",
-                            "ui/webview/streaming"
-                        )
-                    } catch (e: Exception) {
-                        com.rifters.riftedreader.util.AppLogger.d(
-                            "ReaderPageFragment",
-                            "onSegmentEvicted callback for chapter=$chapterIndex (page=$pageIndex)"
-                        )
-                    }
-                }
-                readerViewModel.onChapterSegmentEvicted(chapterIndex)
-            }
-        }
-
-        @JavascriptInterface
-        fun onChapterJumped(chapterIndex: Int, pageIndex: Int) {
-            activity?.runOnUiThread {
-                com.rifters.riftedreader.util.AppLogger.d(
-                    "ReaderPageFragment",
-                    "onChapterJumped callback: chapter=$chapterIndex, page=$pageIndex"
-                )
-                // Update page state after TOC jump
-                viewLifecycleOwner.lifecycleScope.launch {
-                    try {
-                        val totalPages = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
-                        readerViewModel.updateWebViewPageState(pageIndex, totalPages)
-                    } catch (e: Exception) {
-                        com.rifters.riftedreader.util.AppLogger.e(
-                            "ReaderPageFragment",
-                            "Error updating page state after chapter jump",
-                            e
-                        )
-                    }
-                }
-            }
-        }
-
-        @JavascriptInterface
-        fun onChapterNotLoaded(chapterIndex: Int) {
-            activity?.runOnUiThread {
-                com.rifters.riftedreader.util.AppLogger.d(
-                    "ReaderPageFragment",
-                    "onChapterNotLoaded callback: chapter=$chapterIndex not found in loaded segments"
-                )
-                // Could trigger loading of the chapter here if needed
-                // For now, just log the event
-            }
-        }
-        
-        // Diagnostics callbacks
-        
-        @JavascriptInterface
-        fun onDiagnosticsLog(context: String, payload: String) {
-            activity?.runOnUiThread {
-                com.rifters.riftedreader.util.AppLogger.d(
-                    "ReaderPageFragment",
-                    "[DIAG] $context: $payload"
-                )
-            }
-        }
-        
-        @JavascriptInterface
-        fun onPaginationStateLog(payload: String) {
-            activity?.runOnUiThread {
-                com.rifters.riftedreader.util.AppLogger.d(
-                    "ReaderPageFragment",
-                    "[PAGINATION_STATE] $payload"
-                )
-            }
-        }
-        
-        @JavascriptInterface
-        fun onImagesFailedToLoad(payload: String) {
-            activity?.runOnUiThread {
-                com.rifters.riftedreader.util.AppLogger.w(
-                    "ReaderPageFragment",
-                    "[IMAGES_FAILED] windowIndex=$pageIndex, failed images: $payload"
-                )
-            }
-        }
-        
-        @JavascriptInterface
-        fun _syncPaginationState(pageCount: Int, currentPage: Int) {
-            // Called by minimal_paginator.js to sync current page state
-            // Allows Kotlin navigation code to read page info synchronously
-            com.rifters.riftedreader.util.AppLogger.d(
-                "ReaderPageFragment",
-                "_syncPaginationState(pageCount=$pageCount, currentPage=$currentPage) [BRIDGE_SYNC]"
-            )
-            // Update the bridge's cached values
-            WebViewPaginatorBridge._syncPaginationState(pageCount, currentPage)
-        }
-    }
     
     /**
      * JavaScript interface for TTS communication between WebView and Android
@@ -2274,7 +1815,10 @@ class ReaderPageFragment : Fragment() {
                         "$source: next in-page (${validCurrentPage + 1}/$freshPageCount) within window $pageIndex [IN_PAGE_NAV]",
                         "ui/webview/pagination"
                     )
-                    WebViewPaginatorBridge.nextPage(binding.pageWebView)
+                    binding.pageWebView.evaluateJavascript(
+                        "if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.nextPage(); }",
+                        null
+                    )
                     
                     // Capture position with character offset after navigation
                     viewLifecycleOwner.lifecycleScope.launch {
@@ -2300,7 +1844,10 @@ class ReaderPageFragment : Fragment() {
                         "$source: prev in-page (${validCurrentPage - 1}/$freshPageCount) within window $pageIndex [IN_PAGE_NAV]",
                         "ui/webview/pagination"
                     )
-                    WebViewPaginatorBridge.prevPage(binding.pageWebView)
+                    binding.pageWebView.evaluateJavascript(
+                        "if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.prevPage(); }",
+                        null
+                    )
                     
                     // Capture position with character offset after navigation
                     viewLifecycleOwner.lifecycleScope.launch {
@@ -2423,7 +1970,15 @@ class ReaderPageFragment : Fragment() {
     private suspend fun getSafeCurrentPage(): Int {
         return if (isPaginatorInitialized) {
             try {
-                WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
+                // Query via evaluateJavascript
+                suspendCancellableCoroutine { cont ->
+                    binding.pageWebView.evaluateJavascript(
+                        "window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getCurrentPage() : 0"
+                    ) { result ->
+                        val page = result?.toIntOrNull() ?: 0
+                        cont.resume(page)
+                    }
+                }
             } catch (e: Exception) {
                 com.rifters.riftedreader.util.AppLogger.e(
                     "ReaderPageFragment",
@@ -2459,12 +2014,30 @@ class ReaderPageFragment : Fragment() {
                 return
             }
 
-            val currentPage = WebViewPaginatorBridge.getCurrentPage(binding.pageWebView)
-            val pageCount = WebViewPaginatorBridge.getPageCount(binding.pageWebView)
-            val characterOffset = WebViewPaginatorBridge.getCharacterOffsetForPage(
-                binding.pageWebView,
-                currentPage
-            )
+            // Query current page and page count via evaluateJavascript
+            val currentPage = suspendCancellableCoroutine { cont ->
+                binding.pageWebView.evaluateJavascript(
+                    "window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getCurrentPage() : 0"
+                ) { result ->
+                    cont.resume(result?.toIntOrNull() ?: 0)
+                }
+            }
+            
+            val pageCount = suspendCancellableCoroutine { cont ->
+                binding.pageWebView.evaluateJavascript(
+                    "window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getPageCount() : 0"
+                ) { result ->
+                    cont.resume(result?.toIntOrNull() ?: 0)
+                }
+            }
+            
+            val characterOffset = suspendCancellableCoroutine { cont ->
+                binding.pageWebView.evaluateJavascript(
+                    "window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getCharacterOffsetForPage($currentPage) : 0"
+                ) { result ->
+                    cont.resume(result?.toIntOrNull() ?: 0)
+                }
+            }
 
             com.rifters.riftedreader.util.AppLogger.d(
                 "ReaderPageFragment",
@@ -2505,9 +2078,9 @@ class ReaderPageFragment : Fragment() {
                     "[CHARACTER_OFFSET] Restoring to saved offset=$savedCharOffset"
                 )
 
-                WebViewPaginatorBridge.goToPageWithCharacterOffset(
-                    binding.pageWebView,
-                    savedCharOffset
+                binding.pageWebView.evaluateJavascript(
+                    "if (window.minimalPaginator) { window.minimalPaginator.goToPageWithCharacterOffset($savedCharOffset); }",
+                    null
                 )
 
                 com.rifters.riftedreader.util.AppLogger.d(

@@ -128,19 +128,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         viewModel.setConveyorBeltSystem(conveyorBeltSystem)
         
         // DIAGNOSTICS: Log ConveyorPrimary status at startup
-        val isConveyorPrimary = readerPreferences.settings.value.enableMinimalPaginator
-        val conveyorStatus = if (isConveyorPrimary) "CONVEYOR_PRIMARY=true" else "CONVEYOR_PRIMARY=false"
+        // Conveyor is now always enabled - minimal paginator is the only system
         AppLogger.d(
             "ReaderActivity",
-            "[CONVEYOR_ACTIVE] $conveyorStatus - Conveyor is ${if (isConveyorPrimary) "authoritative window manager" else "inactive (legacy mode)"}"
-        )
-        
-        // Log startup information about minimal paginator default state
-        val enabledStatus = if (readerPreferences.settings.value.enableMinimalPaginator) "ENABLED" else "DISABLED"
-        AppLogger.d(
-            "ReaderActivity",
-            "[MINIMAL_PAGINATOR_DEFAULT] Minimal paginator is now DEFAULT for development: $enabledStatus. " +
-            "ConveyorBeltSystemViewModel wired to ReaderViewModel. Toggle via ADB if needed."
+            "[CONVEYOR_ACTIVE] CONVEYOR_PRIMARY=true - Conveyor is authoritative window manager (minimal paginator always enabled)"
         )
         
         // Debug log: assert initial pagination mode and window count
@@ -1654,12 +1645,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             // Get the WebView from the fragment and navigate
             lifecycleScope.launch {
                 try {
-                    // Use the bridge to navigate to the target page
+                    // Use direct JavaScript to navigate to the target page
                     val webView = frag.view?.findViewById<android.webkit.WebView>(
                         R.id.pageWebView
                     )
                     if (webView != null) {
-                        WebViewPaginatorBridge.goToPage(webView, pageIndex, smooth = true)
+                        webView.evaluateJavascript(
+                            "if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage($pageIndex, true); }",
+                            null
+                        )
                     }
                 } catch (e: Exception) {
                     AppLogger.e(

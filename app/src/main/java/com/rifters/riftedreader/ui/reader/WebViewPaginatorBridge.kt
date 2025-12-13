@@ -16,21 +16,25 @@ import kotlin.text.Charsets
 /**
  * Bridge for communicating with the minimal paginator JavaScript API (Phase 3).
  * 
- * This bridge provides Kotlin functions to interact with `minimal_paginator.js`,
- * a focused implementation that handles:
- * - Page layout via CSS columns
- * - In-window navigation (goToPage/getCurrentPage)
- * - Boundary detection (next/prev window triggers)
- * - Character offset tracking (bookmarks & progress)
+ * @deprecated This bridge object is deprecated and scheduled for removal.
+ *             All pagination now uses PaginatorBridge.kt with minimal_paginator.js.
+ *             Direct JavaScript evaluation should be used instead of these methods.
  * 
- * NOT handled (moved to Conveyor):
- * - Chapter streaming/management
- * - Window transitions
- * - TOC navigation
+ * Legacy bridge that provided Kotlin functions to interact with `minimal_paginator.js`.
+ * This has been replaced by:
+ * - PaginatorBridge.kt: The ONLY bridge for pagination callbacks
+ * - Direct evaluateJavascript() calls: For controlling pagination from Kotlin
  * 
- * @see docs/complete/PAGINATOR_AUDIT_PHASE_1.md for API audit
+ * This file is kept temporarily for reference during migration but should NOT be used.
+ * 
+ * @see PaginatorBridge for the current pagination bridge
  * @see app/src/main/assets/minimal_paginator.js for implementation
  */
+@Deprecated(
+    message = "Use PaginatorBridge and direct evaluateJavascript calls instead",
+    replaceWith = ReplaceWith("Direct evaluateJavascript() calls to window.minimalPaginator"),
+    level = DeprecationLevel.ERROR
+)
 object WebViewPaginatorBridge {
     
     private val mainHandler = Handler(Looper.getMainLooper())
