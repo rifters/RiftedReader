@@ -9,6 +9,9 @@ import org.json.JSONObject
 /**
  * JavascriptInterface bridge for minimal_paginator.js callbacks.
  * 
+ * This is the ONLY pagination bridge used in the app.
+ * Legacy bridges (WebViewPaginatorBridge, PaginationBridge inner class) have been removed.
+ * 
  * This bridge receives pagination-ready and boundary events from the robust
  * minimal paginator implementation. It ensures stable pagination (totalPages > 0)
  * and provides explicit boundary detection for window transitions.
