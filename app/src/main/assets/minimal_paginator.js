@@ -67,6 +67,9 @@
     // Character offset tracking (NEW)
     let charOffsets = [];  // [page0_offset, page1_offset, page2_offset, ...]
     
+    // Chapter segment tracking (for multi-chapter window support)
+    let chapterSegments = [];  // Store references to section[data-chapter-index] elements
+    
     // Boundary detection state
     let lastBoundaryDirection = null;
     let boundaryCheckInProgress = false;
@@ -426,6 +429,96 @@
     }
     
     /**
+     * Calculate per-segment page boundaries (NEW - ported from inpage_paginator.js)
+     * This enables determining which chapter the user is currently reading within a multi-chapter window
+     * 
+     * @returns {Array} Diagnostics for each chapter segment with {chapterIndex, startPage, endPage, pageCount}
+     */
+    function getSegmentDiagnostics() {
+        if (!chapterSegments.length) {
+            return [];
+        }
+        
+        if (!state.contentWrapper || !state.columnContainer) {
+            return [];
+        }
+        
+        try {
+            const contentRect = state.contentWrapper.getBoundingClientRect();
+            const pageWidth = state.contentWrapper.clientWidth;
+            
+            if (pageWidth === 0) {
+                return [];
+            }
+            
+            return chapterSegments.map(function(seg) {
+                const chapterIndex = parseInt(seg.getAttribute('data-chapter-index'), 10);
+                const segmentRect = seg.getBoundingClientRect();
+                const offsetLeft = segmentRect.left - contentRect.left + state.columnContainer.scrollLeft;
+                const startPage = Math.floor(Math.max(0, offsetLeft) / pageWidth);
+                const endPage = Math.ceil((offsetLeft + segmentRect.width) / pageWidth);
+                const pageCount = Math.max(1, endPage - startPage);
+                
+                return {
+                    chapterIndex: chapterIndex,
+                    startPage: startPage,
+                    endPage: endPage,
+                    pageCount: pageCount
+                };
+            });
+        } catch (e) {
+            log('ERROR', `getSegmentDiagnostics failed: ${e.message}`);
+            return [];
+        }
+    }
+    
+    /**
+     * Map chapter indices to page ranges (NEW - ported from inpage_paginator.js)
+     * This provides Android with chapter→page mappings for TOC navigation and progress tracking
+     * 
+     * @returns {Array} Chapter boundaries with {chapterIndex, startPage, endPage, pageCount}
+     */
+    function getChapterBoundaries() {
+        if (!chapterSegments.length) {
+            return [];
+        }
+        
+        if (!state.contentWrapper || !state.columnContainer) {
+            return [];
+        }
+        
+        try {
+            const contentRect = state.contentWrapper.getBoundingClientRect();
+            const pageWidth = state.contentWrapper.clientWidth;
+            const totalPages = getPageCount();
+            
+            if (pageWidth === 0) {
+                return [];
+            }
+            
+            return chapterSegments.map(function(seg) {
+                const chapterIndex = parseInt(seg.getAttribute('data-chapter-index'), 10);
+                const segmentRect = seg.getBoundingClientRect();
+                const offsetLeft = segmentRect.left - contentRect.left + state.columnContainer.scrollLeft;
+                const startPage = Math.floor(Math.max(0, offsetLeft) / pageWidth);
+                // Clamp endPage to totalPages to avoid exceeding window bounds
+                const endPage = Math.min(totalPages, Math.ceil((offsetLeft + segmentRect.width) / pageWidth));
+                const pageCount = Math.max(1, endPage - startPage);
+                
+                return {
+                    chapterIndex: chapterIndex,
+                    startPage: startPage,
+                    endPage: endPage,
+                    pageCount: pageCount
+                };
+            });
+        } catch (e) {
+            log('ERROR', `getChapterBoundaries failed: ${e.message}`);
+            return [];
+        }
+    }
+    
+    /**
      * Check if pagination is ready
      * @returns {boolean}
      */
@@ -455,7 +548,7 @@
         
         if (existingSections.length > 0) {
             // Validate that sections have valid chapter indices
-            let validSectionCount = 0;
+            const validSections = [];
             for (let i = 0; i < existingSections.length; i++) {
                 const section = existingSections[i];
                 const chapterIndexAttr = section.getAttribute('data-chapter-index');
@@ -463,15 +556,17 @@
                 
                 // Validate that chapter index is a valid non-negative integer
                 if (!isNaN(chapterIndex) && chapterIndex >= 0) {
-                    validSectionCount++;
+                    validSections.push(section);
                 } else {
                     log('WARN', `Ignoring section with invalid data-chapter-index: ${chapterIndexAttr}`);
                 }
             }
             
-            if (validSectionCount > 0) {
+            if (validSections.length > 0) {
                 // Content is already wrapped in valid chapter sections (window mode with pre-wrapped HTML)
-                log('WRAP', `Found ${validSectionCount} pre-wrapped chapter sections`);
+                // STORE references to section elements for chapter boundary tracking
+                chapterSegments = validSections;
+                log('WRAP', `Found ${chapterSegments.length} pre-wrapped chapter sections`);
                 return;
             }
         }
@@ -492,6 +587,9 @@
         }
         segment.appendChild(fragment);
         state.contentWrapper.appendChild(segment);
+        
+        // STORE reference to the wrapped segment
+        chapterSegments = [segment];
         
         log('WRAP', `Wrapped content as chapter ${chapterIndex}`);
     }
@@ -1057,7 +1155,9 @@
         getCharacterOffsetForPage,
         goToPageWithCharacterOffset,
         isReady,
-        reflow
+        reflow,
+        getSegmentDiagnostics,
+        getChapterBoundaries
     };
     
     // Add 'inpagePaginator' alias for backward compatibility during transition
