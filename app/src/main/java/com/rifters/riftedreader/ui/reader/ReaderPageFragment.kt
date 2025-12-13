@@ -156,6 +156,9 @@ class ReaderPageFragment : Fragment() {
             // Add JavaScript interface for TTS communication
             addJavascriptInterface(TtsWebBridge(), "AndroidTtsBridge")
             
+            // Add JavaScript interface for logging from JavaScript
+            addJavascriptInterface(com.rifters.riftedreader.util.AppLoggerBridge(), "AppLogger")
+            
             // Pagination System: Uses minimal_paginator.js with PaginatorBridge
             // Legacy WebViewPaginatorBridge and PaginationBridge inner class have been removed
             // All pagination logic now flows through PaginatorBridge callbacks:
