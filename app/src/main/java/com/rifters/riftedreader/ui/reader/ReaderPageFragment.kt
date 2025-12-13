@@ -330,17 +330,16 @@ class ReaderPageFragment : Fragment() {
             )
             
             viewLifecycleOwner.lifecycleScope.launch {
-                repeatOnLifecycle(Lifecycle.State.STARTED) {
-                    readerViewModel.isConveyorReady.collect { ready ->
-                        if (ready) {
-                            com.rifters.riftedreader.util.AppLogger.d(
-                                "ReaderPageFragment",
-                                "[CONTENT_LOAD] Conveyor ready - rendering window $windowIndex from preloaded cache"
-                            )
-                            renderBaseContent()
-                            // Stop collecting after first successful render
-                            return@collect
-                        }
+                // Wait for conveyor readiness just once, then render
+                readerViewModel.isConveyorReady.collect { ready ->
+                    if (ready) {
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "[CONTENT_LOAD] Conveyor ready - rendering window $windowIndex from preloaded cache"
+                        )
+                        renderBaseContent()
+                        // Cancel the collection after first successful render
+                        return@collect
                     }
                 }
             }
