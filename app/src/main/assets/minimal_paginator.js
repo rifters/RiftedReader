@@ -57,6 +57,7 @@
         viewportWidth: 0,
         appliedColumnWidth: 0,
         pageCount: -1,
+        lastKnownPageCount: -1,  // ISSUE 4 FIX: Track last known page count for returning during reflow when isPaginationReady=false
         columnContainer: null,
         contentWrapper: null,
         isNavigating: false,  // Flag to prevent scroll listener interference during programmatic navigation
@@ -235,62 +236,52 @@
     }
     
     /**
-     * Get the current page count.
+     * Get the current page count based on scroll width and viewport width
      * 
-     * CRITICAL: This recalculates from DOM measurements each time (like inpage_paginator.js)
-     * rather than returning a cached value. This ensures accurate page counts even when:
-     * - Initial measurement happens before layout completes
-     * - Images load and expand content
-     * - Font size changes trigger reflow
-     * - Content is dynamically added
+     * ISSUE 4 FIX: When returning page count during reflow (isPaginationReady=false),
+     * return lastKnownPageCount instead of calculating, to prevent page count flips.
+     * 
+     * PORTED FROM inpage_paginator.js lines 1141-1180
      */
     function getPageCount() {
+        if (!state.columnContainer) {
+            log('WARN', 'getPageCount: columnContainer not initialized');
+            return state.lastKnownPageCount > 0 ? state.lastKnownPageCount : 1;
+        }
+        
+        // Double check after init - if still not ready, return safe default
+        if (!state.columnContainer || !state.isInitialized) {
+            log('WARN', 'getPageCount called before initialization complete');
+            return state.lastKnownPageCount > 0 ? state.lastKnownPageCount : 1;
+        }
+        
+        // ISSUE 4 FIX: When pagination is not ready (e.g., during reflow), 
+        // return lastKnownPageCount to prevent page count flips
+        if (!state.isPaginationReady && state.lastKnownPageCount > 0) {
+            log('REFLOW_CACHE', `getPageCount during reflow, returning lastKnownPageCount=${state.lastKnownPageCount}`);
+            return state.lastKnownPageCount;
+        }
+        
         if (!state.contentWrapper) {
-            log('WARN', 'getPageCount called before contentWrapper initialized');
-            return state.pageCount > 0 ? state.pageCount : -1;
+            log('WARN', 'contentWrapper not found in getPageCount');
+            return state.lastKnownPageCount > 0 ? state.lastKnownPageCount : 1;
         }
         
-        // RECALCULATE from DOM (matches inpage_paginator.js behavior)
         const scrollWidth = state.contentWrapper.scrollWidth;
-        const clientWidth = state.contentWrapper.clientWidth;
+        const pageWidth = state.viewportWidth || window.innerWidth;  // ← CRITICAL FIX: Use viewportWidth, not clientWidth
         
-        // Check for invalid width first, then try fallback
-        if (clientWidth <= 0) {
-            const fallbackWidth = state.viewportWidth;
-            if (fallbackWidth <= 0) {
-                log('WARN', 'getPageCount: clientWidth and viewportWidth both <= 0, returning cached value');
-                return state.pageCount > 0 ? state.pageCount : -1;
-            }
-            // Use fallback but log the issue
-            log('WARN', `getPageCount: clientWidth=${clientWidth}, using viewportWidth=${fallbackWidth} as fallback`);
-            const computed = Math.max(1, Math.ceil(scrollWidth / fallbackWidth));
-            
-            // Update cached value for diagnostics and fallback
-            if (computed > 0 && state.isPaginationReady) {
-                state.pageCount = computed;
-            }
-            
-            return computed;
+        if (pageWidth === 0) {
+            return state.lastKnownPageCount > 0 ? state.lastKnownPageCount : 1;
         }
         
-        // Calculate page count from current DOM state
-        const computed = Math.max(1, Math.ceil(scrollWidth / clientWidth));
+        const computedPageCount = Math.max(1, Math.ceil(scrollWidth / pageWidth));
         
-        // Log if significant change from cached value (diagnostic)
-        // Only log if pagination is ready and we have a reliable cached value
-        if (state.isPaginationReady && state.pageCount > 0 && Math.abs(computed - state.pageCount) > 1) {
-            log('PAGE_COUNT_CHANGE', 
-                `Recalculated pageCount changed: ${state.pageCount} -> ${computed} ` +
-                `(scrollWidth=${scrollWidth}, clientWidth=${clientWidth})`
-            );
+        // ISSUE 4 FIX: Update lastKnownPageCount when we have a valid calculation
+        if (state.isPaginationReady && computedPageCount > 0) {
+            state.lastKnownPageCount = computedPageCount;
         }
         
-        // Update cached value for diagnostics and fallback
-        if (computed > 0 && state.isPaginationReady) {
-            state.pageCount = computed;
-        }
-        
-        return computed;
+        return computedPageCount;
     }
     
     /**
@@ -783,12 +774,14 @@
             }
             
             // Page count = how many column widths fit in scroll width
-            const pageCount = Math.ceil(scrollWidth / clientWidth);
+            // CRITICAL FIX: Use viewportWidth (matches inpage_paginator.js line 1166)
+            const pageWidth = state.viewportWidth || window.innerWidth;
+            const pageCount = Math.ceil(scrollWidth / pageWidth);
             state.pageCount = Math.max(1, pageCount);
             
             // DIAGNOSTIC: Log calculation result
             log('CALC_PAGES_RESULT', 
-                `Math.ceil(${scrollWidth} / ${clientWidth}) = ${pageCount}, ` +
+                `Math.ceil(${scrollWidth} / ${pageWidth}) = ${pageCount}, ` +
                 `final pageCount=${state.pageCount}`
             );
             
