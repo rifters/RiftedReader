@@ -170,29 +170,9 @@
             // This is required for column layout to work correctly
             wrapExistingContentAsSegment();
             
-            // Try to read the injected physical viewport width from CSS custom property
-            // This is injected by ReaderHtmlWrapper.kt as --viewport-width-px
-            var rootStyle = getComputedStyle(document.documentElement);
-            var injectedWidth = rootStyle.getPropertyValue('--viewport-width-px');
-            
-            if (injectedWidth) {
-                var parsedWidth = parseInt(injectedWidth, 10);
-                if (!isNaN(parsedWidth) && parsedWidth > 0) {
-                    log('INIT', 'Using injected viewport width from CSS custom property: ' + parsedWidth + 'px');
-                    state.viewportWidth = parsedWidth;
-                    state.appliedColumnWidth = parsedWidth;
-                } else {
-                    // Fallback to window.innerWidth if parsing failed
-                    log('INIT', 'Failed to parse injected viewport width, falling back to window.innerWidth');
-                    state.viewportWidth = window.innerWidth;
-                    state.appliedColumnWidth = state.viewportWidth;
-                }
-            } else {
-                // Fallback to window.innerWidth if custom property not found
-                log('INIT', 'No injected viewport width found, using window.innerWidth');
-                state.viewportWidth = window.innerWidth;
-                state.appliedColumnWidth = state.viewportWidth;
-            }
+            // Use window.innerWidth as viewport width (container will be full width)
+            state.viewportWidth = window.innerWidth;
+            state.appliedColumnWidth = state.viewportWidth;
             
             log('INIT', `Using measured content width: ${state.viewportWidth}px (clientWidth=${state.contentWrapper.clientWidth}, boundingWidth=${state.contentWrapper.getBoundingClientRect().width})`);
             
