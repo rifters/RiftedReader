@@ -999,11 +999,20 @@ class ReaderPageFragment : Fragment() {
                     }
                     
                     // Wrap HTML with proper styling using ReaderHtmlWrapper
+                    // Use WebView width if available, otherwise fall back to display width
+                    val webViewWidth = binding.pageWebView.width.let { width ->
+                        if (width > 0) width else {
+                            // Fallback to screen width if WebView hasn't been measured yet
+                            val displayMetrics = resources.displayMetrics
+                            displayMetrics.widthPixels
+                        }
+                    }
+                    
                     val config = com.rifters.riftedreader.domain.reader.ReaderHtmlConfig(
                         textSizePx = settings.textSizeSp,
                         lineHeightMultiplier = settings.lineHeightMultiplier,
                         palette = palette,
-                        webViewWidthPx = binding.pageWebView.width,
+                        webViewWidthPx = webViewWidth,
                         enableDiagnostics = settings.paginationDiagnosticsEnabled,
                         debugWindowInfo = debugWindowInfo
                     )
