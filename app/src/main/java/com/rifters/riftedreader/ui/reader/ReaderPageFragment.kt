@@ -1003,6 +1003,7 @@ class ReaderPageFragment : Fragment() {
                         textSizePx = settings.textSizeSp,
                         lineHeightMultiplier = settings.lineHeightMultiplier,
                         palette = palette,
+                        webViewWidthPx = binding.pageWebView.width,
                         enableDiagnostics = settings.paginationDiagnosticsEnabled,
                         debugWindowInfo = debugWindowInfo
                     )
