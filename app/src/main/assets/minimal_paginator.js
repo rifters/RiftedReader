@@ -304,8 +304,20 @@
             return;
         }
         
+        // DIAGNOSTIC: Log appliedColumnWidth at start of navigation
+        log('DIAGNOSTIC', `goToPage(${pageIndex}) START - appliedColumnWidth=${state.appliedColumnWidth}px, viewportWidth=${state.viewportWidth}px`);
+        
+        // SAFETY GUARD: Verify appliedColumnWidth is valid before calculation
+        if (state.appliedColumnWidth <= 0) {
+            log('ERROR', `goToPage: Invalid appliedColumnWidth=${state.appliedColumnWidth}, using viewportWidth=${state.viewportWidth} as fallback`);
+            state.appliedColumnWidth = state.viewportWidth || FALLBACK_WIDTH;
+        }
+        
         const validIndex = Math.max(0, Math.min(pageIndex, state.pageCount - 1));
         const scrollPos = validIndex * state.appliedColumnWidth;
+        
+        // DIAGNOSTIC: Log calculation details
+        log('DIAGNOSTIC', `goToPage calculation: page=${validIndex}, scrollPos=${scrollPos}px (${validIndex} * ${state.appliedColumnWidth}px)`);
         
         // Set isNavigating flag to prevent scroll listener from interfering
         state.isNavigating = true;
@@ -605,6 +617,11 @@
             return { success: false, pageCount: 0 };
         }
         
+        // DIAGNOSTIC: Log appliedColumnWidth before reflow
+        const appliedWidthBefore = state.appliedColumnWidth;
+        const viewportWidthBefore = state.viewportWidth;
+        log('DIAGNOSTIC', `REFLOW START - appliedColumnWidth=${appliedWidthBefore}px, viewportWidth=${viewportWidthBefore}px`);
+        
         log('REFLOW', `Triggered (preservePosition=${preservePosition})`);
         
         try {
@@ -634,8 +651,11 @@
             state.columnContainer.offsetHeight; // Force reflow
             state.columnContainer.style.display = oldDisplay || '';
             
-            // Reapply column layout
+            // Reapply column layout (this will update state.appliedColumnWidth)
             applyColumnLayout();
+            
+            // DIAGNOSTIC: Log appliedColumnWidth after reapplying layout
+            log('DIAGNOSTIC', `REFLOW AFTER LAYOUT - appliedColumnWidth=${state.appliedColumnWidth}px (was ${appliedWidthBefore}px), viewportWidth=${state.viewportWidth}px`);
             
             // Recalculate page count and character offsets
             calculatePageCountAndOffsets();
@@ -731,11 +751,16 @@
         // Force another reflow after setting width to ensure layout is stable
         wrapper.offsetHeight;
         
+        // PRIMARY FIX: Update state.appliedColumnWidth to match the actual applied width
+        // This is critical for scroll position calculations in goToPage() and snapToNearestPage()
+        state.appliedColumnWidth = columnWidth;
+        
         // DIAGNOSTIC: Verify layout after setting width
         log('LAYOUT_VERIFY', 
             `columnWidth=${columnWidth}px set, ` +
             `wrapper.style.columnWidth='${wrapper.style.columnWidth}', ` +
-            `computed scrollWidth=${wrapper.scrollWidth}px after layout`
+            `computed scrollWidth=${wrapper.scrollWidth}px after layout, ` +
+            `state.appliedColumnWidth updated to ${state.appliedColumnWidth}px`
         );
         
         log('LAYOUT', `Set wrapper width=${exactWidth}px (pageCount=${pageCount}, scrollWidth=${scrollWidth}, columnWidth=${columnWidth})`);
@@ -804,6 +829,16 @@
         const offsets = [];
         const text = state.contentWrapper.innerText || '';
         
+        // DIAGNOSTIC: Log character offset calculation parameters
+        log('DIAGNOSTIC', `buildCharacterOffsets - pageCount=${state.pageCount}, appliedColumnWidth=${state.appliedColumnWidth}px, textLength=${text.length} chars`);
+        
+        // SAFETY GUARD: Verify appliedColumnWidth is valid
+        if (state.appliedColumnWidth <= 0) {
+            log('WARN', `buildCharacterOffsets: Invalid appliedColumnWidth=${state.appliedColumnWidth}, using viewportWidth=${state.viewportWidth} as fallback`);
+            const fallbackWidth = state.viewportWidth || FALLBACK_WIDTH;
+            state.appliedColumnWidth = fallbackWidth;
+        }
+        
         // For each page, find the character offset at the top of that page
         for (let pageIdx = 0; pageIdx < state.pageCount; pageIdx++) {
             const scrollLeft = pageIdx * state.appliedColumnWidth;
@@ -813,6 +848,8 @@
             const estimatedOffset = Math.floor((text.length / state.pageCount) * pageIdx);
             offsets.push(estimatedOffset);
         }
+        
+        log('DIAGNOSTIC', `buildCharacterOffsets complete - generated ${offsets.length} offsets`);
         
         return offsets;
     }
@@ -855,11 +892,17 @@
                 return;
             }
             
-            // Update current page based on container scroll position
+            // DIAGNOSTIC: Log scroll event with appliedColumnWidth
             const currentScrollLeft = state.columnContainer.scrollLeft;
+            log('DIAGNOSTIC', `Scroll event - scrollLeft=${currentScrollLeft.toFixed(1)}px, appliedColumnWidth=${state.appliedColumnWidth}px`);
+            
+            // Update current page based on container scroll position
             const newPage = Math.round(currentScrollLeft / state.appliedColumnWidth);
             const prevPage = state.currentPage;  // ← TRACK PREVIOUS
             state.currentPage = Math.max(0, Math.min(newPage, state.pageCount - 1));
+            
+            // DIAGNOSTIC: Log page calculation from scroll
+            log('DIAGNOSTIC', `Scroll page calculation: round(${currentScrollLeft.toFixed(1)} / ${state.appliedColumnWidth}) = ${newPage}, clamped to ${state.currentPage}`);
             
             // ✅ ADD THIS: Notify Android when page actually changes
             if (state.currentPage !== prevPage) {
@@ -904,11 +947,23 @@
     function snapToNearestPage() {
         if (!state.isPaginationReady) return;
         
+        // DIAGNOSTIC: Log appliedColumnWidth at start of snap
+        log('DIAGNOSTIC', `snapToNearestPage START - appliedColumnWidth=${state.appliedColumnWidth}px, viewportWidth=${state.viewportWidth}px`);
+        
+        // SAFETY GUARD: Verify appliedColumnWidth is valid
+        if (state.appliedColumnWidth <= 0) {
+            log('ERROR', `snapToNearestPage: Invalid appliedColumnWidth=${state.appliedColumnWidth}, using viewportWidth=${state.viewportWidth} as fallback`);
+            state.appliedColumnWidth = state.viewportWidth || FALLBACK_WIDTH;
+        }
+        
         // Use columnContainer.scrollLeft instead of window scroll
         const currentScrollLeft = state.columnContainer.scrollLeft;
         const targetPage = Math.floor(currentScrollLeft / state.appliedColumnWidth);
         const clampedPage = Math.max(0, Math.min(targetPage, state.pageCount - 1));
         const targetScrollPos = clampedPage * state.appliedColumnWidth;
+        
+        // DIAGNOSTIC: Log snap calculation details
+        log('DIAGNOSTIC', `snapToNearestPage calculation: scrollLeft=${currentScrollLeft.toFixed(1)}px, targetPage=${targetPage} (floor(${currentScrollLeft.toFixed(1)} / ${state.appliedColumnWidth})), clampedPage=${clampedPage}`);
         
         // Check if we need to snap (allow small tolerance)
         const tolerance = 5; // pixels
