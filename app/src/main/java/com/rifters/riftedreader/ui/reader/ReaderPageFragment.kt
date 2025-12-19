@@ -170,6 +170,22 @@ class ReaderPageFragment : Fragment() {
             val minimalPaginatorBridge = PaginatorBridge(
                 windowIndex = windowIndex,
                 onPaginationReady = { wIdx, totalPages ->
+                    // Check if this is a new window entry (window transition)
+                    val isNewWindow = lastKnownWindowIndex != null && lastKnownWindowIndex != wIdx
+                    
+                    if (isNewWindow) {
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "[MIN_PAGINATOR] Window transition detected: $lastKnownWindowIndex -> $wIdx, resetting scroll state"
+                        )
+                        // Reset scroll state to prevent position carryover from previous window
+                        resetWindowScrollState()
+                        windowTransitionTimestamp = System.currentTimeMillis()
+                    }
+                    
+                    // Update last known window index
+                    lastKnownWindowIndex = wIdx
+                    
                     // Set paginator initialized flag
                     isPaginatorInitialized = true
                     com.rifters.riftedreader.util.AppLogger.d(
@@ -2030,6 +2046,45 @@ class ReaderPageFragment : Fragment() {
      */
     fun isWebViewReady(): Boolean = isWebViewReady
     fun isPaginatorInitialized(): Boolean = isPaginatorInitialized
+
+    /**
+     * Reset window scroll state when entering a new window.
+     * This prevents scroll position from the previous window carrying over to the new window.
+     * Should be called when entering a new window to ensure clean state.
+     */
+    private fun resetWindowScrollState() {
+        if (_binding == null) return
+        
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "[WINDOW_RESET] Resetting scroll state for window $windowIndex"
+        )
+        
+        // Reset WebView scroll position to origin
+        binding.pageWebView.scrollX = 0
+        binding.pageWebView.scrollY = 0
+        
+        // Reset minimal paginator scroll state via JavaScript
+        // This ensures the paginator's internal scroll position is also reset
+        binding.pageWebView.evaluateJavascript(
+            """
+            if (window.minimalPaginator && window.minimalPaginator.isReady()) {
+                // Reset scroll position in the paginator container
+                var container = document.getElementById('paginator-container');
+                if (container) {
+                    container.scrollLeft = 0;
+                    container.scrollTop = 0;
+                }
+            }
+            """.trimIndent(),
+            null
+        )
+        
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "[WINDOW_RESET] Scroll state reset complete for window $windowIndex"
+        )
+    }
 
     /**
      * Capture and persist the current reading position with character offset.
