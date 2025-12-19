@@ -166,6 +166,14 @@
             state.columnContainer.appendChild(state.contentWrapper);
             body.appendChild(state.columnContainer);
             
+            // CRITICAL FIX: Reset scroll position to 0 when initializing a new window
+            // This prevents scroll position from previous window carrying over
+            // Bug: Window with 9 pages scrolled to page 8 (scrollLeft=3288px) would
+            // carry that scroll position to new window with 33 pages, causing incorrect
+            // snap to page 8/33 instead of page 0/33
+            state.columnContainer.scrollLeft = 0;
+            log('INIT', 'Reset scroll position to 0 (prevents carryover from previous window)');
+            
             // Wrap content in <section data-chapter-index> tags if not already wrapped
             // This is required for column layout to work correctly
             wrapExistingContentAsSegment();
@@ -188,7 +196,8 @@
                 `scrollWidth=${state.contentWrapper.scrollWidth}px, ` +
                 `clientWidth=${state.contentWrapper.clientWidth}px, ` +
                 `appliedColumnWidth=${state.appliedColumnWidth}px, ` +
-                `calculated pageCount=${state.pageCount}`
+                `calculated pageCount=${state.pageCount}, ` +
+                `scrollLeft=${state.columnContainer.scrollLeft}px (should be 0)`
             );
             
             state.isInitialized = true;
