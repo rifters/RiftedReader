@@ -360,7 +360,7 @@
                 log('NAV', `fallback timeout fired (300ms) - navigation complete`);
                 state.columnContainer.removeEventListener('scrollend', onScrollEnd);
             }
-        }, 300);
+        }, 500);
         
         // Use columnContainer.scrollTo() instead of window.scrollTo()
         state.columnContainer.scrollTo({
