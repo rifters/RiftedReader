@@ -41,6 +41,7 @@ import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
 import com.rifters.riftedreader.ui.reader.ReaderThemePaletteResolver
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorDebugActivity
+import com.rifters.riftedreader.ui.reader.conveyor.ConveyorPhase
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.TimeoutCancellationException
@@ -51,6 +52,14 @@ import java.io.File
 import com.rifters.riftedreader.BuildConfig
 
 class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
+    
+    companion object {
+        /**
+         * Center index in the conveyor belt buffer (5-window buffer with indices 0-4).
+         * In STEADY phase, the active window is always kept centered at this position.
+         */
+        private const val CENTER_INDEX = 2
+    }
     
     private lateinit var binding: ActivityReaderBinding
     private lateinit var viewModel: ReaderViewModel
@@ -731,20 +740,42 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     conveyorBeltSystem.activeWindow.collect { activeWindow ->
                         // Only sync in CONTINUOUS pagination mode when RecyclerView should be active
                         if (viewModel.paginationMode == PaginationMode.CONTINUOUS && 
-                            readerMode == ReaderMode.PAGE && 
-                            currentPagerPosition != activeWindow) {
+                            readerMode == ReaderMode.PAGE) {
+                            
+                            // Get current phase to determine correct adapter position
+                            val currentPhase = conveyorBeltSystem.phase.value
+                            
+                            // In STEADY phase: adapter has 5 items (0-4), active window is always at CENTER_INDEX
+                            // In STARTUP phase: adapter position maps directly to window index
+                            val targetPosition = when (currentPhase) {
+                                ConveyorPhase.STEADY -> CENTER_INDEX  // Active window is always centered
+                                ConveyorPhase.STARTUP -> activeWindow  // Direct mapping during startup
+                            }
                             
                             AppLogger.d(
                                 "ReaderActivity",
                                 "[CONVEYOR_SYNC] ConveyorBeltSystem activeWindow changed to $activeWindow, " +
-                                "syncing RecyclerView from position $currentPagerPosition [WINDOW_SYNC]"
+                                "phase=$currentPhase, targetPosition=$targetPosition, " +
+                                "currentPagerPosition=$currentPagerPosition [WINDOW_SYNC]"
                             )
                             
-                            // Set flag to prevent circular updates
-                            programmaticScrollInProgress = true
-                            
-                            // Sync RecyclerView to the new active window
-                            setCurrentItem(activeWindow, false)
+                            // Only scroll if position actually changed
+                            if (currentPagerPosition != targetPosition) {
+                                // Set flag to prevent circular updates
+                                programmaticScrollInProgress = true
+                                
+                                // Sync RecyclerView to the target position
+                                setCurrentItem(targetPosition, false)
+                                
+                                // Force rebind the ViewHolder at target position to show new window content
+                                // This is crucial after buffer shifts in STEADY phase
+                                pagerAdapter.notifyItemChanged(targetPosition)
+                                
+                                AppLogger.d(
+                                    "ReaderActivity",
+                                    "[CONVEYOR_SYNC] Scrolled to position $targetPosition and rebound ViewHolder [REBIND]"
+                                )
+                            }
                         }
                     }
                 }
