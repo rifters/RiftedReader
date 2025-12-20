@@ -352,15 +352,15 @@
         // Attach scrollend listener to container (not window)
         state.columnContainer.addEventListener('scrollend', onScrollEnd);
         
-        // Fallback timeout for browsers without scrollend support (300ms to cover smooth animations)
+        // Fallback timeout for browsers without scrollend support (1500ms to ensure scroll animation completes)
         scrollEndTimeout = setTimeout(function() {
             if (!scrollEndFired) {
                 scrollEndFired = true;
                 state.isNavigating = false;
-                log('NAV', `fallback timeout fired (300ms) - navigation complete`);
+                log('NAV', `fallback timeout fired (1500ms) - navigation complete`);
                 state.columnContainer.removeEventListener('scrollend', onScrollEnd);
             }
-        }, 500);
+        }, 1500);
         
         // Use columnContainer.scrollTo() instead of window.scrollTo()
         state.columnContainer.scrollTo({

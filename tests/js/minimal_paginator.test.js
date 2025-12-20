@@ -53,11 +53,11 @@ describe('minimal_paginator.js - scrollend fix', () => {
     expect(scriptContent).toContain('removeEventListener');
   });
   
-  test('goToPage should have 300ms fallback timeout', () => {
+  test('goToPage should have 1500ms fallback timeout', () => {
     const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
     
-    // Verify fallback timeout is 300ms (not 100ms)
-    expect(scriptContent).toContain('300');
+    // Verify fallback timeout is 1500ms to ensure scroll animation completes
+    expect(scriptContent).toContain('1500');
     expect(scriptContent).toContain('fallback timeout');
   });
   
