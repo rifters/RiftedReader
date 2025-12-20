@@ -1,5 +1,11 @@
 package com.rifters.riftedreader.ui.reader.conveyor
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -13,13 +19,23 @@ import org.junit.Test
  * - Forward/backward buffer shifting
  * - Edge cases and boundary conditions
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class ConveyorBeltSystemViewModelTest {
     
     private lateinit var viewModel: ConveyorBeltSystemViewModel
+    private val testDispatcher = StandardTestDispatcher()
     
     @Before
     fun setup() {
+        // Set up the test dispatcher for coroutines
+        Dispatchers.setMain(testDispatcher)
         viewModel = ConveyorBeltSystemViewModel()
+    }
+    
+    @After
+    fun tearDown() {
+        // Reset the main dispatcher after tests
+        Dispatchers.resetMain()
     }
     
     // ========================================================================
