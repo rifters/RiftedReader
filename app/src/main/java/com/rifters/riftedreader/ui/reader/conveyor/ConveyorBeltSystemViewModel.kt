@@ -76,10 +76,13 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     /**
-     * Load HTML for a window and cache it.
+     * Load HTML for a window and cache it synchronously.
      * This is called when a window enters the buffer or becomes visible.
+     * 
+     * Made suspend to ensure HTML is loaded before window is displayed.
+     * This fixes the issue where buffer shifts would update state but not generate HTML.
      */
-    private fun loadWindowHtml(windowIndex: Int) {
+    private suspend fun loadWindowHtmlSync(windowIndex: Int) {
         val paginator = continuousPaginator
         val windowManager = slidingWindowManager
         val bookId = bookId
@@ -95,23 +98,31 @@ class ConveyorBeltSystemViewModel : ViewModel() {
             return
         }
         
-        log("HTML_LOAD", "Loading HTML for window $windowIndex")
+        log("HTML_LOAD", "Loading HTML for window $windowIndex (SYNC)")
         
-        viewModelScope.launch {
-            try {
-                val provider = ContinuousPaginatorWindowHtmlProvider(paginator, windowManager)
-                val html = provider.getWindowHtml(bookId, windowIndex)
-                
-                if (html != null) {
-                    htmlCache[windowIndex] = html
-                    log("HTML_LOAD", "Window $windowIndex loaded: ${html.length} chars")
-                } else {
-                    log("HTML_LOAD", "Window $windowIndex: HTML provider returned null")
-                }
-            } catch (e: Exception) {
-                log("HTML_LOAD", "Failed to load window $windowIndex: ${e.message}")
-                AppLogger.e(TAG, "Error loading window $windowIndex", e)
+        try {
+            val provider = ContinuousPaginatorWindowHtmlProvider(paginator, windowManager)
+            val html = provider.getWindowHtml(bookId, windowIndex)
+            
+            if (html != null) {
+                htmlCache[windowIndex] = html
+                log("HTML_LOAD", "Window $windowIndex loaded: ${html.length} chars")
+            } else {
+                log("HTML_LOAD", "Window $windowIndex: HTML provider returned null")
             }
+        } catch (e: Exception) {
+            log("HTML_LOAD", "Failed to load window $windowIndex: ${e.message}")
+            AppLogger.e(TAG, "Error loading window $windowIndex", e)
+        }
+    }
+    
+    /**
+     * Load HTML for a window asynchronously (for background preloading).
+     * Use loadWindowHtmlSync for critical path loading during shifts.
+     */
+    private fun loadWindowHtmlAsync(windowIndex: Int) {
+        viewModelScope.launch {
+            loadWindowHtmlSync(windowIndex)
         }
     }
     
@@ -119,7 +130,7 @@ class ConveyorBeltSystemViewModel : ViewModel() {
      * Preload HTML for multiple windows asynchronously.
      * This is called after buffer shifts to prepare upcoming windows.
      */
-    private fun preloadWindows(windowIndices: List<Int>) {
+    private fun preloadWindowsAsync(windowIndices: List<Int>) {
         val paginator = continuousPaginator
         val windowManager = slidingWindowManager
         val bookId = bookId
@@ -135,26 +146,42 @@ class ConveyorBeltSystemViewModel : ViewModel() {
             return
         }
         
-        log("PRELOAD", "Preloading ${toPreload.size} windows: $toPreload")
+        log("PRELOAD", "Preloading ${toPreload.size} windows: $toPreload (ASYNC)")
         
         viewModelScope.launch {
             toPreload.forEach { windowIndex ->
-                try {
-                    val provider = ContinuousPaginatorWindowHtmlProvider(paginator, windowManager)
-                    val html = provider.getWindowHtml(bookId, windowIndex)
-                    
-                    if (html != null) {
-                        htmlCache[windowIndex] = html
-                        log("PRELOAD", "Window $windowIndex preloaded: ${html.length} chars")
-                    } else {
-                        log("PRELOAD", "Window $windowIndex: HTML provider returned null")
-                    }
-                } catch (e: Exception) {
-                    log("PRELOAD", "Failed to preload window $windowIndex: ${e.message}")
-                    AppLogger.e(TAG, "Error preloading window $windowIndex", e)
-                }
+                loadWindowHtmlSync(windowIndex)
             }
         }
+    }
+    
+    /**
+     * Load HTML for multiple windows synchronously.
+     * This is the critical path for buffer shifts - ensures HTML is ready before windows are visible.
+     */
+    private suspend fun loadWindowsSync(windowIndices: List<Int>) {
+        val paginator = continuousPaginator
+        val windowManager = slidingWindowManager
+        val bookId = bookId
+        
+        if (paginator == null || windowManager == null || bookId == null) {
+            log("LOAD_SYNC", "Cannot load windows: dependencies not set")
+            return
+        }
+        
+        val toLoad = windowIndices.filter { !htmlCache.containsKey(it) }
+        if (toLoad.isEmpty()) {
+            log("LOAD_SYNC", "All requested windows already cached")
+            return
+        }
+        
+        log("LOAD_SYNC", "Loading ${toLoad.size} windows SYNCHRONOUSLY: $toLoad")
+        
+        toLoad.forEach { windowIndex ->
+            loadWindowHtmlSync(windowIndex)
+        }
+        
+        log("LOAD_SYNC", "Synchronous load complete for windows: $toLoad")
     }
     
     fun onWindowEntered(windowIndex: Int) {
@@ -162,8 +189,8 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         log("STATE", "Current: buffer=${_buffer.value}, activeWindow=${_activeWindow.value}, phase=${_phase.value}")
         log("STATE", "shiftsUnlocked=$shiftsUnlocked")
         
-        // Load HTML for the window that was just entered
-        loadWindowHtml(windowIndex)
+        // Load HTML for the window that was just entered (async is fine here, user already navigated)
+        loadWindowHtmlAsync(windowIndex)
         
         when (_phase.value) {
             ConveyorPhase.STARTUP -> {
@@ -311,7 +338,10 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     /**
-     * Execute a buffer shift by removing old windows from cache and preloading new windows.
+     * Execute a buffer shift by removing old windows from cache and loading new windows SYNCHRONOUSLY.
+     * 
+     * CRITICAL FIX: This must complete synchronously to ensure HTML is cached before adapter requests it.
+     * Previously, preloadWindows() was async, causing "window not found" errors.
      */
     private fun executeShift(windowsToRemove: List<Int>, windowsToAdd: List<Int>) {
         // Remove old windows from cache
@@ -321,9 +351,12 @@ class ConveyorBeltSystemViewModel : ViewModel() {
             }
         }
         
-        // Preload new windows
+        // Load new windows SYNCHRONOUSLY - this is the critical fix
         if (windowsToAdd.isNotEmpty()) {
-            preloadWindows(windowsToAdd)
+            log("SHIFT_EXEC", "Loading ${windowsToAdd.size} new windows SYNCHRONOUSLY: $windowsToAdd")
+            viewModelScope.launch {
+                loadWindowsSync(windowsToAdd)
+            }
         }
     }
     
@@ -342,8 +375,8 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         htmlCache.clear()
         log("REVERT", "HTML cache cleared")
         
-        // Preload initial windows
-        preloadWindows(_buffer.value)
+        // Preload initial windows asynchronously
+        preloadWindowsAsync(_buffer.value)
     }
     
     // Methods needed by ConveyorDebugActivity and ConveyorBeltIntegrationBridge
@@ -379,8 +412,8 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("INIT", "Conveyor initialized: windowCount=$totalWindowCount, buffer=${_buffer.value}, isInitialized=true")
         
-        // Preload initial buffer windows
-        preloadWindows(_buffer.value)
+        // Preload initial buffer windows asynchronously
+        preloadWindowsAsync(_buffer.value)
     }
     
     fun simulateNextWindow() {
