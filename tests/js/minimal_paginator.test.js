@@ -53,12 +53,12 @@ describe('minimal_paginator.js - scrollend fix', () => {
     expect(scriptContent).toContain('removeEventListener');
   });
   
-  test('goToPage should have 300ms fallback timeout', () => {
+  test('goToPage should document API 21+ scrollend support', () => {
     const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
     
-    // Verify fallback timeout is 300ms (not 100ms)
-    expect(scriptContent).toContain('300');
-    expect(scriptContent).toContain('fallback timeout');
+    // Verify the API 21+ requirement is documented
+    expect(scriptContent).toContain('Android WebView API 21+');
+    expect(scriptContent).toContain('no fallback needed');
   });
   
   test('goToPage should not call checkBoundary immediately', () => {
@@ -87,12 +87,24 @@ describe('minimal_paginator.js - scrollend fix', () => {
     expect(scriptContent).toContain('Prevent double-execution');
   });
   
-  test('should have scrollEndTimeout variable for cleanup', () => {
+  test('goToPage should rely solely on scrollend event', () => {
     const scriptContent = fs.readFileSync(paginatorPath, 'utf-8');
     
-    // Verify scrollEndTimeout exists
-    expect(scriptContent).toContain('scrollEndTimeout');
-    expect(scriptContent).toContain('clearTimeout');
+    // Find the goToPage function
+    const goToPageMatch = scriptContent.match(/function goToPage\([^)]*\)[\s\S]*?^\s{4}\}/m);
+    expect(goToPageMatch).toBeTruthy();
+    
+    const goToPageFunction = goToPageMatch[0];
+    
+    // Verify scrollend event handling exists
+    expect(goToPageFunction).toContain('scrollend');
+    expect(goToPageFunction).toContain('addEventListener');
+    
+    // Verify NO setTimeout fallback in goToPage
+    expect(goToPageFunction).not.toContain('setTimeout');
+    
+    // Note: scrollEndTimeout exists in setupScrollListener for snap-to-page,
+    // but NOT in goToPage for navigation completion
   });
   
   test('scroll listener should call checkBoundary after state update', () => {
