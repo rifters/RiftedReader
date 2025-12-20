@@ -725,6 +725,30 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     }
                 }
                 
+                // Observer for ConveyorBeltSystem activeWindow changes
+                // This syncs RecyclerView when ConveyorBeltSystem updates its internal window state
+                launch {
+                    conveyorBeltSystem.activeWindow.collect { activeWindow ->
+                        // Only sync in CONTINUOUS pagination mode when RecyclerView should be active
+                        if (viewModel.paginationMode == PaginationMode.CONTINUOUS && 
+                            readerMode == ReaderMode.PAGE && 
+                            currentPagerPosition != activeWindow) {
+                            
+                            AppLogger.d(
+                                "ReaderActivity",
+                                "[CONVEYOR_SYNC] ConveyorBeltSystem activeWindow changed to $activeWindow, " +
+                                "syncing RecyclerView from position $currentPagerPosition [WINDOW_SYNC]"
+                            )
+                            
+                            // Set flag to prevent circular updates
+                            programmaticScrollInProgress = true
+                            
+                            // Sync RecyclerView to the new active window
+                            setCurrentItem(activeWindow, false)
+                        }
+                    }
+                }
+                
                 launch {
                     viewModel.currentPage.collect { page ->
                         updatePageIndicator(page)
