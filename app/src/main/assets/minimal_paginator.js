@@ -77,7 +77,6 @@
     
     // Scroll completion tracking
     let scrollEndFired = false;
-    let scrollEndTimeout = null;
     
     // ========================================================================
     // PUBLIC API
@@ -323,23 +322,13 @@
         state.isNavigating = true;
         state.currentPage = validIndex;
         
-        // Clear any existing scroll end timeout
-        if (scrollEndTimeout !== null) {
-            clearTimeout(scrollEndTimeout);
-            scrollEndTimeout = null;
-        }
         scrollEndFired = false;
         
-        // Set up one-time scrollend event listener (modern browsers)
+        // Set up one-time scrollend event listener
+        // Note: scrollend is supported in Android WebView API 21+ - no fallback needed
         const onScrollEnd = function() {
             if (scrollEndFired) return; // Prevent double-execution
             scrollEndFired = true;
-            
-            // Clear fallback timeout
-            if (scrollEndTimeout !== null) {
-                clearTimeout(scrollEndTimeout);
-                scrollEndTimeout = null;
-            }
             
             // Reset isNavigating flag now that scroll animation is complete
             state.isNavigating = false;
@@ -351,16 +340,6 @@
         
         // Attach scrollend listener to container (not window)
         state.columnContainer.addEventListener('scrollend', onScrollEnd);
-        
-        // Fallback timeout for browsers without scrollend support (1500ms to ensure scroll animation completes)
-        scrollEndTimeout = setTimeout(function() {
-            if (!scrollEndFired) {
-                scrollEndFired = true;
-                state.isNavigating = false;
-                log('NAV', `fallback timeout fired (1500ms) - navigation complete`);
-                state.columnContainer.removeEventListener('scrollend', onScrollEnd);
-            }
-        }, 1500);
         
         // Use columnContainer.scrollTo() instead of window.scrollTo()
         state.columnContainer.scrollTo({
