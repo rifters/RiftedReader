@@ -53,6 +53,14 @@ import com.rifters.riftedreader.BuildConfig
 
 class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     
+    companion object {
+        /**
+         * Center index in the conveyor belt buffer (5-window buffer with indices 0-4).
+         * In STEADY phase, the active window is always kept centered at this position.
+         */
+        private const val CENTER_INDEX = 2
+    }
+    
     private lateinit var binding: ActivityReaderBinding
     private lateinit var viewModel: ReaderViewModel
     private lateinit var conveyorBeltSystem: ConveyorBeltSystemViewModel
@@ -737,10 +745,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             // Get current phase to determine correct adapter position
                             val currentPhase = conveyorBeltSystem.phase.value
                             
-                            // In STEADY phase: adapter has 5 items (0-4), active window is always at CENTER_INDEX (2)
+                            // In STEADY phase: adapter has 5 items (0-4), active window is always at CENTER_INDEX
                             // In STARTUP phase: adapter position maps directly to window index
                             val targetPosition = when (currentPhase) {
-                                ConveyorPhase.STEADY -> 2  // CENTER_INDEX - active window is always centered
+                                ConveyorPhase.STEADY -> CENTER_INDEX  // Active window is always centered
                                 ConveyorPhase.STARTUP -> activeWindow  // Direct mapping during startup
                             }
                             
