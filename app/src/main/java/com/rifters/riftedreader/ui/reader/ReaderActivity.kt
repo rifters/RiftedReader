@@ -1117,11 +1117,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             )
             
             // Validate target window is within bounds before attempting navigation
-            if (nextWindow >= totalWindows || nextWindow >= adapterItemCount) {
+            if (nextWindow >= totalWindows) {
                 AppLogger.w(
                     "ReaderActivity",
                     "Cannot navigate to next window: nextWindow=$nextWindow exceeds bounds " +
-                    "(totalWindows=$totalWindows, adapterItemCount=$adapterItemCount) [NAV_BLOCKED]"
+                    "(totalWindows=$totalWindows) [NAV_BLOCKED]"
                 )
                 return
             }
