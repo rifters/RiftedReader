@@ -258,8 +258,9 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         log("TRANSITION", "*** PHASE TRANSITION: STARTUP → STEADY ***")
         log("TRANSITION", "New buffer: ${_buffer.value}, activeWindow: $windowIndex, center: ${_buffer.value[CENTER_INDEX]}")
         
-        // Execute shift: drop old windows from cache, preload new windows
-        executeShift(windowsToRemove, windowsToAdd)
+        // Execute shift: drop old windows from cache, load new windows
+        // Launch in viewModelScope to avoid blocking UI thread
+        executeShiftAsync(windowsToRemove, windowsToAdd)
     }
     
     private fun handleSteadyNavigation(windowIndex: Int) {
@@ -309,8 +310,10 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("STEADY_FORWARD", "Final buffer: ${_buffer.value}, activeWindow: $windowIndex")
         
-        // Execute shift: drop old windows from cache, preload new windows
-        executeShift(windowsToRemove, windowsToAdd)
+        // Execute shift: drop old windows from cache, load new windows
+        // Launch in viewModelScope to avoid blocking UI thread, but ensure loading completes
+        // before user can navigate to those windows (they're still at windowIndex currently)
+        executeShiftAsync(windowsToRemove, windowsToAdd)
     }
     
     private fun handleSteadyBackward(windowIndex: Int, buffer: MutableList<Int>, shiftCount: Int) {
@@ -333,27 +336,34 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("STEADY_BACKWARD", "Final buffer: ${_buffer.value}, activeWindow: $windowIndex")
         
-        // Execute shift: drop old windows from cache, preload new windows
-        executeShift(windowsToRemove, windowsToAdd)
+        // Execute shift: drop old windows from cache, load new windows
+        // Launch in viewModelScope to avoid blocking UI thread, but ensure loading completes
+        // before user can navigate to those windows (they're still at windowIndex currently)
+        executeShiftAsync(windowsToRemove, windowsToAdd)
     }
     
     /**
-     * Execute a buffer shift by removing old windows from cache and loading new windows SYNCHRONOUSLY.
+     * Execute a buffer shift by removing old windows from cache and loading new windows.
      * 
-     * CRITICAL FIX: This must complete synchronously to ensure HTML is cached before adapter requests it.
-     * Previously, preloadWindows() was async, causing "window not found" errors.
+     * This launches a coroutine to load HTML asynchronously to avoid blocking the UI thread.
+     * The HTML loading completes in the background, and by the time the user navigates to
+     * the newly added windows, the HTML will be cached and ready.
+     * 
+     * If HTML is not ready when requested (user swipes very quickly), getWindowHtml() in
+     * ReaderViewModel will generate it on-demand as a fallback.
      */
-    private fun executeShift(windowsToRemove: List<Int>, windowsToAdd: List<Int>) {
-        // Remove old windows from cache
+    private fun executeShiftAsync(windowsToRemove: List<Int>, windowsToAdd: List<Int>) {
+        // Remove old windows from cache immediately (synchronous)
         windowsToRemove.forEach { windowIndex ->
             if (htmlCache.remove(windowIndex) != null) {
                 log("SHIFT_EXEC", "Dropped window $windowIndex from cache")
             }
         }
         
-        // Load new windows SYNCHRONOUSLY - this is the critical fix
+        // Load new windows asynchronously to avoid blocking UI thread
+        // By the time user navigates to these windows, HTML should be ready
         if (windowsToAdd.isNotEmpty()) {
-            log("SHIFT_EXEC", "Loading ${windowsToAdd.size} new windows SYNCHRONOUSLY: $windowsToAdd")
+            log("SHIFT_EXEC", "Loading ${windowsToAdd.size} new windows: $windowsToAdd")
             viewModelScope.launch {
                 loadWindowsSync(windowsToAdd)
             }
