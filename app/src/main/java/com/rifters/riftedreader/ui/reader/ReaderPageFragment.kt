@@ -109,6 +109,11 @@ class ReaderPageFragment : Fragment() {
     // Scroll distance tracking for onScroll-based interception
     private var cumulativeScrollX: Float = 0f
     private var scrollIntercepted: Boolean = false
+    
+    // Navigation direction tracking to prevent spurious boundary triggers
+    private var lastNavigationDirection: BoundaryDirection? = null
+    private var lastNavigationTimestamp: Long = 0L
+    private val NAVIGATION_COOLDOWN_MS = 500L // Time to ignore spurious boundaries after navigation
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -1449,6 +1454,10 @@ class ReaderPageFragment : Fragment() {
      * Handle boundary events from the minimal paginator.
      * Called when user attempts to navigate past window boundaries.
      * 
+     * Guards against spurious boundary triggers immediately after programmatic navigation:
+     * - When navigating forward (window N → N+1), ignore PREVIOUS boundaries within cooldown period
+     * - When navigating backward (window N → N-1), ignore NEXT boundaries within cooldown period
+     * 
      * @param windowIndex The window index that triggered the boundary
      * @param direction The boundary direction ("NEXT" or "PREVIOUS")
      */
@@ -1476,6 +1485,28 @@ class ReaderPageFragment : Fragment() {
                 com.rifters.riftedreader.util.AppLogger.w(
                     "ReaderPageFragment",
                     "[MIN_PAGINATOR] Unknown boundary direction: $direction"
+                )
+                return
+            }
+        }
+        
+        // Guard against spurious boundary triggers after programmatic navigation
+        val timeSinceLastNav = System.currentTimeMillis() - lastNavigationTimestamp
+        if (timeSinceLastNav < NAVIGATION_COOLDOWN_MS) {
+            // Within cooldown period - check if this is a spurious boundary
+            val isSpuriousBoundary = when {
+                // Spurious PREVIOUS after forward navigation (the main issue)
+                lastNavigationDirection == BoundaryDirection.NEXT && boundaryDir == BoundaryDirection.PREVIOUS -> true
+                // Spurious NEXT after backward navigation (symmetric case)
+                lastNavigationDirection == BoundaryDirection.PREVIOUS && boundaryDir == BoundaryDirection.NEXT -> true
+                else -> false
+            }
+            
+            if (isSpuriousBoundary) {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "[BOUNDARY_GUARD] Ignoring spurious $boundaryDir boundary (last nav: $lastNavigationDirection, " +
+                    "time: ${timeSinceLastNav}ms < ${NAVIGATION_COOLDOWN_MS}ms)"
                 )
                 return
             }
@@ -1929,6 +1960,7 @@ class ReaderPageFragment : Fragment() {
     /**
      * Navigate to the next window via ReaderActivity.
      * This is called when at the last in-page of the current window.
+     * Sets navigation direction to prevent spurious PREVIOUS boundary detection.
      */
     private fun navigateToNextWindow() {
         val readerActivity = activity as? ReaderActivity
@@ -1959,6 +1991,10 @@ class ReaderPageFragment : Fragment() {
             return
         }
         
+        // Set navigation direction to prevent spurious boundary detection
+        lastNavigationDirection = BoundaryDirection.NEXT
+        lastNavigationTimestamp = System.currentTimeMillis()
+        
         com.rifters.riftedreader.util.AppLogger.d(
             "ReaderPageFragment",
             "Calling ReaderActivity.navigateToNextPage() for window transition $currentWindow -> $targetWindow [HANDOFF_TO_ACTIVITY]"
@@ -1969,6 +2005,7 @@ class ReaderPageFragment : Fragment() {
     /**
      * Navigate to the previous window and jump to its last internal page.
      * This is called when at the first in-page of the current window and navigating backward.
+     * Sets navigation direction to prevent spurious NEXT boundary detection.
      */
     private fun navigateToPreviousWindowLastPage() {
         val readerActivity = activity as? ReaderActivity
@@ -1997,6 +2034,10 @@ class ReaderPageFragment : Fragment() {
             )
             return
         }
+        
+        // Set navigation direction to prevent spurious boundary detection
+        lastNavigationDirection = BoundaryDirection.PREVIOUS
+        lastNavigationTimestamp = System.currentTimeMillis()
         
         com.rifters.riftedreader.util.AppLogger.d(
             "ReaderPageFragment",
