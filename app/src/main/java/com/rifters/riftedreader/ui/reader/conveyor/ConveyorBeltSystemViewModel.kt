@@ -77,9 +77,9 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     
     /**
      * Load HTML for a window and cache it synchronously.
-     * This is called when a window enters the buffer or becomes visible.
      * 
-     * Made suspend to ensure HTML is loaded before window is displayed.
+     * This is a suspend function used during buffer shifts to load HTML for newly added windows.
+     * Made suspend to ensure the loading operation completes properly within the coroutine context.
      * This fixes the issue where buffer shifts would update state but not generate HTML.
      */
     private suspend fun loadWindowHtmlSync(windowIndex: Int) {
@@ -189,7 +189,8 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         log("STATE", "Current: buffer=${_buffer.value}, activeWindow=${_activeWindow.value}, phase=${_phase.value}")
         log("STATE", "shiftsUnlocked=$shiftsUnlocked")
         
-        // Load HTML for the window that was just entered (async is fine here, user already navigated)
+        // Trigger background HTML loading for the window user just entered
+        // This is opportunistic preloading - if HTML isn't cached yet, load it now
         loadWindowHtmlAsync(windowIndex)
         
         when (_phase.value) {
@@ -310,9 +311,9 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("STEADY_FORWARD", "Final buffer: ${_buffer.value}, activeWindow: $windowIndex")
         
-        // Execute shift: drop old windows from cache, load new windows
-        // Launch in viewModelScope to avoid blocking UI thread, but ensure loading completes
-        // before user can navigate to those windows (they're still at windowIndex currently)
+        // Execute shift: drop old windows from cache, load new windows in background
+        // The HTML loading happens asynchronously. User is currently at windowIndex and must
+        // swipe multiple times before reaching the newly added windows, giving time for HTML to load.
         executeShiftAsync(windowsToRemove, windowsToAdd)
     }
     
@@ -336,9 +337,9 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("STEADY_BACKWARD", "Final buffer: ${_buffer.value}, activeWindow: $windowIndex")
         
-        // Execute shift: drop old windows from cache, load new windows
-        // Launch in viewModelScope to avoid blocking UI thread, but ensure loading completes
-        // before user can navigate to those windows (they're still at windowIndex currently)
+        // Execute shift: drop old windows from cache, load new windows in background
+        // The HTML loading happens asynchronously. User is currently at windowIndex and must
+        // swipe multiple times before reaching the newly added windows, giving time for HTML to load.
         executeShiftAsync(windowsToRemove, windowsToAdd)
     }
     
