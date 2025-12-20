@@ -1128,16 +1128,13 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             
             val moved = viewModel.nextWindow()
             if (moved) {
-                // In CONTINUOUS mode, always update RecyclerView position regardless of readerMode
-                // PAGE mode: RecyclerView shows one window at a time
-                // SCROLL mode: RecyclerView still manages windows, just scrolls vertically within them
+                // Notify the conveyor belt system to trigger buffer shifting
+                // This ensures the buffer stays at position 3 while window contents shift internally
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically scrolling RecyclerView to window $nextWindow (user navigation), readerMode=$readerMode [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Notifying ConveyorBeltSystem of window change to $nextWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
                 )
-                // Set flag before scrolling to prevent circular update from OnScrollListener
-                //programmaticScrollInProgress = true
-                //setCurrentItem(nextWindow, animated)
+                conveyorBeltSystem.onWindowEntered(nextWindow)
             } else if (!moved) {
                 AppLogger.w(
                     "ReaderActivity",
@@ -1189,14 +1186,13 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             
             val moved = viewModel.previousWindow()
             if (moved) {
-                // In CONTINUOUS mode, always update RecyclerView position regardless of readerMode
+                // Notify the conveyor belt system to trigger buffer shifting
+                // This ensures the buffer stays at position 3 while window contents shift internally
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically scrolling RecyclerView to window $previousWindow (user navigation), readerMode=$readerMode [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Notifying ConveyorBeltSystem of window change to $previousWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
                 )
-                // Set flag before scrolling to prevent circular update from OnScrollListener
-                //programmaticScrollInProgress = true
-                //setCurrentItem(previousWindow, animated)
+                conveyorBeltSystem.onWindowEntered(previousWindow)
             } else if (!moved) {
                 AppLogger.w(
                     "ReaderActivity",
@@ -1251,16 +1247,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             
             val moved = viewModel.previousWindow()
             if (moved) {
-                // In CONTINUOUS mode, always update RecyclerView position regardless of readerMode
                 // Set flag only after navigation succeeds to avoid race condition
                 viewModel.setJumpToLastPageFlag()
+                // Notify the conveyor belt system to trigger buffer shifting
+                // This ensures the buffer stays at position 3 while window contents shift internally
                 AppLogger.d(
                     "ReaderActivity",
-                    "Programmatically scrolling RecyclerView to window $previousWindow with jump-to-last-page flag, readerMode=$readerMode [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Notifying ConveyorBeltSystem of window change to $previousWindow with jump-to-last-page flag [PROGRAMMATIC_WINDOW_CHANGE]"
                 )
-                // Set flag before scrolling to prevent circular update from OnScrollListener
-                programmaticScrollInProgress = true
-                setCurrentItem(previousWindow, animated)
+                conveyorBeltSystem.onWindowEntered(previousWindow)
             } else if (!moved) {
                 AppLogger.w(
                     "ReaderActivity",
