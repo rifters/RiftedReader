@@ -96,7 +96,9 @@ class ReaderPagerAdapter(
             "containerWidth=${holder.containerView.width}, " +
             "containerHeight=${holder.containerView.height}")
         
-        val fragmentTag = "f$position"
+        // Use logical window index for fragment tag to prevent collisions in steady phase
+        // when buffer shifts and positions are reused for different windows
+        val fragmentTag = "window_$logicalWindowIndex"
         
         // Check if fragment already exists for this position
         val existingFragment = fragmentManager.findFragmentByTag(fragmentTag)
@@ -158,7 +160,14 @@ class ReaderPagerAdapter(
         
         // Only remove fragment if position is valid
         if (position != RecyclerView.NO_POSITION) {
-            val fragmentTag = "f$position"
+            // Get logical window index to find correct fragment tag
+            val buffer = viewModel.conveyorBeltSystem?.buffer?.value
+            val logicalWindowIndex = if (buffer != null && position < buffer.size) {
+                buffer[position]
+            } else {
+                position
+            }
+            val fragmentTag = "window_$logicalWindowIndex"
             val fragment = fragmentManager.findFragmentByTag(fragmentTag)
             if (fragment != null && fragment.isAdded) {
                 // Post to ensure we're not in a layout pass
