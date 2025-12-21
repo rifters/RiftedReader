@@ -771,7 +771,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                                     "[CONVEYOR_SYNC] Position changed: scrolled to $targetPosition and rebound " +
                                     "(activeWindow=$activeWindow, phase=$currentPhase) [SCROLL+REBIND]"
                                 )
-                            } else if (currentPhase == ConveyorPhase.STEADY && currentPagerPosition == targetPosition) {
+                            } else if (currentPhase == ConveyorPhase.STEADY) {
                                 // STEADY phase only: position unchanged but window content changed - rebind only
                                 pagerAdapter.notifyItemChanged(targetPosition)
                                 
