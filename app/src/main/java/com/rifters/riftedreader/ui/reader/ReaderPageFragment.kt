@@ -2089,6 +2089,64 @@ class ReaderPageFragment : Fragment() {
     fun isPaginatorInitialized(): Boolean = isPaginatorInitialized
 
     /**
+     * Update the window index for this fragment without full rebind.
+     * Called when the conveyor belt shifts and the window content changes
+     * but the RecyclerView position stays the same (STEADY phase).
+     * 
+     * @param newWindowIndex The new active window index to display
+     */
+    fun updateWindowIndex(newWindowIndex: Int) {
+        if (windowIndex == newWindowIndex) {
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "[WINDOW_UPDATE] Skipping update: windowIndex already at $newWindowIndex"
+            )
+            return
+        }
+        
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "[WINDOW_UPDATE] Updating window: $windowIndex -> $newWindowIndex"
+        )
+        
+        // Update internal window index tracking
+        // Note: windowIndex is a val from arguments, so we can't reassign it directly
+        // Instead, we'll reload the content for the new window
+        
+        // In continuous mode, reload window content from the conveyor cache
+        if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                try {
+                    // Wait for conveyor readiness (should already be ready, but safety check)
+                    readerViewModel.isConveyorReady.filter { it }.first()
+                    
+                    com.rifters.riftedreader.util.AppLogger.d(
+                        "ReaderPageFragment",
+                        "[WINDOW_UPDATE] Rendering new window content for windowIndex=$newWindowIndex"
+                    )
+                    
+                    // Reload base content which will fetch the new window HTML
+                    // Note: This uses the fragment's windowIndex from arguments, but the
+                    // conveyor system will provide the correct window content based on
+                    // the active window at CENTER_INDEX
+                    renderBaseContent()
+                } catch (e: Exception) {
+                    com.rifters.riftedreader.util.AppLogger.e(
+                        "ReaderPageFragment",
+                        "[WINDOW_UPDATE] Error updating window content",
+                        e
+                    )
+                }
+            }
+        } else {
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "[WINDOW_UPDATE] Not in continuous mode, skipping window update"
+            )
+        }
+    }
+
+    /**
      * Reset window scroll state when entering a new window.
      * This prevents scroll position from the previous window carrying over to the new window.
      * Should be called when entering a new window to ensure clean state.
