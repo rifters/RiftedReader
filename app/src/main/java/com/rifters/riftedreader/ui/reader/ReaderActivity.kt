@@ -682,6 +682,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                                     "hasHtml=${!pageContent.html.isNullOrBlank()} All gates passed."
                         )
                         
+                        // Apply any pending buffer shift NOW that content is fully loaded
+                        // This defers the adapter refresh until fragment is ready
+                        viewModel.conveyorBeltSystem?.applyPendingBufferShift()
+                        
                         currentPageText = pageContent.text
                         currentPageHtml = pageContent.html
                         sentenceBoundaries = buildSentenceBoundaries(pageContent.text)

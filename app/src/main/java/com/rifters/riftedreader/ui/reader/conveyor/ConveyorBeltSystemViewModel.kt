@@ -47,6 +47,16 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     private val _activeWindow = MutableStateFlow<Int>(0)
     val activeWindow: StateFlow<Int> = _activeWindow.asStateFlow()
     
+    // Track pending buffer shift that must happen after content loads
+    // In steady phase, we defer the buffer shift until after CONTENT_LOADED
+    private var pendingBufferShift: PendingShift? = null
+    
+    data class PendingShift(
+        val buffer: MutableList<Int>,
+        val windowIndex: Int,
+        val direction: String  // "forward" or "backward"
+    )
+    
     private val _phase = MutableStateFlow<ConveyorPhase>(ConveyorPhase.STARTUP)
     val phase: StateFlow<ConveyorPhase> = _phase.asStateFlow()
     
@@ -84,6 +94,32 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     fun setPagerAdapter(adapter: com.rifters.riftedreader.ui.reader.ReaderPagerAdapter) {
         this.pagerAdapter = adapter
         log("INIT", "Pager adapter set for UI refresh notifications")
+    }
+    
+    /**
+     * Apply pending buffer shift NOW (called when CONTENT_LOADED fires).
+     * 
+     * In steady phase, we defer the buffer shift until content is fully loaded.
+     * This avoids the race condition where fragment rebinds before content is ready.
+     * 
+     * Call this from ReaderActivity when [CONTENT_LOADED] event is emitted.
+     */
+    fun applyPendingBufferShift() {
+        val shift = pendingBufferShift ?: return
+        
+        log("PENDING_SHIFT", "Applying pending buffer shift: ${shift.direction}, buffer=${shift.buffer}")
+        
+        // Update buffer and active window
+        _buffer.value = shift.buffer
+        _activeWindow.value = shift.windowIndex
+        
+        // Now trigger the adapter refresh
+        pagerAdapter?.invalidatePositionDueToBufferShift(CENTER_INDEX)
+        
+        log("PENDING_SHIFT", "Pending shift applied and adapter notified")
+        
+        // Clear pending shift
+        pendingBufferShift = null
     }
     
     /**
@@ -328,14 +364,12 @@ class ConveyorBeltSystemViewModel : ViewModel() {
             log("SHIFT", "$i: ${buffer}, signal: remove $removedWindow, create $newWindow (maxLogical=$maxLogicalWindowCreated)")
         }
         
-        _buffer.value = buffer
-        _activeWindow.value = windowIndex
+        log("STEADY_FORWARD", "Final buffer: ${buffer}, activeWindow: $windowIndex, maxLogical: $maxLogicalWindowCreated")
         
-        log("STEADY_FORWARD", "Final buffer: ${_buffer.value}, activeWindow: $windowIndex, maxLogical: $maxLogicalWindowCreated")
-        
-        // Notify adapter to refresh the center position where the new window content is
-        // In steady phase, the window always appears at CENTER_INDEX (position 2)
-        pagerAdapter?.invalidatePositionDueToBufferShift(CENTER_INDEX)
+        // DEFER buffer shift until CONTENT_LOADED fires
+        // This ensures content is fully loaded before we change the fragment at CENTER_INDEX
+        pendingBufferShift = PendingShift(buffer, windowIndex, "forward")
+        log("STEADY_FORWARD", "Buffer shift DEFERRED until CONTENT_LOADED - windowIndex=$windowIndex")
         
         // Execute shift: drop old windows from cache, load new windows in background
         // The HTML loading happens asynchronously. User is currently at windowIndex and must
@@ -360,14 +394,12 @@ class ConveyorBeltSystemViewModel : ViewModel() {
             log("SHIFT", "$i: ${buffer}, signal: remove $removedWindow, create $newWindow (minLogical=$minLogicalWindowCreated)")
         }
         
-        _buffer.value = buffer
-        _activeWindow.value = windowIndex
+        log("STEADY_BACKWARD", "Final buffer: ${buffer}, activeWindow: $windowIndex, minLogical: $minLogicalWindowCreated")
         
-        log("STEADY_BACKWARD", "Final buffer: ${_buffer.value}, activeWindow: $windowIndex, minLogical: $minLogicalWindowCreated")
-        
-        // Notify adapter to refresh the center position where the new window content is
-        // In steady phase, the window always appears at CENTER_INDEX (position 2)
-        pagerAdapter?.invalidatePositionDueToBufferShift(CENTER_INDEX)
+        // DEFER buffer shift until CONTENT_LOADED fires
+        // This ensures content is fully loaded before we change the fragment at CENTER_INDEX
+        pendingBufferShift = PendingShift(buffer, windowIndex, "backward")
+        log("STEADY_BACKWARD", "Buffer shift DEFERRED until CONTENT_LOADED - windowIndex=$windowIndex")
         
         // Execute shift: drop old windows from cache, load new windows in background
         // The HTML loading happens asynchronously. User is currently at windowIndex and must
