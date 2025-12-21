@@ -718,9 +718,29 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 launch {
                     viewModel.currentWindowIndex.collect { windowIndex ->
                         // Update RecyclerView position when window index changes
-                        if (readerMode == ReaderMode.PAGE && currentPagerPosition != windowIndex) {
-                            AppLogger.d("ReaderActivity", "Syncing RecyclerView to window index: $windowIndex")
-                            setCurrentItem(windowIndex, false)
+                        if (readerMode == ReaderMode.PAGE) {
+                            // CRITICAL: Map logical window index to adapter position within buffer
+                            // The buffer contains 5 items (positions 0-4)
+                            // We need to find which position in the buffer contains this window
+                            val buffer = viewModel.conveyorBeltSystem?.buffer?.value
+                            val adapterPosition = if (buffer != null && windowIndex in buffer) {
+                                buffer.indexOf(windowIndex)
+                            } else {
+                                // Fallback: if window not in buffer, calculate based on buffer constraints
+                                // Buffer contains windows at indices [minWindow, minWindow+1, ..., minWindow+4]
+                                // Adapter positions are always 0-4
+                                val minWindow = (buffer?.minOrNull() ?: 0)
+                                (windowIndex - minWindow).coerceIn(0, 4)
+                            }
+                            
+                            if (currentPagerPosition != adapterPosition) {
+                                AppLogger.d(
+                                    "ReaderActivity",
+                                    "Syncing RecyclerView: logicalWindow=$windowIndex -> adapterPosition=$adapterPosition " +
+                                    "(buffer=$buffer) [WINDOW_TO_ADAPTER_MAP]"
+                                )
+                                setCurrentItem(adapterPosition, false)
+                            }
                         }
                     }
                 }
