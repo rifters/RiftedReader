@@ -60,27 +60,29 @@ class ReaderPagerAdapter(
      * Called by ConveyorBeltSystemViewModel when buffer shifts.
      */
     fun invalidatePositionDueToBufferShift(position: Int) {
-        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] invalidatePositionDueToBufferShift: position=$position")
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] invalidatePositionDueToBufferShift: position=$position START")
         
         // Remove the cached window mapping
         positionToWindowMap.remove(position)
         
-        // Remove the fragment at this position
+        // Remove the fragment at this position with SYNCHRONOUS commit
+        // We MUST wait for the removal to complete before notifying the adapter
         val fragmentTag = "f$position"
         fragmentManager.findFragmentByTag(fragmentTag)?.let { fragment ->
-            fragmentManager.beginTransaction().apply {
-                AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Removing fragment at position $position due to buffer shift")
-                remove(fragment)
-            }.commitAllowingStateLoss()
+            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Removing fragment at position $position due to buffer shift (SYNC COMMIT)")
+            fragmentManager.beginTransaction()
+                .remove(fragment)
+                .commit()  // Use commit() not commitAllowingStateLoss() - waits for execution
+            
+            // Force synchronous FragmentManager execution
+            fragmentManager.executePendingTransactions()
+            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment removal complete and executed")
         }
         
-        // Use notifyDataSetChanged instead of notifyItemChanged
-        // notifyItemChanged doesn't force rebind for stationary items in RecyclerView
-        // notifyDataSetChanged forces ALL items to rebind
-        mainHandler.post {
-            notifyDataSetChanged()
-            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] notifyDataSetChanged() posted to handler")
-        }
+        // Now notify adapter - fragment is definitely removed
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Calling notifyDataSetChanged() to force rebind")
+        notifyDataSetChanged()
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] invalidatePositionDueToBufferShift: position=$position COMPLETE")
     }
 
     override fun getItemCount(): Int {
