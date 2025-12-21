@@ -646,7 +646,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         // Only process when: (1) text is non-empty AND
                         // (2) paginator is fully initialized AND  
                         // (3) WebView is ready
-                        val fragmentRef = supportFragmentManager.findFragmentByTag("page_${viewModel.currentPage.value}")
+                        // CRITICAL: Look up fragment by adapter position (f0-f4), not by page number!
+                        // The RecyclerView uses position-based tags: f0, f1, f2, f3, f4
+                        // We need to find the fragment at CENTER_INDEX (position 2) which contains the active window
+                        val CENTER_INDEX = 2  // Center position in 5-window buffer
+                        val fragmentTag = "f$CENTER_INDEX"
+                        val fragmentRef = supportFragmentManager.findFragmentByTag(fragmentTag)
                         val fragment = (fragmentRef as? ReaderPageFragment)
                         val isWebViewReady = fragment?.isWebViewReady() ?: false
                         val isPaginatorInitialized = fragment?.isPaginatorInitialized() ?: false
