@@ -47,6 +47,10 @@ class ReaderPagerAdapter(
     // Track active fragments for debugging
     private val activeFragments = mutableSetOf<Int>()
     
+    // Track which logical window each position currently holds
+    // Used to detect when buffer shifts and invalidate stale fragments
+    private val positionToWindowMap = mutableMapOf<Int, Int>()
+    
     // Flag to track if window count mismatch warning has been logged (emit only once per session)
     private var windowMismatchWarningLogged: Boolean = false
 
@@ -96,15 +100,30 @@ class ReaderPagerAdapter(
             "containerWidth=${holder.containerView.width}, " +
             "containerHeight=${holder.containerView.height}")
         
-        // Use logical window index for fragment tag to prevent collisions in steady phase
-        // when buffer shifts and positions are reused for different windows
-        val fragmentTag = "window_$logicalWindowIndex"
+        val fragmentTag = "f$position"
+        
+        // Track which window this position holds for cache validation
+        val previousWindowAtPosition = positionToWindowMap[position]
+        
+        // If buffer shifted and this position now holds a different window, 
+        // invalidate the old fragment to force creating a new one
+        if (previousWindowAtPosition != null && previousWindowAtPosition != logicalWindowIndex) {
+            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Buffer shift detected: " +
+                "position=$position changed from window $previousWindowAtPosition to $logicalWindowIndex - invalidating fragment")
+            fragmentManager.findFragmentByTag(fragmentTag)?.let {
+                fragmentManager.beginTransaction().remove(it).commitAllowingStateLoss()
+            }
+        }
+        
+        // Update the position-to-window mapping
+        positionToWindowMap[position] = logicalWindowIndex
         
         // Check if fragment already exists for this position
         val existingFragment = fragmentManager.findFragmentByTag(fragmentTag)
         
         if (existingFragment != null && existingFragment.isAdded) {
-            // Fragment already exists and is added, no need to recreate
+            // Fragment already exists, is added, AND is for the correct window
+            // This is a valid cache hit in startup phase where windows don't shift
             AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment REUSED: " +
                 "position=$position, logicalWindowIndex=$logicalWindowIndex, fragmentTag=$fragmentTag, isAdded=${existingFragment.isAdded}, " +
                 "isVisible=${existingFragment.isVisible}")
@@ -160,14 +179,7 @@ class ReaderPagerAdapter(
         
         // Only remove fragment if position is valid
         if (position != RecyclerView.NO_POSITION) {
-            // Get logical window index to find correct fragment tag
-            val buffer = viewModel.conveyorBeltSystem?.buffer?.value
-            val logicalWindowIndex = if (buffer != null && position < buffer.size) {
-                buffer[position]
-            } else {
-                position
-            }
-            val fragmentTag = "window_$logicalWindowIndex"
+            val fragmentTag = "f$position"
             val fragment = fragmentManager.findFragmentByTag(fragmentTag)
             if (fragment != null && fragment.isAdded) {
                 // Post to ensure we're not in a layout pass
@@ -281,6 +293,7 @@ class ReaderPagerAdapter(
         }
         
         activeFragments.clear()
+        positionToWindowMap.clear()
         AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] cleanUp: completed")
     }
 
