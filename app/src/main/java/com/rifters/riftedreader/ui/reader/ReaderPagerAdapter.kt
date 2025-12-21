@@ -81,7 +81,8 @@ class ReaderPagerAdapter(
             // Payload update: just refresh window content without full rebind
             val bundle = payloads.firstOrNull() as? Bundle
             if (bundle != null) {
-                val activeWindow = bundle.getInt("activeWindow", -1)
+                // Support both "windowIndex" and "activeWindow" keys for compatibility
+                val activeWindow = bundle.getInt("windowIndex", bundle.getInt("activeWindow", -1))
                 AppLogger.d("ReaderPagerAdapter", "[PAYLOAD_UPDATE] Updating fragment at position $position with activeWindow=$activeWindow")
                 
                 // Get the fragment and update its window index

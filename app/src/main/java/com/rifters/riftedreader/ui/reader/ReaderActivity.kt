@@ -93,6 +93,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var programmaticScrollInProgress: Boolean = false
     // Flag to track if initial buffer-to-UI sync has been performed
     private var initialBufferSyncCompleted: Boolean = false
+    // Track last notified active window to prevent redundant payload updates
+    private var lastNotifiedActiveWindow: Int? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppLogger.event("ReaderActivity", "onCreate started", "ui/ReaderActivity/lifecycle")
@@ -777,13 +779,23 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                                     "[CONVEYOR_SYNC] Position changed: scrolled to $targetPosition " +
                                     "(activeWindow=$activeWindow, phase=$currentPhase) [SCROLL_ONLY]"
                                 )
-                            } else if (currentPhase == ConveyorPhase.STEADY) {
+                            } else if (currentPhase == ConveyorPhase.STEADY && activeWindow != (lastNotifiedActiveWindow ?: -1)) {
                                 // Path 2: STEADY phase content refresh - position unchanged but window content changed
+                                // Only trigger payload update if activeWindow actually changed
                                 // Use payload to update fragment without full rebind
+                                AppLogger.d(
+                                    "ReaderActivity",
+                                    "[PAYLOAD_UPDATE] STEADY phase silent update: position=$targetPosition, " +
+                                    "window=$activeWindow (was ${lastNotifiedActiveWindow}) [WINDOW_CONTENT_CHANGE]"
+                                )
+                                
                                 // Reuse companion payloadBundle to avoid allocation overhead
                                 payloadBundle.clear()
-                                payloadBundle.putInt("activeWindow", activeWindow)
-                                pagerAdapter.notifyItemRangeChanged(targetPosition, 1, payloadBundle)
+                                payloadBundle.putInt("windowIndex", activeWindow)
+                                pagerAdapter.notifyItemChanged(targetPosition, payloadBundle)
+                                
+                                // Track last notified window to avoid redundant updates
+                                lastNotifiedActiveWindow = activeWindow
                                 
                                 AppLogger.d(
                                     "ReaderActivity",
