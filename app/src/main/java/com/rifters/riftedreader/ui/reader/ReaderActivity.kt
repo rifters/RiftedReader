@@ -767,15 +767,22 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                                 // Sync RecyclerView to the target position
                                 setCurrentItem(targetPosition, false)
                                 
-                                // Force rebind the ViewHolder at target position to show new window content
-                                // This is crucial after buffer shifts in STEADY phase
-                                pagerAdapter.notifyItemChanged(targetPosition)
-                                
                                 AppLogger.d(
                                     "ReaderActivity",
-                                    "[CONVEYOR_SYNC] Scrolled to position $targetPosition and rebound ViewHolder [REBIND]"
+                                    "[CONVEYOR_SYNC] Scrolled to position $targetPosition [SCROLL]"
                                 )
                             }
+                            
+                            // Force rebind the ViewHolder at target position to show new window content
+                            // This is crucial after buffer shifts in STEADY phase
+                            // Must be outside the position-change check because in STEADY phase,
+                            // targetPosition is always CENTER_INDEX (2) but the window content changes
+                            pagerAdapter.notifyItemChanged(targetPosition)
+                            
+                            AppLogger.d(
+                                "ReaderActivity",
+                                "[CONVEYOR_SYNC] Rebound ViewHolder at position $targetPosition (activeWindow=$activeWindow, phase=$currentPhase) [REBIND]"
+                            )
                         }
                     }
                 }
