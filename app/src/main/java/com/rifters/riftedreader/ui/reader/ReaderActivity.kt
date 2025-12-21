@@ -59,6 +59,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
          * In STEADY phase, the active window is always kept centered at this position.
          */
         private const val CENTER_INDEX = 2
+        
+        /**
+         * Reusable Bundle for payload updates to avoid allocation overhead.
+         * This is safe because payload updates are synchronous on the main thread.
+         */
+        private val payloadBundle = Bundle()
     }
     
     private lateinit var binding: ActivityReaderBinding
@@ -761,24 +767,28 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             
                             // Handle position changes and STEADY phase buffer shifts with phase-aware logic
                             if (currentPagerPosition != targetPosition) {
-                                // Position changed: scroll and rebind
+                                // Path 1: Position changed - scroll RecyclerView
+                                // This triggers onBindViewHolder naturally via RecyclerView lifecycle
                                 programmaticScrollInProgress = true
                                 setCurrentItem(targetPosition, false)
-                                pagerAdapter.notifyItemChanged(targetPosition)
                                 
                                 AppLogger.d(
                                     "ReaderActivity",
-                                    "[CONVEYOR_SYNC] Position changed: scrolled to $targetPosition and rebound " +
-                                    "(activeWindow=$activeWindow, phase=$currentPhase) [SCROLL+REBIND]"
+                                    "[CONVEYOR_SYNC] Position changed: scrolled to $targetPosition " +
+                                    "(activeWindow=$activeWindow, phase=$currentPhase) [SCROLL_ONLY]"
                                 )
                             } else if (currentPhase == ConveyorPhase.STEADY) {
-                                // STEADY phase only: position unchanged but window content changed - rebind only
-                                pagerAdapter.notifyItemChanged(targetPosition)
+                                // Path 2: STEADY phase content refresh - position unchanged but window content changed
+                                // Use payload to update fragment without full rebind
+                                // Reuse companion payloadBundle to avoid allocation overhead
+                                payloadBundle.clear()
+                                payloadBundle.putInt("activeWindow", activeWindow)
+                                pagerAdapter.notifyItemRangeChanged(targetPosition, 1, payloadBundle)
                                 
                                 AppLogger.d(
                                     "ReaderActivity",
-                                    "[CONVEYOR_SYNC] STEADY buffer shift: rebound at position $targetPosition " +
-                                    "(activeWindow=$activeWindow, no scroll needed) [REBIND_ONLY]"
+                                    "[CONVEYOR_SYNC] STEADY buffer shift: payload update at position $targetPosition " +
+                                    "(activeWindow=$activeWindow, no scroll needed) [PAYLOAD_UPDATE]"
                                 )
                             }
                         }
@@ -1187,14 +1197,21 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             }
             
             val moved = viewModel.nextWindow()
-            if (moved) {
-                // Notify the conveyor belt system to trigger buffer shifting
-                // This ensures the buffer stays at position 3 while window contents shift internally
+            if (moved && readerMode == ReaderMode.PAGE) {
+                // Determine the target position in the adapter based on conveyor phase
+                val currentPhase = conveyorBeltSystem.phase.value
+                val nextBufferPosition = when (currentPhase) {
+                    ConveyorPhase.STEADY -> CENTER_INDEX  // In STEADY, stay at center
+                    ConveyorPhase.STARTUP -> nextWindow.coerceIn(0, adapterItemCount - 1)
+                }
+                
                 AppLogger.d(
                     "ReaderActivity",
-                    "Notifying ConveyorBeltSystem of window change to $nextWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Programmatically setting RecyclerView to position $nextBufferPosition " +
+                    "(window=$nextWindow, phase=$currentPhase) [PROGRAMMATIC_SCROLL]"
                 )
-                conveyorBeltSystem.onWindowEntered(nextWindow)
+                programmaticScrollInProgress = true
+                setCurrentItem(nextBufferPosition, animated)
             } else if (!moved) {
                 AppLogger.w(
                     "ReaderActivity",
@@ -1245,14 +1262,21 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             }
             
             val moved = viewModel.previousWindow()
-            if (moved) {
-                // Notify the conveyor belt system to trigger buffer shifting
-                // This ensures the buffer stays at position 3 while window contents shift internally
+            if (moved && readerMode == ReaderMode.PAGE) {
+                // Determine the target position in the adapter based on conveyor phase
+                val currentPhase = conveyorBeltSystem.phase.value
+                val prevBufferPosition = when (currentPhase) {
+                    ConveyorPhase.STEADY -> CENTER_INDEX  // In STEADY, stay at center
+                    ConveyorPhase.STARTUP -> previousWindow.coerceIn(0, adapterItemCount - 1)
+                }
+                
                 AppLogger.d(
                     "ReaderActivity",
-                    "Notifying ConveyorBeltSystem of window change to $previousWindow (user navigation) [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Programmatically setting RecyclerView to position $prevBufferPosition " +
+                    "(window=$previousWindow, phase=$currentPhase) [PROGRAMMATIC_SCROLL]"
                 )
-                conveyorBeltSystem.onWindowEntered(previousWindow)
+                programmaticScrollInProgress = true
+                setCurrentItem(prevBufferPosition, animated)
             } else if (!moved) {
                 AppLogger.w(
                     "ReaderActivity",
@@ -1306,16 +1330,24 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             }
             
             val moved = viewModel.previousWindow()
-            if (moved) {
+            if (moved && readerMode == ReaderMode.PAGE) {
                 // Set flag only after navigation succeeds to avoid race condition
                 viewModel.setJumpToLastPageFlag()
-                // Notify the conveyor belt system to trigger buffer shifting
-                // This ensures the buffer stays at position 3 while window contents shift internally
+                
+                // Determine the target position in the adapter based on conveyor phase
+                val currentPhase = conveyorBeltSystem.phase.value
+                val prevBufferPosition = when (currentPhase) {
+                    ConveyorPhase.STEADY -> CENTER_INDEX  // In STEADY, stay at center
+                    ConveyorPhase.STARTUP -> previousWindow.coerceIn(0, adapterItemCount - 1)
+                }
+                
                 AppLogger.d(
                     "ReaderActivity",
-                    "Notifying ConveyorBeltSystem of window change to $previousWindow with jump-to-last-page flag [PROGRAMMATIC_WINDOW_CHANGE]"
+                    "Programmatically setting RecyclerView to position $prevBufferPosition with jump-to-last-page flag " +
+                    "(window=$previousWindow, phase=$currentPhase) [PROGRAMMATIC_SCROLL]"
                 )
-                conveyorBeltSystem.onWindowEntered(previousWindow)
+                programmaticScrollInProgress = true
+                setCurrentItem(prevBufferPosition, animated)
             } else if (!moved) {
                 AppLogger.w(
                     "ReaderActivity",

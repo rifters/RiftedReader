@@ -1,5 +1,6 @@
 package com.rifters.riftedreader.ui.reader
 
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
@@ -73,6 +74,35 @@ class ReaderPagerAdapter(
             "parentWidth=${parent.width}, parentHeight=${parent.height}")
         
         return PageViewHolder(view as ViewGroup)
+    }
+
+    override fun onBindViewHolder(holder: PageViewHolder, position: Int, payloads: List<Any>) {
+        if (payloads.isNotEmpty()) {
+            // Payload update: just refresh window content without full rebind
+            val bundle = payloads.firstOrNull() as? Bundle
+            if (bundle != null) {
+                val activeWindow = bundle.getInt("activeWindow", -1)
+                AppLogger.d("ReaderPagerAdapter", "[PAYLOAD_UPDATE] Updating fragment at position $position with activeWindow=$activeWindow")
+                
+                // Get the fragment and update its window index
+                val fragmentTag = "f$position"
+                val fragment = fragmentManager.findFragmentByTag(fragmentTag) as? ReaderPageFragment
+                if (fragment != null) {
+                    fragment.updateWindowIndex(activeWindow)
+                    AppLogger.d("ReaderPagerAdapter", "[PAYLOAD_UPDATE] Fragment updated: position=$position, activeWindow=$activeWindow")
+                } else {
+                    AppLogger.w("ReaderPagerAdapter", "[PAYLOAD_UPDATE] Fragment not found for position=$position, falling back to full bind")
+                    onBindViewHolder(holder, position)
+                }
+            } else {
+                AppLogger.w("ReaderPagerAdapter", "[PAYLOAD_UPDATE] Invalid payload (not a Bundle), falling back to full bind")
+                onBindViewHolder(holder, position)
+            }
+            return
+        }
+        
+        // Fall back to full bind if no payload
+        onBindViewHolder(holder, position)
     }
 
     override fun onBindViewHolder(holder: PageViewHolder, position: Int) {

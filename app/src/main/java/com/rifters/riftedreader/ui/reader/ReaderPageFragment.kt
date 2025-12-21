@@ -52,10 +52,20 @@ class ReaderPageFragment : Fragment() {
      * This represents the position in the RecyclerView, which corresponds to:
      * - Continuous mode: window index (each window contains 5 chapters)
      * - Chapter-based mode: chapter index (each window contains 1 chapter)
+     * 
+     * Note: This is the initial window index from arguments. The actual current window
+     * may differ after conveyor belt shifts in STEADY phase. Use currentActiveWindow
+     * to track the actual window being displayed.
      */
     private val windowIndex: Int by lazy {
         requireArguments().getInt(ARG_PAGE_INDEX)
     }
+    
+    /**
+     * Track the current active window index after updates.
+     * This may differ from windowIndex in STEADY phase when the buffer shifts.
+     */
+    private var currentActiveWindow: Int? = null
     
     // Alias for backward compatibility with existing code
     private val pageIndex: Int get() = windowIndex
@@ -2087,6 +2097,63 @@ class ReaderPageFragment : Fragment() {
      */
     fun isWebViewReady(): Boolean = isWebViewReady
     fun isPaginatorInitialized(): Boolean = isPaginatorInitialized
+
+    /**
+     * Update the window index for this fragment without full rebind.
+     * Called when the conveyor belt shifts and the window content changes
+     * but the RecyclerView position stays the same (STEADY phase).
+     * 
+     * @param newWindowIndex The new active window index to display
+     */
+    fun updateWindowIndex(newWindowIndex: Int) {
+        // Check against the tracked current window, not the initial windowIndex from arguments
+        if (currentActiveWindow == newWindowIndex) {
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "[WINDOW_UPDATE] Skipping update: currentActiveWindow already at $newWindowIndex"
+            )
+            return
+        }
+        
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "[WINDOW_UPDATE] Updating window: ${currentActiveWindow ?: windowIndex} -> $newWindowIndex"
+        )
+        
+        // Update current active window tracking
+        currentActiveWindow = newWindowIndex
+        
+        // In continuous mode, reload window content from the conveyor cache
+        if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                try {
+                    // Wait for conveyor readiness (should already be ready, but safety check)
+                    readerViewModel.isConveyorReady.filter { it }.first()
+                    
+                    com.rifters.riftedreader.util.AppLogger.d(
+                        "ReaderPageFragment",
+                        "[WINDOW_UPDATE] Rendering new window content for windowIndex=$newWindowIndex"
+                    )
+                    
+                    // Reload base content which will fetch the new window HTML
+                    // The conveyor system will provide the correct window content based on
+                    // the active window at CENTER_INDEX
+                    renderBaseContent()
+                } catch (e: Exception) {
+                    com.rifters.riftedreader.util.AppLogger.e(
+                        "ReaderPageFragment",
+                        "[WINDOW_UPDATE] Error updating window content",
+                        e
+                    )
+                }
+            }
+        } else {
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "[WINDOW_UPDATE] Not in continuous mode, skipping window update"
+            )
+        }
+    }
 
     /**
      * Reset window scroll state when entering a new window.
