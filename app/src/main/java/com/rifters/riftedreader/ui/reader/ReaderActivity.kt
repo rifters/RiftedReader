@@ -775,14 +775,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             
                             // Force rebind the ViewHolder at target position to show new window content
                             // This is crucial after buffer shifts in STEADY phase
-                            // Must be outside the position-change check because in STEADY phase,
-                            // targetPosition is always CENTER_INDEX (2) but the window content changes
-                            pagerAdapter.notifyItemChanged(targetPosition)
-                            
-                            AppLogger.d(
-                                "ReaderActivity",
-                                "[CONVEYOR_SYNC] Rebound ViewHolder at position $targetPosition (activeWindow=$activeWindow, phase=$currentPhase) [REBIND]"
-                            )
+                            // Gate to STEADY phase only - during STARTUP, natural bind cycles handle content loading
+                            if (currentPhase == ConveyorPhase.STEADY) {
+                                pagerAdapter.notifyItemChanged(targetPosition)
+                                
+                                AppLogger.d(
+                                    "ReaderActivity",
+                                    "[CONVEYOR_SYNC] Rebound ViewHolder at position $targetPosition (activeWindow=$activeWindow, phase=$currentPhase) [REBIND]"
+                                )
+                            }
                         }
                     }
                 }
