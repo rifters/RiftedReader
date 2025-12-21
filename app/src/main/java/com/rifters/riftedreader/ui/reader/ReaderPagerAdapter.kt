@@ -74,10 +74,12 @@ class ReaderPagerAdapter(
             }.commitAllowingStateLoss()
         }
         
-        // Notify adapter that item at this position changed
+        // Use notifyDataSetChanged instead of notifyItemChanged
+        // notifyItemChanged doesn't force rebind for stationary items in RecyclerView
+        // notifyDataSetChanged forces ALL items to rebind
         mainHandler.post {
-            notifyItemChanged(position)
-            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] notifyItemChanged($position) posted to handler")
+            notifyDataSetChanged()
+            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] notifyDataSetChanged() posted to handler")
         }
     }
 
