@@ -34,6 +34,10 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     // Reference to adapter for triggering item refreshes after buffer shifts
     private var pagerAdapter: com.rifters.riftedreader.ui.reader.ReaderPagerAdapter? = null
     
+    // Callback to notify ReaderViewModel when to recenter the view after buffer shift
+    // Called to reset currentWindowIndex back to CENTER_BUFFER so RecyclerView scrolls back to center
+    private var onBufferShiftedCallback: ((newCenterWindow: Int) -> Unit)? = null
+    
     // Track the highest logical window index we've created (for calculating next windows during shifts)
     // This allows us to properly wrap indices in circular buffer
     private var maxLogicalWindowCreated: Int = 4
@@ -97,10 +101,23 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     /**
+     * Set callback to recenter view after buffer shift.
+     * Called with the CENTER buffer window, which tells ReaderViewModel to reset currentWindowIndex.
+     * This causes RecyclerView to auto-sync back to center position after shifting.
+     */
+    fun setOnBufferShiftedCallback(callback: (newCenterWindow: Int) -> Unit) {
+        this.onBufferShiftedCallback = callback
+        log("INIT", "Buffer shifted callback set")
+    }
+    
+    /**
      * Apply pending buffer shift NOW (called when CONTENT_LOADED fires).
      * 
      * In steady phase, we defer the buffer shift until content is fully loaded.
      * This avoids the race condition where fragment rebinds before content is ready.
+     * 
+     * After shifting the buffer, calls the onBufferShiftedCallback to reset the view.
+     * This makes the RecyclerView scroll back to center (position 2).
      * 
      * Call this from ReaderActivity when [CONTENT_LOADED] event is emitted.
      */
@@ -117,6 +134,13 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         pagerAdapter?.invalidatePositionDueToBufferShift(CENTER_INDEX)
         
         log("PENDING_SHIFT", "Pending shift applied and adapter notified")
+        
+        // Call callback to recenter view back to CENTER_INDEX
+        // This resets currentWindowIndex to the CENTER buffer window
+        // Which causes RecyclerView to sync back to position 2
+        val centerWindow = shift.buffer[CENTER_INDEX]
+        onBufferShiftedCallback?.invoke(centerWindow)
+        log("PENDING_SHIFT", "Recenter callback invoked: centerWindow=$centerWindow")
         
         // Clear pending shift
         pendingBufferShift = null

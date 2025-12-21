@@ -276,6 +276,19 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         // Register adapter with conveyor system for buffer shift notifications
         viewModel.conveyorBeltSystem?.setPagerAdapter(pagerAdapter)
         
+        // Set callback to recenter view after buffer shift
+        // When buffer shifts, we reset currentWindowIndex to the CENTER window
+        // This makes RecyclerView auto-sync back to position 2
+        viewModel.conveyorBeltSystem?.setOnBufferShiftedCallback { newCenterWindow ->
+            AppLogger.d(
+                "ReaderActivity",
+                "[BUFFER_SHIFT_COMPLETE] Recentering view: newCenterWindow=$newCenterWindow [RECENTER_VIEW]"
+            )
+            // This triggers the currentWindowIndex collection to fire again
+            // Which will sync RecyclerView back to position 2
+            viewModel.resetWindowIndexToCenter(newCenterWindow)
+        }
+        
         // Set up RecyclerView with horizontal LinearLayoutManager and PagerSnapHelper
         layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         snapHelper = PagerSnapHelper()
