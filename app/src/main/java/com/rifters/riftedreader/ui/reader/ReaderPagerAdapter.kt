@@ -53,6 +53,33 @@ class ReaderPagerAdapter(
     
     // Flag to track if window count mismatch warning has been logged (emit only once per session)
     private var windowMismatchWarningLogged: Boolean = false
+    
+    /**
+     * Signal to the adapter that a specific position's content has changed due to buffer shift.
+     * This forces the fragment at that position to be destroyed and recreated.
+     * Called by ConveyorBeltSystemViewModel when buffer shifts.
+     */
+    fun invalidatePositionDueToBufferShift(position: Int) {
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] invalidatePositionDueToBufferShift: position=$position")
+        
+        // Remove the cached window mapping
+        positionToWindowMap.remove(position)
+        
+        // Remove the fragment at this position
+        val fragmentTag = "f$position"
+        fragmentManager.findFragmentByTag(fragmentTag)?.let { fragment ->
+            fragmentManager.beginTransaction().apply {
+                AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Removing fragment at position $position due to buffer shift")
+                remove(fragment)
+            }.commitAllowingStateLoss()
+        }
+        
+        // Notify adapter that item at this position changed
+        mainHandler.post {
+            notifyItemChanged(position)
+            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] notifyItemChanged($position) posted to handler")
+        }
+    }
 
     override fun getItemCount(): Int {
         // Adapter manages a sliding 5-window buffer

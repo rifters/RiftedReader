@@ -31,6 +31,9 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     // HTML cache for loaded windows
     private val htmlCache = mutableMapOf<Int, String>()
     
+    // Reference to adapter for triggering item refreshes after buffer shifts
+    private var pagerAdapter: com.rifters.riftedreader.ui.reader.ReaderPagerAdapter? = null
+    
     // Track the highest logical window index we've created (for calculating next windows during shifts)
     // This allows us to properly wrap indices in circular buffer
     private var maxLogicalWindowCreated: Int = 4
@@ -73,6 +76,14 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         this.slidingWindowManager = windowManager
         this.bookId = bookId
         log("INIT", "HTML loading dependencies set: bookId=$bookId")
+    }
+    
+    /**
+     * Set the pager adapter for triggering UI updates during buffer shifts.
+     */
+    fun setPagerAdapter(adapter: com.rifters.riftedreader.ui.reader.ReaderPagerAdapter) {
+        this.pagerAdapter = adapter
+        log("INIT", "Pager adapter set for UI refresh notifications")
     }
     
     /**
@@ -322,6 +333,10 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("STEADY_FORWARD", "Final buffer: ${_buffer.value}, activeWindow: $windowIndex, maxLogical: $maxLogicalWindowCreated")
         
+        // Notify adapter to refresh the center position where the new window content is
+        // In steady phase, the window always appears at CENTER_INDEX (position 2)
+        pagerAdapter?.invalidatePositionDueToBufferShift(CENTER_INDEX)
+        
         // Execute shift: drop old windows from cache, load new windows in background
         // The HTML loading happens asynchronously. User is currently at windowIndex and must
         // swipe multiple times before reaching the newly added windows, giving time for HTML to load.
@@ -349,6 +364,10 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         _activeWindow.value = windowIndex
         
         log("STEADY_BACKWARD", "Final buffer: ${_buffer.value}, activeWindow: $windowIndex, minLogical: $minLogicalWindowCreated")
+        
+        // Notify adapter to refresh the center position where the new window content is
+        // In steady phase, the window always appears at CENTER_INDEX (position 2)
+        pagerAdapter?.invalidatePositionDueToBufferShift(CENTER_INDEX)
         
         // Execute shift: drop old windows from cache, load new windows in background
         // The HTML loading happens asynchronously. User is currently at windowIndex and must

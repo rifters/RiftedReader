@@ -273,6 +273,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
         pagerAdapter = ReaderPagerAdapter(this, viewModel)
         
+        // Register adapter with conveyor system for buffer shift notifications
+        viewModel.conveyorBeltSystem?.setPagerAdapter(pagerAdapter)
+        
         // Set up RecyclerView with horizontal LinearLayoutManager and PagerSnapHelper
         layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         snapHelper = PagerSnapHelper()
