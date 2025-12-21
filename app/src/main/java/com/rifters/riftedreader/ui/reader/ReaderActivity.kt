@@ -748,6 +748,14 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                                 )
                                 setCurrentItem(adapterPosition, false)
                             }
+                            
+                            // CRITICAL: Tell ConveyorBeltSystem that user entered this window
+                            // This triggers phase transitions and buffer shifts in steady state
+                            viewModel.conveyorBeltSystem?.onWindowEntered(windowIndex)
+                            AppLogger.d(
+                                "ReaderActivity",
+                                "Notified ConveyorBeltSystem: onWindowEntered($windowIndex) [CONVEYOR_NOTIFICATION]"
+                            )
                         }
                     }
                 }
