@@ -59,6 +59,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
          * In STEADY phase, the active window is always kept centered at this position.
          */
         private const val CENTER_INDEX = 2
+        
+        /**
+         * Reusable Bundle for payload updates to avoid allocation overhead.
+         * This is safe because payload updates are synchronous on the main thread.
+         */
+        private val payloadBundle = Bundle()
     }
     
     private lateinit var binding: ActivityReaderBinding
@@ -774,10 +780,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             } else if (currentPhase == ConveyorPhase.STEADY) {
                                 // Path 2: STEADY phase content refresh - position unchanged but window content changed
                                 // Use payload to update fragment without full rebind
-                                val payload = Bundle().apply {
-                                    putInt("activeWindow", activeWindow)
-                                }
-                                pagerAdapter.notifyItemRangeChanged(targetPosition, 1, payload)
+                                // Reuse companion payloadBundle to avoid allocation overhead
+                                payloadBundle.clear()
+                                payloadBundle.putInt("activeWindow", activeWindow)
+                                pagerAdapter.notifyItemRangeChanged(targetPosition, 1, payloadBundle)
                                 
                                 AppLogger.d(
                                     "ReaderActivity",

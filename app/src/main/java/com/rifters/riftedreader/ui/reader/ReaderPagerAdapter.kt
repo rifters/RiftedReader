@@ -79,7 +79,7 @@ class ReaderPagerAdapter(
     override fun onBindViewHolder(holder: PageViewHolder, position: Int, payloads: List<Any>) {
         if (payloads.isNotEmpty()) {
             // Payload update: just refresh window content without full rebind
-            val bundle = payloads[0] as? Bundle
+            val bundle = payloads.firstOrNull() as? Bundle
             if (bundle != null) {
                 val activeWindow = bundle.getInt("activeWindow", -1)
                 AppLogger.d("ReaderPagerAdapter", "[PAYLOAD_UPDATE] Updating fragment at position $position with activeWindow=$activeWindow")
