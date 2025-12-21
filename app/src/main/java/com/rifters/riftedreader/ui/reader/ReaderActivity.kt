@@ -759,29 +759,26 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                                 "currentPagerPosition=$currentPagerPosition [WINDOW_SYNC]"
                             )
                             
-                            // Only scroll if position actually changed
+                            // Handle position changes and STEADY phase buffer shifts with phase-aware logic
                             if (currentPagerPosition != targetPosition) {
-                                // Set flag to prevent circular updates
+                                // Position changed: scroll and rebind
                                 programmaticScrollInProgress = true
-                                
-                                // Sync RecyclerView to the target position
                                 setCurrentItem(targetPosition, false)
-                                
-                                AppLogger.d(
-                                    "ReaderActivity",
-                                    "[CONVEYOR_SYNC] Scrolled to position $targetPosition [SCROLL]"
-                                )
-                            }
-                            
-                            // Force rebind the ViewHolder at target position to show new window content
-                            // This is crucial after buffer shifts in STEADY phase
-                            // Gate to STEADY phase only - during STARTUP, natural bind cycles handle content loading
-                            if (currentPhase == ConveyorPhase.STEADY) {
                                 pagerAdapter.notifyItemChanged(targetPosition)
                                 
                                 AppLogger.d(
                                     "ReaderActivity",
-                                    "[CONVEYOR_SYNC] Rebound ViewHolder at position $targetPosition (activeWindow=$activeWindow, phase=$currentPhase) [REBIND]"
+                                    "[CONVEYOR_SYNC] Position changed: scrolled to $targetPosition and rebound " +
+                                    "(activeWindow=$activeWindow, phase=$currentPhase) [SCROLL+REBIND]"
+                                )
+                            } else if (currentPhase == ConveyorPhase.STEADY) {
+                                // STEADY phase only: position unchanged but window content changed - rebind only
+                                pagerAdapter.notifyItemChanged(targetPosition)
+                                
+                                AppLogger.d(
+                                    "ReaderActivity",
+                                    "[CONVEYOR_SYNC] STEADY buffer shift: rebound at position $targetPosition " +
+                                    "(activeWindow=$activeWindow, no scroll needed) [REBIND_ONLY]"
                                 )
                             }
                         }
