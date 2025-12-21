@@ -79,11 +79,20 @@ class ReaderPagerAdapter(
         val totalWindows = viewModel.windowCount.value
         val currentWindowIndex = viewModel.currentWindowIndex.value
         
+        // Get the actual logical window index from the buffer (not the position)
+        val buffer = viewModel.conveyorBeltSystem?.buffer?.value
+        val logicalWindowIndex = if (buffer != null && position < buffer.size) {
+            buffer[position]
+        } else {
+            position  // Fallback to position if buffer not available
+        }
+        
         // [PAGINATION_DEBUG] Enhanced binding logging
         AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onBindViewHolder: " +
-            "position=$position (windowIndex), " +
+            "position=$position, logicalWindowIndex=$logicalWindowIndex, " +
             "totalWindows=$totalWindows, " +
             "currentWindowIndex=$currentWindowIndex, " +
+            "buffer=$buffer, " +
             "containerWidth=${holder.containerView.width}, " +
             "containerHeight=${holder.containerView.height}")
         
@@ -95,15 +104,15 @@ class ReaderPagerAdapter(
         if (existingFragment != null && existingFragment.isAdded) {
             // Fragment already exists and is added, no need to recreate
             AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment REUSED: " +
-                "position=$position, fragmentTag=$fragmentTag, isAdded=${existingFragment.isAdded}, " +
+                "position=$position, logicalWindowIndex=$logicalWindowIndex, fragmentTag=$fragmentTag, isAdded=${existingFragment.isAdded}, " +
                 "isVisible=${existingFragment.isVisible}")
             return
         }
         
-        // Create new fragment for this position
-        val fragment = ReaderPageFragment.newInstance(position)
+        // Create new fragment for this position using LOGICAL window index, not position
+        val fragment = ReaderPageFragment.newInstance(logicalWindowIndex)
         AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment CREATING: " +
-            "position=$position (windowIndex=$position), fragmentTag=$fragmentTag, " +
+            "position=$position, logicalWindowIndex=$logicalWindowIndex, fragmentTag=$fragmentTag, " +
             "activeFragments=${activeFragments.size}")
         
         // Capture holder position for validation in the posted transaction

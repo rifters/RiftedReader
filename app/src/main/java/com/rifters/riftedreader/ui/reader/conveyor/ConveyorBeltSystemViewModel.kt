@@ -31,6 +31,13 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     // HTML cache for loaded windows
     private val htmlCache = mutableMapOf<Int, String>()
     
+    // Track the highest logical window index we've created (for calculating next windows during shifts)
+    // This allows us to properly wrap indices in circular buffer
+    private var maxLogicalWindowCreated: Int = 4
+    
+    // Track the lowest logical window index we've created (for handling backward shifts)
+    private var minLogicalWindowCreated: Int = 0
+    
     private val _buffer = MutableStateFlow<List<Int>>((0..4).toList())
     val buffer: StateFlow<List<Int>> = _buffer.asStateFlow()
     
@@ -244,12 +251,14 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         while (shiftCount > 0) {
             val removedWindow = currentBuffer.removeAt(0)
-            val newWindow = currentBuffer.last() + 1
+            // Increment maxLogicalWindowCreated to get next window ID
+            maxLogicalWindowCreated++
+            val newWindow = maxLogicalWindowCreated
             currentBuffer.add(newWindow)
             windowsToRemove.add(removedWindow)
             windowsToAdd.add(newWindow)
             shiftCount--
-            log("SHIFT", "Shifted right: ${currentBuffer}, signal: remove $removedWindow, create $newWindow")
+            log("SHIFT", "Shifted right: ${currentBuffer}, signal: remove $removedWindow, create $newWindow (maxLogical=$maxLogicalWindowCreated)")
         }
         
         _buffer.value = currentBuffer
@@ -257,7 +266,7 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         _phase.value = ConveyorPhase.STEADY
         
         log("TRANSITION", "*** PHASE TRANSITION: STARTUP → STEADY ***")
-        log("TRANSITION", "New buffer: ${_buffer.value}, activeWindow: $windowIndex, center: ${_buffer.value[CENTER_INDEX]}")
+        log("TRANSITION", "New buffer: ${_buffer.value}, activeWindow: $windowIndex, center: ${_buffer.value[CENTER_INDEX]}, maxLogical: $maxLogicalWindowCreated")
         
         // Execute shift: drop old windows from cache, load new windows
         // Launch in viewModelScope to avoid blocking UI thread
@@ -299,17 +308,19 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         repeat(shiftCount) { i ->
             val removedWindow = buffer.removeAt(0)
-            val newWindow = buffer.last() + 1
+            // Increment maxLogicalWindowCreated to get next window ID
+            maxLogicalWindowCreated++
+            val newWindow = maxLogicalWindowCreated
             buffer.add(newWindow)
             windowsToRemove.add(removedWindow)
             windowsToAdd.add(newWindow)
-            log("SHIFT", "$i: ${buffer}, signal: remove $removedWindow, create $newWindow")
+            log("SHIFT", "$i: ${buffer}, signal: remove $removedWindow, create $newWindow (maxLogical=$maxLogicalWindowCreated)")
         }
         
         _buffer.value = buffer
         _activeWindow.value = windowIndex
         
-        log("STEADY_FORWARD", "Final buffer: ${_buffer.value}, activeWindow: $windowIndex")
+        log("STEADY_FORWARD", "Final buffer: ${_buffer.value}, activeWindow: $windowIndex, maxLogical: $maxLogicalWindowCreated")
         
         // Execute shift: drop old windows from cache, load new windows in background
         // The HTML loading happens asynchronously. User is currently at windowIndex and must
@@ -325,17 +336,19 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         repeat(shiftCount) { i ->
             val removedWindow = buffer.removeAt(buffer.size - 1)
-            val newWindow = buffer.first() - 1
+            // Decrement minLogicalWindowCreated to get next window ID going backward
+            minLogicalWindowCreated--
+            val newWindow = minLogicalWindowCreated
             buffer.add(0, newWindow)
             windowsToRemove.add(removedWindow)
             windowsToAdd.add(newWindow)
-            log("SHIFT", "$i: ${buffer}, signal: remove $removedWindow, create $newWindow")
+            log("SHIFT", "$i: ${buffer}, signal: remove $removedWindow, create $newWindow (minLogical=$minLogicalWindowCreated)")
         }
         
         _buffer.value = buffer
         _activeWindow.value = windowIndex
         
-        log("STEADY_BACKWARD", "Final buffer: ${_buffer.value}, activeWindow: $windowIndex")
+        log("STEADY_BACKWARD", "Final buffer: ${_buffer.value}, activeWindow: $windowIndex, minLogical: $minLogicalWindowCreated")
         
         // Execute shift: drop old windows from cache, load new windows in background
         // The HTML loading happens asynchronously. User is currently at windowIndex and must
