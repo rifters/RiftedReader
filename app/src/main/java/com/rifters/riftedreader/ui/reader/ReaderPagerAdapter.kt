@@ -9,6 +9,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentManager
 import androidx.recyclerview.widget.RecyclerView
 import com.rifters.riftedreader.R
+import com.rifters.riftedreader.ui.reader.conveyor.ConveyorPhase
 import com.rifters.riftedreader.util.AppLogger
 
 /**
@@ -112,24 +113,19 @@ class ReaderPagerAdapter(
 
     override fun onBindViewHolder(holder: PageViewHolder, position: Int) {
         val totalWindows = viewModel.windowCount.value
-        val buffer = viewModel.conveyorBeltSystem?.buffer?.value
+        val conveyor = viewModel.conveyorBeltSystem
         
-        // Always use buffer - it's the source of truth
-        // STARTUP: buffer=[0,1,2,3,4] (doesn't shift)
-        // STEADY: buffer shifts, invalidatePositionDueToBufferShift() forces rebind to see new values
-        val logicalWindowIndex = if (buffer != null && position < buffer.size) {
-            buffer[position]
-        } else {
-            // No buffer yet - use position as window index
-            position
-        }
+        // Use the new getWindowIndexAtPosition() helper from ConveyorBeltSystemViewModel
+        // This handles both STARTUP and STEADY phase logic automatically
+        val logicalWindowIndex = conveyor?.getWindowIndexAtPosition(position) ?: position
         
         // [PAGINATION_DEBUG] Enhanced binding logging
         AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onBindViewHolder: "
  +
             "position=$position, logicalWindowIndex=$logicalWindowIndex, " +
             "totalWindows=$totalWindows, " +
-            "buffer=$buffer, " +
+            "activeWindow=${conveyor?.activeWindow?.value}, " +
+            "phase=${conveyor?.phase?.value}, " +
             "containerWidth=${holder.containerView.width}, " +
             "containerHeight=${holder.containerView.height}")
         

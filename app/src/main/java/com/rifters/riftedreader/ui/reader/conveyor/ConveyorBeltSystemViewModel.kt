@@ -45,14 +45,20 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     // Track the lowest logical window index we've created (for handling backward shifts)
     private var minLogicalWindowCreated: Int = 0
     
-    private val _buffer = MutableStateFlow<List<Int>>((0..4).toList())
+    // LinkedHashMap maintains insertion order: oldest first, newest last
+    // Dropping oldest = remove first key, Adding newest = put(windowIndex, true)
+    private val windowCache = linkedMapOf<Int, Boolean>()
+    
+    // StateFlow for observers - exposes cached window indices as a list
+    private val _buffer = MutableStateFlow<List<Int>>(listOf())
     val buffer: StateFlow<List<Int>> = _buffer.asStateFlow()
     
     private val _activeWindow = MutableStateFlow<Int>(0)
     val activeWindow: StateFlow<Int> = _activeWindow.asStateFlow()
     
     data class PendingShift(
-        val buffer: MutableList<Int>,
+        val windowsToRemove: List<Int>,
+        val windowsToAdd: List<Int>,
         val windowIndex: Int,
         val direction: String  // "forward" or "backward"
     )
@@ -72,6 +78,45 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
     
     private var shiftsUnlocked = false
+    
+    /**
+     * Map a RecyclerView position (0-4) to the actual window index based on active window.
+     * 
+     * In STARTUP phase: buffer is locked [0,1,2,3,4], position directly maps to window
+     * In STEADY phase: active window is centered at position 2, use offset calculation
+     *   Position 0 = activeWindow - 2
+     *   Position 1 = activeWindow - 1
+     *   Position 2 = activeWindow (CENTER)
+     *   Position 3 = activeWindow + 1
+     *   Position 4 = activeWindow + 2
+     * 
+     * Public method used by ReaderPagerAdapter to map positions to window indices.
+     */
+    fun getWindowIndexAtPosition(position: Int): Int {
+        return if (_phase.value == ConveyorPhase.STARTUP) {
+            // In STARTUP: buffer is locked [0,1,2,3,4], position = window index
+            position
+        } else {
+            // In STEADY: use center-relative calculation from active window
+            val offset = position - CENTER_INDEX
+            _activeWindow.value + offset
+        }
+    }
+    
+    /**
+     * Get the list of windows that should be at each position based on active window.
+     * This is used to map positions to window indices for display.
+     */
+    private fun getExpectedWindowsForDisplay(): List<Int> {
+        val activeWin = _activeWindow.value
+        return listOf(
+            activeWin - 2,  // position 0
+            activeWin - 1,  // position 1
+            activeWin,      // position 2 (center)
+            activeWin + 1,  // position 3
+            activeWin + 2   // position 4
+        )
+    }
     
     /**
      * Set dependencies needed for HTML loading.
@@ -106,22 +151,34 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     /**
-     * Apply a buffer shift - update buffer, update active window, and refresh adapter.
-     * Can be called either immediately or deferred until content loads.
+     * Apply a buffer shift - update window cache and active window.
+     * Removes old windows, adds new windows to the cache.
      */
     fun applyBufferShift(shift: PendingShift) {
         com.rifters.riftedreader.util.AppLogger.d("ConveyorBeltSystemViewModel",
-            "[BUFFER_SHIFT_START] Applying buffer shift: direction=${shift.direction}, newBuffer=${shift.buffer}"
+            "[BUFFER_SHIFT_START] Applying buffer shift: direction=${shift.direction}, remove=${shift.windowsToRemove}, add=${shift.windowsToAdd}"
         )
         
-        log("BUFFER_SHIFT", "Applying buffer shift: ${shift.direction}, buffer=${shift.buffer}")
+        log("BUFFER_SHIFT", "Applying buffer shift: ${shift.direction}, removing=${shift.windowsToRemove}, adding=${shift.windowsToAdd}")
         
-        // Update buffer and active window
-        _buffer.value = shift.buffer
+        // Remove old windows from cache
+        shift.windowsToRemove.forEach { windowIndex ->
+            windowCache.remove(windowIndex)
+        }
+        
+        // Add new windows to cache (will be loaded asynchronously)
+        shift.windowsToAdd.forEach { windowIndex ->
+            windowCache[windowIndex] = true
+        }
+        
+        // Update active window
         _activeWindow.value = shift.windowIndex
         
+        // Update StateFlow with current cache keys
+        _buffer.value = windowCache.keys.toList()
+        
         com.rifters.riftedreader.util.AppLogger.d("ConveyorBeltSystemViewModel",
-            "[BUFFER_SHIFT_UPDATE] Buffer updated: activeWindow=${shift.windowIndex}, buffer=${shift.buffer}"
+            "[BUFFER_SHIFT_UPDATE] Buffer updated: activeWindow=${shift.windowIndex}, cachedWindows=${windowCache.keys.toList()}"
         )
         
         // Now trigger the adapter refresh
@@ -276,9 +333,9 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     private fun handleStartupNavigation(windowIndex: Int) {
         log("STARTUP", "Navigating to window $windowIndex")
         
-        // Check if window is in buffer
-        if (windowIndex !in _buffer.value) {
-            log("STARTUP", "Window $windowIndex not in buffer, ignoring")
+        // Check if window is in cache
+        if (windowIndex !in windowCache) {
+            log("STARTUP", "Window $windowIndex not in cache, ignoring")
             return
         }
         
@@ -300,47 +357,39 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     private fun transitionToSteady(windowIndex: Int) {
         log("TRANSITION", "Moving to window $windowIndex triggers STEADY phase")
         
-        // Shift buffer right to center on new window
-        val currentBuffer = _buffer.value.toMutableList()
-        
-        // Calculate how many shifts needed
-        val currentCenterWindow = currentBuffer[CENTER_INDEX]
-        var shiftCount = windowIndex - currentCenterWindow
-        
-        log("TRANSITION", "Current center: $currentCenterWindow, target: $windowIndex, shifts needed: $shiftCount")
-        
-        val windowsToRemove = mutableListOf<Int>()
+        // Calculate how many new windows we need to add to reach target window
+        // We need to load windows from activeWindow+3 onwards
         val windowsToAdd = mutableListOf<Int>()
+        val activeWin = _activeWindow.value
         
-        while (shiftCount > 0) {
-            val removedWindow = currentBuffer.removeAt(0)
-            // Increment maxLogicalWindowCreated to get next window ID
-            maxLogicalWindowCreated++
-            val newWindow = maxLogicalWindowCreated
-            currentBuffer.add(newWindow)
-            windowsToRemove.add(removedWindow)
-            windowsToAdd.add(newWindow)
-            shiftCount--
-            log("SHIFT", "Shifted right: ${currentBuffer}, signal: remove $removedWindow, create $newWindow (maxLogical=$maxLogicalWindowCreated)")
+        // The next windows we'll need in steady state (beyond current cache)
+        for (i in 1..2) {
+            val nextWin = maxLogicalWindowCreated + i
+            windowsToAdd.add(nextWin)
         }
         
-        _buffer.value = currentBuffer
+        // Add new windows to cache
+        windowsToAdd.forEach { windowIndex ->
+            windowCache[windowIndex] = true
+        }
+        
+        maxLogicalWindowCreated = windowCache.keys.maxOrNull() ?: maxLogicalWindowCreated
+        
         _activeWindow.value = windowIndex
         _phase.value = ConveyorPhase.STEADY
+        _buffer.value = windowCache.keys.toList()
         
         log("TRANSITION", "*** PHASE TRANSITION: STARTUP → STEADY ***")
-        log("TRANSITION", "New buffer: ${_buffer.value}, activeWindow: $windowIndex, center: ${_buffer.value[CENTER_INDEX]}, maxLogical: $maxLogicalWindowCreated")
+        log("TRANSITION", "New cache: ${windowCache.keys.toList()}, activeWindow: $windowIndex, maxLogical: $maxLogicalWindowCreated")
         
-        // Execute shift: drop old windows from cache, load new windows
-        // Launch in viewModelScope to avoid blocking UI thread
-        executeShiftAsync(windowsToRemove, windowsToAdd)
+        // Preload new windows asynchronously
+        preloadWindowsAsync(windowsToAdd)
     }
     
     private fun handleSteadyNavigation(windowIndex: Int) {
         log("STEADY", "Navigating to window $windowIndex")
         
-        val currentBuffer = _buffer.value.toMutableList()
-        val currentCenter = currentBuffer[CENTER_INDEX]
+        val currentCenter = _activeWindow.value
         
         // Check if navigating back to window 2 (revert condition)
         if (windowIndex == UNLOCK_WINDOW) {
@@ -353,75 +402,75 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         if (shiftDelta > 0) {
             // Navigate forward: shift right
-            handleSteadyForward(windowIndex, currentBuffer, shiftDelta)
+            handleSteadyForward(windowIndex, shiftDelta)
         } else if (shiftDelta < 0) {
             // Navigate backward: shift left
-            handleSteadyBackward(windowIndex, currentBuffer, -shiftDelta)
+            handleSteadyBackward(windowIndex, -shiftDelta)
         } else {
             log("STEADY", "Already at window $windowIndex (center)")
             _activeWindow.value = windowIndex
         }
     }
     
-    private fun handleSteadyForward(windowIndex: Int, buffer: MutableList<Int>, shiftCount: Int) {
+    private fun handleSteadyForward(windowIndex: Int, shiftCount: Int) {
         log("STEADY_FORWARD", "Navigating to window $windowIndex, shifts: $shiftCount")
         
         val windowsToRemove = mutableListOf<Int>()
         val windowsToAdd = mutableListOf<Int>()
         
         repeat(shiftCount) { i ->
-            val removedWindow = buffer.removeAt(0)
-            // Increment maxLogicalWindowCreated to get next window ID
+            // Remove the oldest window from cache
+            val oldestKey = windowCache.keys.first()
+            windowCache.remove(oldestKey)
+            windowsToRemove.add(oldestKey)
+            
+            // Add next new window
             maxLogicalWindowCreated++
             val newWindow = maxLogicalWindowCreated
-            buffer.add(newWindow)
-            windowsToRemove.add(removedWindow)
+            windowCache[newWindow] = true
             windowsToAdd.add(newWindow)
-            log("SHIFT", "$i: ${buffer}, signal: remove $removedWindow, create $newWindow (maxLogical=$maxLogicalWindowCreated)")
+            
+            log("SHIFT", "Forward shift $i: remove $oldestKey, add $newWindow (cache now: ${windowCache.keys.toList()})")
         }
         
-        log("STEADY_FORWARD", "Final buffer: ${buffer}, activeWindow: $windowIndex, maxLogical: $maxLogicalWindowCreated")
+        log("STEADY_FORWARD", "Final cache: ${windowCache.keys.toList()}, activeWindow: $windowIndex, maxLogical: $maxLogicalWindowCreated")
         
         // Apply buffer shift immediately
-        // invalidatePositionDueToBufferShift() removes the old fragment and forces rebind,
-        // so there's no race condition - the fresh fragment will load the correct window's HTML
-        applyBufferShift(PendingShift(buffer, windowIndex, "forward"))
+        applyBufferShift(PendingShift(windowsToRemove, windowsToAdd, windowIndex, "forward"))
         log("STEADY_FORWARD", "Buffer shift APPLIED immediately - windowIndex=$windowIndex")
         
-        // Execute shift: drop old windows from cache, load new windows in background
-        // The HTML loading happens asynchronously. User is currently at windowIndex and must
-        // swipe multiple times before reaching the newly added windows, giving time for HTML to load.
+        // Execute shift: load new windows in background
         executeShiftAsync(windowsToRemove, windowsToAdd)
     }
     
-    private fun handleSteadyBackward(windowIndex: Int, buffer: MutableList<Int>, shiftCount: Int) {
+    private fun handleSteadyBackward(windowIndex: Int, shiftCount: Int) {
         log("STEADY_BACKWARD", "Navigating to window $windowIndex, shifts: $shiftCount")
         
         val windowsToRemove = mutableListOf<Int>()
         val windowsToAdd = mutableListOf<Int>()
         
         repeat(shiftCount) { i ->
-            val removedWindow = buffer.removeAt(buffer.size - 1)
-            // Decrement minLogicalWindowCreated to get next window ID going backward
+            // Remove the newest window from cache (last in LinkedHashMap)
+            val newestKey = windowCache.keys.last()
+            windowCache.remove(newestKey)
+            windowsToRemove.add(newestKey)
+            
+            // Add previous new window (going backward)
             minLogicalWindowCreated--
             val newWindow = minLogicalWindowCreated
-            buffer.add(0, newWindow)
-            windowsToRemove.add(removedWindow)
+            windowCache[newWindow] = true  // This adds to the front when we iterate keys later
             windowsToAdd.add(newWindow)
-            log("SHIFT", "$i: ${buffer}, signal: remove $removedWindow, create $newWindow (minLogical=$minLogicalWindowCreated)")
+            
+            log("SHIFT", "Backward shift $i: remove $newestKey, add $newWindow (cache now: ${windowCache.keys.toList()})")
         }
         
-        log("STEADY_BACKWARD", "Final buffer: ${buffer}, activeWindow: $windowIndex, minLogical: $minLogicalWindowCreated")
+        log("STEADY_BACKWARD", "Final cache: ${windowCache.keys.toList()}, activeWindow: $windowIndex, minLogical: $minLogicalWindowCreated")
         
         // Apply buffer shift immediately
-        // invalidatePositionDueToBufferShift() removes the old fragment and forces rebind,
-        // so there's no race condition - the fresh fragment will load the correct window's HTML
-        applyBufferShift(PendingShift(buffer, windowIndex, "backward"))
+        applyBufferShift(PendingShift(windowsToRemove, windowsToAdd, windowIndex, "backward"))
         log("STEADY_BACKWARD", "Buffer shift APPLIED immediately - windowIndex=$windowIndex")
         
-        // Execute shift: drop old windows from cache, load new windows in background
-        // The HTML loading happens asynchronously. User is currently at windowIndex and must
-        // swipe multiple times before reaching the newly added windows, giving time for HTML to load.
+        // Execute shift: load new windows in background
         executeShiftAsync(windowsToRemove, windowsToAdd)
     }
     
@@ -456,20 +505,28 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     private fun revertToStartup() {
         log("REVERT", "Hit boundary!  Navigating back to window 2")
         
-        _buffer.value = (0..4).toList()
+        // Reset cache to initial windows [0-4]
+        windowCache.clear()
+        for (i in 0..4) {
+            windowCache[i] = true
+        }
+        
+        _buffer.value = windowCache.keys.toList()
         _activeWindow.value = UNLOCK_WINDOW
         _phase.value = ConveyorPhase.STARTUP
         shiftsUnlocked = false
+        maxLogicalWindowCreated = 4
+        minLogicalWindowCreated = 0
         
         log("REVERT", "*** PHASE TRANSITION: STEADY → STARTUP ***")
-        log("REVERT", "Buffer reverted: ${_buffer.value}, activeWindow: $UNLOCK_WINDOW")
+        log("REVERT", "Cache reverted: ${windowCache.keys.toList()}, activeWindow: $UNLOCK_WINDOW")
         
         // Clear HTML cache on revert since we're going back to initial windows
         htmlCache.clear()
         log("REVERT", "HTML cache cleared")
         
         // Preload initial windows asynchronously
-        preloadWindowsAsync(_buffer.value)
+        preloadWindowsAsync(windowCache.keys.toList())
     }
     
     // Methods needed by ConveyorDebugActivity and ConveyorBeltIntegrationBridge
@@ -490,11 +547,21 @@ class ConveyorBeltSystemViewModel : ViewModel() {
             bufferStart = (bufferEnd - BUFFER_SIZE + 1).coerceAtLeast(0)
         }
         
-        // Initialize buffer from start window
-        _buffer.value = (bufferStart..bufferEnd).toList()
+        // Initialize window cache (LinkedHashMap) with starting windows
+        windowCache.clear()
+        for (windowIndex in bufferStart..bufferEnd) {
+            windowCache[windowIndex] = true
+        }
+        
+        // Update StateFlow with current cache keys
+        _buffer.value = windowCache.keys.toList()
         _activeWindow.value = clampedStart
         _phase.value = ConveyorPhase.STARTUP
         shiftsUnlocked = false
+        
+        // Track logical window bounds for shift calculations
+        maxLogicalWindowCreated = bufferEnd
+        minLogicalWindowCreated = bufferStart
         
         // Set window count and mark as initialized
         _windowCount.value = totalWindowCount
@@ -503,10 +570,10 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         // Clear any existing HTML cache
         htmlCache.clear()
         
-        log("INIT", "Conveyor initialized: windowCount=$totalWindowCount, buffer=${_buffer.value}, isInitialized=true")
+        log("INIT", "Conveyor initialized: windowCount=$totalWindowCount, cachedWindows=${windowCache.keys.toList()}, activeWindow=$clampedStart, isInitialized=true")
         
         // Preload initial buffer windows asynchronously
-        preloadWindowsAsync(_buffer.value)
+        preloadWindowsAsync(windowCache.keys.toList())
     }
     
     fun simulateNextWindow() {
@@ -531,8 +598,8 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     fun getCenterWindow(): Int? {
-        val list = buffer.value
-        return if (list.size > CENTER_INDEX) list[CENTER_INDEX] else null
+        // Center window is always activeWindow (position 2 in the 5-window display)
+        return _activeWindow.value
     }
     
     private fun log(event: String, message: String) {
