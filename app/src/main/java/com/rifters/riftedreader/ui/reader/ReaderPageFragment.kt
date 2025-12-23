@@ -2238,6 +2238,33 @@ class ReaderPageFragment : Fragment() {
             }
         }
 
+    /**
+     * Update the fragment to display a different window/chapter.
+     * Called when buffer shifts and this fragment needs to show new content.
+     * 
+     * This bypasses RecyclerView's "no rebind" optimization when position 2
+     * already holds a fragment but the logical window it displays has changed.
+     * 
+     * @param newWindowIndex The new window/chapter index to display
+     */
+    fun updateWindow(newWindowIndex: Int) {
+        // Update the window index that was set via arguments
+        requireArguments().putInt(ARG_PAGE_INDEX, newWindowIndex)
+        
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "updateWindow called: changing to windowIndex=$newWindowIndex, triggering renderBaseContent"
+        )
+        
+        // Reset state for the new window
+        isPaginatorInitialized = false
+        currentInPageIndex = 0
+        pendingInitialInPageIndex = null
+        
+        // Trigger content reload with new window data
+        renderBaseContent()
+    }
+
     companion object {
         private const val ARG_PAGE_INDEX = "arg_page_index" // This is window index in continuous mode
         private const val FLING_THRESHOLD = 1000f // Minimum velocity for horizontal fling detection

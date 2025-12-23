@@ -276,16 +276,22 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         // Register adapter with conveyor system for buffer shift notifications
         viewModel.conveyorBeltSystem?.setPagerAdapter(pagerAdapter)
         
-        // Set callback to recenter view after buffer shift
-        // When buffer shifts, directly scroll RecyclerView back to position 2 (center)
+        // Set callback to update fragment with new content after buffer shift
+        // When buffer shifts, the CENTER window changes, so the WebView at position 2 needs new content
         viewModel.conveyorBeltSystem?.setOnBufferShiftedCallback { newCenterWindow ->
             AppLogger.d(
                 "ReaderActivity",
-                "[BUFFER_SHIFT_COMPLETE] Recentering view: newCenterWindow=$newCenterWindow [RECENTER_VIEW]"
+                "[BUFFER_SHIFT_COMPLETE] Updating WebView with new window: $newCenterWindow [FRAGMENT_UPDATE]"
             )
-            // Directly scroll RecyclerView back to position 2 (center of 5-window buffer)
-            // This is safer than using -1 temporary state which triggers validation errors
-            binding.pageRecyclerView.smoothScrollToPosition(2)
+            // Get the fragment at position 2 (center of the 5-window buffer)
+            val centerFragment = supportFragmentManager.findFragmentByTag("f2") as? ReaderPageFragment
+            if (centerFragment != null) {
+                // Update the fragment to display the new window's content
+                centerFragment.updateWindow(newCenterWindow)
+                AppLogger.d("ReaderActivity", "[FRAGMENT_UPDATE] Success: Called updateWindow($newCenterWindow)")
+            } else {
+                AppLogger.w("ReaderActivity", "[FRAGMENT_UPDATE] Failed: Fragment at position 2 not found")
+            }
         }
         
         // Set up RecyclerView with horizontal LinearLayoutManager and PagerSnapHelper

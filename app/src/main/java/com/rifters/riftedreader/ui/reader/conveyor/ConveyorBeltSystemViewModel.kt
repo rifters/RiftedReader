@@ -101,9 +101,8 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     /**
-     * Set callback to recenter view after buffer shift.
-     * Called with the CENTER buffer window, which tells ReaderViewModel to reset currentWindowIndex.
-     * This causes RecyclerView to auto-sync back to center position after shifting.
+     * Set callback to update fragment with new window after buffer shift.
+     * Called with the new CENTER buffer window to display.
      */
     fun setOnBufferShiftedCallback(callback: (newCenterWindow: Int) -> Unit) {
         this.onBufferShiftedCallback = callback
@@ -116,8 +115,8 @@ class ConveyorBeltSystemViewModel : ViewModel() {
      * In steady phase, we defer the buffer shift until content is fully loaded.
      * This avoids the race condition where fragment rebinds before content is ready.
      * 
-     * After shifting the buffer, calls the onBufferShiftedCallback to reset the view.
-     * This makes the RecyclerView scroll back to center (position 2).
+     * After shifting the buffer, calls the onBufferShiftedCallback to refresh the
+     * WebView with the new window content.
      * 
      * Call this from ReaderActivity when [CONTENT_LOADED] event is emitted.
      */
@@ -135,12 +134,11 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("PENDING_SHIFT", "Pending shift applied and adapter notified")
         
-        // Call callback to recenter view back to CENTER_INDEX
-        // This resets currentWindowIndex to the CENTER buffer window
-        // Which causes RecyclerView to sync back to position 2
+        // Call callback to update fragment at position 2 with new window content
+        // The fragment will call renderBaseContent() to reload HTML
         val centerWindow = shift.buffer[CENTER_INDEX]
         onBufferShiftedCallback?.invoke(centerWindow)
-        log("PENDING_SHIFT", "Recenter callback invoked: centerWindow=$centerWindow")
+        log("PENDING_SHIFT", "Fragment update callback invoked: centerWindow=$centerWindow")
         
         // Clear pending shift
         pendingBufferShift = null
