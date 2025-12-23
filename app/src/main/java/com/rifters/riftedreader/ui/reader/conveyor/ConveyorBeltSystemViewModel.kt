@@ -31,13 +31,6 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     // HTML cache for loaded windows
     private val htmlCache = mutableMapOf<Int, String>()
     
-    // Reference to adapter for triggering item refreshes after buffer shifts
-    private var pagerAdapter: com.rifters.riftedreader.ui.reader.ReaderPagerAdapter? = null
-    
-    // Callback to notify ReaderViewModel when to recenter the view after buffer shift
-    // Called to reset currentWindowIndex back to CENTER_BUFFER so RecyclerView scrolls back to center
-    private var onBufferShiftedCallback: ((newCenterWindow: Int) -> Unit)? = null
-    
     // Track the highest logical window index we've created (for calculating next windows during shifts)
     // This allows us to properly wrap indices in circular buffer
     private var maxLogicalWindowCreated: Int = 4
@@ -168,25 +161,9 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     /**
-     * Set the pager adapter for triggering UI updates during buffer shifts.
-     */
-    fun setPagerAdapter(adapter: com.rifters.riftedreader.ui.reader.ReaderPagerAdapter) {
-        this.pagerAdapter = adapter
-        log("INIT", "Pager adapter set for UI refresh notifications")
-    }
-    
-    /**
-     * Set callback to update fragment with new window after buffer shift.
-     * Called with the new CENTER buffer window to display.
-     */
-    fun setOnBufferShiftedCallback(callback: (newCenterWindow: Int) -> Unit) {
-        this.onBufferShiftedCallback = callback
-        log("INIT", "Buffer shifted callback set")
-    }
-    
-    /**
      * Apply a buffer shift - update window cache and active window.
      * Removes old windows, adds new windows to the cache.
+     * ListAdapter will handle UI updates via DiffUtil when submitList() is called by the observer.
      */
     fun applyBufferShift(shift: PendingShift) {
         com.rifters.riftedreader.util.AppLogger.d("ConveyorBeltSystemViewModel",
@@ -208,21 +185,14 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         // Update active window
         _activeWindow.value = shift.windowIndex
         
-        // Update StateFlow with current cache keys
+        // Update StateFlow with current cache keys - this will trigger submitList() in ReaderActivity
         _buffer.value = windowCache.keys.toList()
         
         com.rifters.riftedreader.util.AppLogger.d("ConveyorBeltSystemViewModel",
             "[BUFFER_SHIFT_UPDATE] Buffer updated: activeWindow=${shift.windowIndex}, cachedWindows=${windowCache.keys.toList()}"
         )
         
-        // Now trigger the adapter refresh
-        pagerAdapter?.invalidatePositionDueToBufferShift(CENTER_INDEX)
-        
-        com.rifters.riftedreader.util.AppLogger.d("ConveyorBeltSystemViewModel",
-            "[BUFFER_SHIFT_ADAPTER] Adapter invalidated at CENTER_INDEX=$CENTER_INDEX"
-        )
-        
-        log("BUFFER_SHIFT", "Buffer shift applied and adapter notified")
+        log("BUFFER_SHIFT", "Buffer shift applied - ListAdapter will handle UI updates via DiffUtil")
         
         com.rifters.riftedreader.util.AppLogger.d("ConveyorBeltSystemViewModel",
             "[BUFFER_SHIFT_COMPLETE] Buffer shift completed successfully"
@@ -649,8 +619,13 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     fun getCenterWindow(): Int? {
-        // Center window is always activeWindow (position 2 in the 5-window display)
-        return _activeWindow.value
+        // Get the windowId at the center position (index 2) of the 5-window buffer
+        val bufferList = windowCache.keys.toList()
+        return if (bufferList.size >= CENTER_INDEX + 1) {
+            bufferList[CENTER_INDEX]
+        } else {
+            null
+        }
     }
     
     private fun log(event: String, message: String) {
