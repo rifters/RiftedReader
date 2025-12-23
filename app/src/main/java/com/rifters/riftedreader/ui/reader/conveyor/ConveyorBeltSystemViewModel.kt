@@ -128,14 +128,11 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         // Set this window as active
         _activeWindow.value = windowIndex
         
-        // Force adapter to rebind with the new active window
-        pagerAdapter?.notifyDataSetChanged()
-        
         // Get position of this window in the cache
         // (Window should already be in cache from STEADY phase loading it)
         val position = getPositionForWindow(windowIndex)
         
-        log("DISPLAY_WINDOW", "Window $windowIndex is active at position=$position (was already in cache)")
+        log("DISPLAY_WINDOW", "Window $windowIndex is active at position=$position")
         
         return position
     }
