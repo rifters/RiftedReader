@@ -80,26 +80,27 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     private var shiftsUnlocked = false
     
     /**
-     * Map a RecyclerView position (0-4) to the actual window index based on active window.
+     * Map a RecyclerView position (0-4) to the actual window index based on buffer state.
      * 
-     * In STARTUP phase: buffer is locked [0,1,2,3,4], position directly maps to window
-     * In STEADY phase: active window is centered at position 2, use offset calculation
-     *   Position 0 = activeWindow - 2
-     *   Position 1 = activeWindow - 1
-     *   Position 2 = activeWindow (CENTER)
-     *   Position 3 = activeWindow + 1
-     *   Position 4 = activeWindow + 2
+     * The buffer is the source of truth for which windows are at which positions.
+     * Always look it up directly instead of calculating.
+     * 
+     * Example: if buffer = [1, 2, 3, 4, 5]
+     *   Position 0 = buffer[0] = window 1
+     *   Position 1 = buffer[1] = window 2
+     *   Position 2 = buffer[2] = window 3 (this is what gets displayed)
+     *   Position 3 = buffer[3] = window 4
+     *   Position 4 = buffer[4] = window 5
      * 
      * Public method used by ReaderPagerAdapter to map positions to window indices.
      */
     fun getWindowIndexAtPosition(position: Int): Int {
-        return if (_phase.value == ConveyorPhase.STARTUP) {
-            // In STARTUP: buffer is locked [0,1,2,3,4], position = window index
-            position
+        val buffer = _buffer.value
+        return if (position in 0 until buffer.size) {
+            buffer[position]  // Use actual buffer state as source of truth
         } else {
-            // In STEADY: use center-relative calculation from active window
-            val offset = position - CENTER_INDEX
-            _activeWindow.value + offset
+            // Fallback if position out of range
+            position
         }
     }
     
