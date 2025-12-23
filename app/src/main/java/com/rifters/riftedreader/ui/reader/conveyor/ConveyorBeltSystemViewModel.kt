@@ -80,28 +80,38 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     private var shiftsUnlocked = false
     
     /**
-     * Map a RecyclerView position (0-4) to the actual window index based on buffer state.
+     * Map a RecyclerView position (0-4) to the actual window index by querying the cache map.
      * 
-     * The buffer is the source of truth for which windows are at which positions.
-     * Always look it up directly instead of calculating.
+     * Uses the LinkedHashMap windowCache directly instead of array indexing.
+     * This is the "named mapping" - asking the map "what window is at position X?"
      * 
-     * Example: if buffer = [1, 2, 3, 4, 5]
-     *   Position 0 = buffer[0] = window 1
-     *   Position 1 = buffer[1] = window 2
-     *   Position 2 = buffer[2] = window 3 (this is what gets displayed)
-     *   Position 3 = buffer[3] = window 4
-     *   Position 4 = buffer[4] = window 5
+     * Example: if windowCache keys = [1, 2, 3, 4, 5] (in insertion order)
+     *   Position 0 = 1st key = window 1
+     *   Position 1 = 2nd key = window 2
+     *   Position 2 = 3rd key = window 3
+     *   Position 3 = 4th key = window 4
+     *   Position 4 = 5th key = window 5
      * 
      * Public method used by ReaderPagerAdapter to map positions to window indices.
      */
     fun getWindowIndexAtPosition(position: Int): Int {
-        val buffer = _buffer.value
-        return if (position in 0 until buffer.size) {
-            buffer[position]  // Use actual buffer state as source of truth
+        val cacheKeys = windowCache.keys.toList()  // Get actual order from map
+        return if (position in 0 until cacheKeys.size) {
+            cacheKeys[position]  // Return the window at this position in the map
         } else {
-            // Fallback if position out of range
-            position
+            position  // Fallback if position out of range
         }
+    }
+    
+    /**
+     * Find the RecyclerView position for a specific window by querying the cache map.
+     * This is the reverse lookup - asking the map "what position is window X at?"
+     * 
+     * @param windowIndex The window to find
+     * @return The position in the RecyclerView (0-4), or -1 if not in cache
+     */
+    fun getPositionForWindow(windowIndex: Int): Int {
+        return windowCache.keys.toList().indexOf(windowIndex)
     }
     
     /**

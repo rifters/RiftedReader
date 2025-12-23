@@ -44,9 +44,7 @@ import com.rifters.riftedreader.ui.reader.conveyor.ConveyorDebugActivity
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import java.io.File
@@ -733,43 +731,32 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 }
                 
                 launch {
-                    combine(
-                        viewModel.currentWindowIndex,
-                        viewModel.conveyorBeltSystem?.buffer ?: flowOf(emptyList())
-                    ) { windowIndex, buffer ->
-                        windowIndex to buffer
-                    }.collect { (windowIndex, buffer) ->
-                        // Update RecyclerView position when window index changes
+                    viewModel.currentWindowIndex.collect { windowIndex ->
+                        // When user navigates to a new window, notify ConveyorBeltSystem to update buffer
                         if (readerMode == ReaderMode.PAGE) {
-                            // CRITICAL: Tell ConveyorBeltSystem FIRST that user entered this window
-                            // This triggers phase transitions and buffer shifts BEFORE we calculate adapter position
-                            // If we calculate adapter position with stale buffer, we'll use wrong position
+                            // Call onWindowEntered to update buffer via linkedMapOf, trigger phase transitions, preload HTML
                             viewModel.conveyorBeltSystem?.onWindowEntered(windowIndex)
                             AppLogger.d(
                                 "ReaderActivity",
                                 "Notified ConveyorBeltSystem: onWindowEntered($windowIndex) [CONVEYOR_NOTIFICATION]"
                             )
                             
-                            // NOW map logical window index to adapter position within updated buffer
-                            // The buffer contains 5 items (positions 0-4)
-                            // We need to find which position in the buffer contains this window
-                            val adapterPosition = if (buffer.isNotEmpty() && windowIndex in buffer) {
-                                buffer.indexOf(windowIndex)
-                            } else {
-                                // Fallback: if window not in buffer, calculate based on buffer constraints
-                                // Buffer contains windows at indices [minWindow, minWindow+1, ..., minWindow+4]
-                                // Adapter positions are always 0-4
-                                val minWindow = buffer.minOrNull() ?: 0
-                                (windowIndex - minWindow).coerceIn(0, 4)
-                            }
+                            // Ask the map: "what position is this window at?"
+                            // Uses getPositionForWindow which queries the LinkedHashMap directly
+                            val adapterPosition = viewModel.conveyorBeltSystem?.getPositionForWindow(windowIndex) ?: -1
                             
-                            if (currentPagerPosition != adapterPosition) {
+                            if (adapterPosition >= 0 && currentPagerPosition != adapterPosition) {
                                 AppLogger.d(
                                     "ReaderActivity",
                                     "Syncing RecyclerView: logicalWindow=$windowIndex -> adapterPosition=$adapterPosition " +
-                                    "(buffer=$buffer) [WINDOW_TO_ADAPTER_MAP]"
+                                    "(found in windowCache) [WINDOW_TO_ADAPTER_MAP]"
                                 )
                                 setCurrentItem(adapterPosition, false)
+                            } else if (adapterPosition < 0) {
+                                AppLogger.w(
+                                    "ReaderActivity",
+                                    "Window $windowIndex not found in cache! [WINDOW_NOT_IN_CACHE]"
+                                )
                             }
                         }
                     }
