@@ -129,7 +129,6 @@ class ReaderPagerAdapter(
  +
             "position=$position, logicalWindowIndex=$logicalWindowIndex, " +
             "totalWindows=$totalWindows, " +
-            "currentWindowIndex=$currentWindowIndex, " +
             "buffer=$buffer, " +
             "containerWidth=${holder.containerView.width}, " +
             "containerHeight=${holder.containerView.height}")
