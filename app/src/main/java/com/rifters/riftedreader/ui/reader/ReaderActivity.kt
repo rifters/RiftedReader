@@ -44,7 +44,9 @@ import com.rifters.riftedreader.ui.reader.conveyor.ConveyorDebugActivity
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import java.io.File
@@ -731,20 +733,33 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 }
                 
                 launch {
-                    viewModel.currentWindowIndex.collect { windowIndex ->
+                    combine(
+                        viewModel.currentWindowIndex,
+                        viewModel.conveyorBeltSystem?.buffer ?: flowOf(emptyList())
+                    ) { windowIndex, buffer ->
+                        windowIndex to buffer
+                    }.collect { (windowIndex, buffer) ->
                         // Update RecyclerView position when window index changes
                         if (readerMode == ReaderMode.PAGE) {
-                            // CRITICAL: Map logical window index to adapter position within buffer
+                            // CRITICAL: Tell ConveyorBeltSystem FIRST that user entered this window
+                            // This triggers phase transitions and buffer shifts BEFORE we calculate adapter position
+                            // If we calculate adapter position with stale buffer, we'll use wrong position
+                            viewModel.conveyorBeltSystem?.onWindowEntered(windowIndex)
+                            AppLogger.d(
+                                "ReaderActivity",
+                                "Notified ConveyorBeltSystem: onWindowEntered($windowIndex) [CONVEYOR_NOTIFICATION]"
+                            )
+                            
+                            // NOW map logical window index to adapter position within updated buffer
                             // The buffer contains 5 items (positions 0-4)
                             // We need to find which position in the buffer contains this window
-                            val buffer = viewModel.conveyorBeltSystem?.buffer?.value
-                            val adapterPosition = if (buffer != null && windowIndex in buffer) {
+                            val adapterPosition = if (buffer.isNotEmpty() && windowIndex in buffer) {
                                 buffer.indexOf(windowIndex)
                             } else {
                                 // Fallback: if window not in buffer, calculate based on buffer constraints
                                 // Buffer contains windows at indices [minWindow, minWindow+1, ..., minWindow+4]
                                 // Adapter positions are always 0-4
-                                val minWindow = (buffer?.minOrNull() ?: 0)
+                                val minWindow = buffer.minOrNull() ?: 0
                                 (windowIndex - minWindow).coerceIn(0, 4)
                             }
                             
@@ -756,14 +771,6 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                                 )
                                 setCurrentItem(adapterPosition, false)
                             }
-                            
-                            // CRITICAL: Tell ConveyorBeltSystem that user entered this window
-                            // This triggers phase transitions and buffer shifts in steady state
-                            viewModel.conveyorBeltSystem?.onWindowEntered(windowIndex)
-                            AppLogger.d(
-                                "ReaderActivity",
-                                "Notified ConveyorBeltSystem: onWindowEntered($windowIndex) [CONVEYOR_NOTIFICATION]"
-                            )
                         }
                     }
                 }
