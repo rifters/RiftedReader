@@ -276,23 +276,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         // Register adapter with conveyor system for buffer shift notifications
         viewModel.conveyorBeltSystem?.setPagerAdapter(pagerAdapter)
         
-        // Set callback to update fragment with new content after buffer shift
-        // When buffer shifts, the CENTER window changes, so the WebView at position 2 needs new content
-        viewModel.conveyorBeltSystem?.setOnBufferShiftedCallback { newCenterWindow ->
-            AppLogger.d(
-                "ReaderActivity",
-                "[BUFFER_SHIFT_COMPLETE] Updating WebView with new window: $newCenterWindow [FRAGMENT_UPDATE]"
-            )
-            // Get the fragment at position 2 (center of the 5-window buffer)
-            val centerFragment = supportFragmentManager.findFragmentByTag("f2") as? ReaderPageFragment
-            if (centerFragment != null) {
-                // Update the fragment to display the new window's content
-                centerFragment.updateWindow(newCenterWindow)
-                AppLogger.d("ReaderActivity", "[FRAGMENT_UPDATE] Success: Called updateWindow($newCenterWindow)")
-            } else {
-                AppLogger.w("ReaderActivity", "[FRAGMENT_UPDATE] Failed: Fragment at position 2 not found")
-            }
-        }
+        // NOTE: Buffer shift invalidation is now handled by ReaderPagerAdapter.invalidatePositionDueToBufferShift()
+        // which removes the old fragment and calls notifyDataSetChanged() to force rebind.
+        // No callback needed here.
         
         // Set up RecyclerView with horizontal LinearLayoutManager and PagerSnapHelper
         layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
@@ -705,9 +691,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                                     "hasHtml=${!pageContent.html.isNullOrBlank()} All gates passed."
                         )
                         
-                        // Apply any pending buffer shift NOW that content is fully loaded
-                        // This defers the adapter refresh until fragment is ready
-                        viewModel.conveyorBeltSystem?.applyPendingBufferShift()
+                        // Buffer shift is now applied immediately in ConveyorBeltSystem,
+                        // not deferred until CONTENT_LOADED. No need to apply pending shift here.
                         
                         currentPageText = pageContent.text
                         currentPageHtml = pageContent.html

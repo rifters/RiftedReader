@@ -51,10 +51,6 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     private val _activeWindow = MutableStateFlow<Int>(0)
     val activeWindow: StateFlow<Int> = _activeWindow.asStateFlow()
     
-    // Track pending buffer shift that must happen after content loads
-    // In steady phase, we defer the buffer shift until after CONTENT_LOADED
-    private var pendingBufferShift: PendingShift? = null
-    
     data class PendingShift(
         val buffer: MutableList<Int>,
         val windowIndex: Int,
@@ -110,24 +106,15 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     /**
-     * Apply pending buffer shift NOW (called when CONTENT_LOADED fires).
-     * 
-     * In steady phase, we defer the buffer shift until content is fully loaded.
-     * This avoids the race condition where fragment rebinds before content is ready.
-     * 
-     * After shifting the buffer, calls the onBufferShiftedCallback to refresh the
-     * WebView with the new window content.
-     * 
-     * Call this from ReaderActivity when [CONTENT_LOADED] event is emitted.
+     * Apply a buffer shift - update buffer, update active window, and refresh adapter.
+     * Can be called either immediately or deferred until content loads.
      */
-    fun applyPendingBufferShift() {
-        val shift = pendingBufferShift ?: return
-        
+    fun applyBufferShift(shift: PendingShift) {
         com.rifters.riftedreader.util.AppLogger.d("ConveyorBeltSystemViewModel",
-            "[BUFFER_SHIFT_START] Applying pending buffer shift: direction=${shift.direction}, oldBuffer=${_buffer.value}, newBuffer=${shift.buffer}"
+            "[BUFFER_SHIFT_START] Applying buffer shift: direction=${shift.direction}, newBuffer=${shift.buffer}"
         )
         
-        log("PENDING_SHIFT", "Applying pending buffer shift: ${shift.direction}, buffer=${shift.buffer}")
+        log("BUFFER_SHIFT", "Applying buffer shift: ${shift.direction}, buffer=${shift.buffer}")
         
         // Update buffer and active window
         _buffer.value = shift.buffer
@@ -144,25 +131,11 @@ class ConveyorBeltSystemViewModel : ViewModel() {
             "[BUFFER_SHIFT_ADAPTER] Adapter invalidated at CENTER_INDEX=$CENTER_INDEX"
         )
         
-        log("PENDING_SHIFT", "Pending shift applied and adapter notified")
-        
-        // Call callback to update fragment at position 2 with new window content
-        // The fragment will call renderBaseContent() to reload HTML
-        val centerWindow = shift.buffer[CENTER_INDEX]
+        log("BUFFER_SHIFT", "Buffer shift applied and adapter notified")
         
         com.rifters.riftedreader.util.AppLogger.d("ConveyorBeltSystemViewModel",
-            "[BUFFER_SHIFT_CALLBACK] Invoking fragment update callback with centerWindow=$centerWindow"
+            "[BUFFER_SHIFT_COMPLETE] Buffer shift completed successfully"
         )
-        
-        onBufferShiftedCallback?.invoke(centerWindow)
-        log("PENDING_SHIFT", "Fragment update callback invoked: centerWindow=$centerWindow")
-        
-        com.rifters.riftedreader.util.AppLogger.d("ConveyorBeltSystemViewModel",
-            "[BUFFER_SHIFT_COMPLETE] Pending buffer shift completed successfully"
-        )
-        
-        // Clear pending shift
-        pendingBufferShift = null
     }
     
     /**
@@ -409,10 +382,11 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("STEADY_FORWARD", "Final buffer: ${buffer}, activeWindow: $windowIndex, maxLogical: $maxLogicalWindowCreated")
         
-        // DEFER buffer shift until CONTENT_LOADED fires
-        // This ensures content is fully loaded before we change the fragment at CENTER_INDEX
-        pendingBufferShift = PendingShift(buffer, windowIndex, "forward")
-        log("STEADY_FORWARD", "Buffer shift DEFERRED until CONTENT_LOADED - windowIndex=$windowIndex")
+        // Apply buffer shift immediately
+        // invalidatePositionDueToBufferShift() removes the old fragment and forces rebind,
+        // so there's no race condition - the fresh fragment will load the correct window's HTML
+        applyBufferShift(PendingShift(buffer, windowIndex, "forward"))
+        log("STEADY_FORWARD", "Buffer shift APPLIED immediately - windowIndex=$windowIndex")
         
         // Execute shift: drop old windows from cache, load new windows in background
         // The HTML loading happens asynchronously. User is currently at windowIndex and must
@@ -439,10 +413,11 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("STEADY_BACKWARD", "Final buffer: ${buffer}, activeWindow: $windowIndex, minLogical: $minLogicalWindowCreated")
         
-        // DEFER buffer shift until CONTENT_LOADED fires
-        // This ensures content is fully loaded before we change the fragment at CENTER_INDEX
-        pendingBufferShift = PendingShift(buffer, windowIndex, "backward")
-        log("STEADY_BACKWARD", "Buffer shift DEFERRED until CONTENT_LOADED - windowIndex=$windowIndex")
+        // Apply buffer shift immediately
+        // invalidatePositionDueToBufferShift() removes the old fragment and forces rebind,
+        // so there's no race condition - the fresh fragment will load the correct window's HTML
+        applyBufferShift(PendingShift(buffer, windowIndex, "backward"))
+        log("STEADY_BACKWARD", "Buffer shift APPLIED immediately - windowIndex=$windowIndex")
         
         // Execute shift: drop old windows from cache, load new windows in background
         // The HTML loading happens asynchronously. User is currently at windowIndex and must
