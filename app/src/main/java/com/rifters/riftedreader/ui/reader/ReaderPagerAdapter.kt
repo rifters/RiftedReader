@@ -114,12 +114,20 @@ class ReaderPagerAdapter(
         val totalWindows = viewModel.windowCount.value
         val currentWindowIndex = viewModel.currentWindowIndex.value
         
-        // Get the actual logical window index from the buffer (not the position)
+        // FIX: Calculate logical window from center position, not from buffer array index
+        // Position 2 is always the CENTER window (locked in RecyclerView)
+        // Position 0,1 are before center; Position 3,4 are after center
+        // logicalWindowIndex = currentWindowIndex + (position - CENTER_POSITION)
+        val CENTER_POSITION = 2
+        val offsetFromCenter = position - CENTER_POSITION
+        val logicalWindowIndex = currentWindowIndex + offsetFromCenter
+        
+        // Validate against buffer if available
         val buffer = viewModel.conveyorBeltSystem?.buffer?.value
-        val logicalWindowIndex = if (buffer != null && position < buffer.size) {
-            buffer[position]
-        } else {
-            position  // Fallback to position if buffer not available
+        if (buffer != null && position < buffer.size && buffer[position] != logicalWindowIndex) {
+            AppLogger.w("ReaderPagerAdapter", 
+                "[PAGINATION_DEBUG] MISMATCH: position=$position, logicalFromCenter=$logicalWindowIndex, bufferValue=${buffer[position]}, " +
+                "currentWindow=$currentWindowIndex, buffer=$buffer")
         }
         
         // [PAGINATION_DEBUG] Enhanced binding logging
