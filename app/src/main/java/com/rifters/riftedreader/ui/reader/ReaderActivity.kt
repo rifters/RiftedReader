@@ -733,22 +733,29 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 launch {
                     viewModel.currentWindowIndex.collect { windowIndex ->
                         if (readerMode == ReaderMode.PAGE) {
-                            // Display window by NAME, not by array position
-                            // displayWindow() handles: cache update, position lookup, everything
-                            val (success, adapterPosition) = viewModel.conveyorBeltSystem?.displayWindow(windowIndex) 
-                                ?: Pair(false, 0)
+                            // Display window by NAME only. Adapter watches _activeWindow and derives position.
+                            viewModel.conveyorBeltSystem?.displayWindow(windowIndex)
                             
-                            if (success && currentPagerPosition != adapterPosition) {
+                            AppLogger.d(
+                                "ReaderActivity",
+                                "Requested display of window=$windowIndex [WINDOW_NAMED]"
+                            )
+                        }
+                    }
+                }
+                
+                launch {
+                    // Watch activeWindow changes and sync RecyclerView position
+                    viewModel.conveyorBeltSystem?.activeWindow?.collect { activeWindow ->
+                        if (readerMode == ReaderMode.PAGE) {
+                            // Get position for this active window
+                            val position = viewModel.conveyorBeltSystem?.getPositionForWindow(activeWindow) ?: 2
+                            if (currentPagerPosition != position) {
                                 AppLogger.d(
                                     "ReaderActivity",
-                                    "Displaying window=$windowIndex at position=$adapterPosition [WINDOW_DISPLAY]"
+                                    "ActiveWindow=$activeWindow maps to position=$position, syncing RecyclerView"
                                 )
-                                setCurrentItem(adapterPosition, false)
-                            } else if (!success) {
-                                AppLogger.w(
-                                    "ReaderActivity",
-                                    "Failed to display window=$windowIndex [DISPLAY_FAILED]"
-                                )
+                                setCurrentItem(position, false)
                             }
                         }
                     }

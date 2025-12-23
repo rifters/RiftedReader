@@ -116,24 +116,16 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     
     /**
      * Display a window by its NAME (window index), not by position.
-     * Handles all internal state updates and position mapping.
-     * 
-     * @param windowIndex The logical window to display
-     * @return Pair of (success: Boolean, adapterPosition: Int)
+     * Rebuilds cache centered on the window, sets it as active.
+     * Adapter watches _activeWindow and derives everything from that name.
      */
-    fun displayWindow(windowIndex: Int): Pair<Boolean, Int> {
+    fun displayWindow(windowIndex: Int) {
         // 1. Update ConveyorBeltSystem cache/state for this window
         onWindowEntered(windowIndex)
         
-        // 2. Find where this window ended up in the cache (by name lookup)
-        val adapterPosition = getPositionForWindow(windowIndex)
-        
-        // 3. Return whether we found it and what position it's at
-        return if (adapterPosition >= 0) {
-            Pair(true, adapterPosition)
-        } else {
-            Pair(false, 0)
-        }
+        // 2. That's it. _activeWindow is now set to windowIndex.
+        // 3. Adapter will see the change and map it to the correct position.
+        log("DISPLAY_WINDOW", "Window $windowIndex is now active, adapter will update")
     }
     
     /**
