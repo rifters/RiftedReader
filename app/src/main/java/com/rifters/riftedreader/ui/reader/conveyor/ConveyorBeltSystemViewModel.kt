@@ -123,22 +123,43 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     fun applyPendingBufferShift() {
         val shift = pendingBufferShift ?: return
         
+        com.rifters.riftedreader.util.AppLogger.d("ConveyorBeltSystemViewModel",
+            "[BUFFER_SHIFT_START] Applying pending buffer shift: direction=${shift.direction}, oldBuffer=${_buffer.value}, newBuffer=${shift.buffer}"
+        )
+        
         log("PENDING_SHIFT", "Applying pending buffer shift: ${shift.direction}, buffer=${shift.buffer}")
         
         // Update buffer and active window
         _buffer.value = shift.buffer
         _activeWindow.value = shift.windowIndex
         
+        com.rifters.riftedreader.util.AppLogger.d("ConveyorBeltSystemViewModel",
+            "[BUFFER_SHIFT_UPDATE] Buffer updated: activeWindow=${shift.windowIndex}, buffer=${shift.buffer}"
+        )
+        
         // Now trigger the adapter refresh
         pagerAdapter?.invalidatePositionDueToBufferShift(CENTER_INDEX)
+        
+        com.rifters.riftedreader.util.AppLogger.d("ConveyorBeltSystemViewModel",
+            "[BUFFER_SHIFT_ADAPTER] Adapter invalidated at CENTER_INDEX=$CENTER_INDEX"
+        )
         
         log("PENDING_SHIFT", "Pending shift applied and adapter notified")
         
         // Call callback to update fragment at position 2 with new window content
         // The fragment will call renderBaseContent() to reload HTML
         val centerWindow = shift.buffer[CENTER_INDEX]
+        
+        com.rifters.riftedreader.util.AppLogger.d("ConveyorBeltSystemViewModel",
+            "[BUFFER_SHIFT_CALLBACK] Invoking fragment update callback with centerWindow=$centerWindow"
+        )
+        
         onBufferShiftedCallback?.invoke(centerWindow)
         log("PENDING_SHIFT", "Fragment update callback invoked: centerWindow=$centerWindow")
+        
+        com.rifters.riftedreader.util.AppLogger.d("ConveyorBeltSystemViewModel",
+            "[BUFFER_SHIFT_COMPLETE] Pending buffer shift completed successfully"
+        )
         
         // Clear pending shift
         pendingBufferShift = null

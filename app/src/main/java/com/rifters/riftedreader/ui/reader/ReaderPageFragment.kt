@@ -234,12 +234,21 @@ class ReaderPageFragment : Fragment() {
                     // [PAGINATION_DEBUG] Enhanced logging for onPageFinished
                     val webViewWidth = view?.width ?: 0
                     val webViewHeight = view?.height ?: 0
+                    
+                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+                        "[WEBVIEW_PAGE_FINISHED_START] Window $windowIndex: HTML loaded in WebView"
+                    )
+                    
                     com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
                         "[PAGINATION_DEBUG] onPageFinished fired: windowIndex=$pageIndex, " +
                         "url=$url, webViewSize=${webViewWidth}x${webViewHeight}"
                     )
                     com.rifters.riftedreader.util.AppLogger.event("ReaderPageFragment", "WebView onPageFinished for page $pageIndex", "ui/webview/lifecycle")
                     isWebViewReady = true
+                    
+                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
+                        "[WEBVIEW_READY] Window $windowIndex: isWebViewReady set to true"
+                    )
                     
                     // Configure minimal paginator
                     val settings = readerViewModel.readerSettings.value
@@ -922,6 +931,11 @@ class ReaderPageFragment : Fragment() {
             "paginationMode=${readerViewModel.paginationMode}"
         )
         
+        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
+            "[RENDER_BASE_CONTENT_START] Window $windowIndex: Starting content render, " +
+            "isPaginatorInitialized=$isPaginatorInitialized, isWebViewReady=$isWebViewReady"
+        )
+        
         if (!html.isNullOrBlank()) {
             // Use WebView for rich HTML content (EPUB)
             binding.pageWebView.visibility = View.VISIBLE
@@ -1067,8 +1081,16 @@ class ReaderPageFragment : Fragment() {
                     // Reset paginator initialization flag - will be set to true in onPaginationReady callback
                     isPaginatorInitialized = false
                     
+                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
+                        "[RENDER_LOAD_HTML] Window $windowIndex: Loading wrapped HTML (${wrappedHtml.length} chars) into WebView"
+                    )
+                    
                     // MEASUREMENT DISCIPLINE: Use doOnLayout to defer HTML loading until WebView is measured
                     ensureMeasuredAndLoadHtml(wrappedHtml)
+                    
+                    com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
+                        "[RENDER_LOAD_HTML_ENQUEUED] Window $windowIndex: HTML load enqueued, waiting for WebView onPageFinished"
+                    )
                     
                 } catch (e: Exception) {
                     com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "[PAGINATION_DEBUG] Error loading window HTML for windowIndex=$windowIndex, using fallback", e)
@@ -1114,11 +1136,17 @@ class ReaderPageFragment : Fragment() {
             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
                 "[PAGINATION_DEBUG] WebView already measured: ${webViewWidth}x${webViewHeight}, loading HTML immediately"
             )
+            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
+                "[ENSURE_MEASURED_LOAD] Window $windowIndex: WebView already measured, calling loadHtmlIntoWebView"
+            )
             loadHtmlIntoWebView(wrappedHtml)
         } else {
             // WebView not yet measured, defer loading until after layout
             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
                 "[PAGINATION_DEBUG] WebView not yet measured (${webViewWidth}x${webViewHeight}), deferring HTML load"
+            )
+            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
+                "[ENSURE_MEASURED_DEFER] Window $windowIndex: Deferring HTML load until WebView is measured"
             )
             webView.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
                 override fun onGlobalLayout() {
@@ -1144,6 +1172,9 @@ class ReaderPageFragment : Fragment() {
                         com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
                             "[PAGINATION_DEBUG] WebView measured after layout: ${newWidth}x${newHeight}, loading HTML"
                         )
+                        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
+                            "[ENSURE_MEASURED_CALLBACK] Window $windowIndex: WebView now measured, calling loadHtmlIntoWebView"
+                        )
                         loadHtmlIntoWebView(wrappedHtml)
                     }
                 }
@@ -1163,6 +1194,10 @@ class ReaderPageFragment : Fragment() {
             "webViewSize=${binding.pageWebView.width}x${binding.pageWebView.height}"
         )
         
+        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
+            "[WEBVIEW_LOAD_START] Window $windowIndex: Calling loadDataWithBaseURL with wrapped HTML (${wrappedHtml.length} chars)"
+        )
+        
         // Use the asset loader's domain as base URL for consistent URL resolution
         // Images will use https://appassets.androidplatform.net/epub-images/... URLs
         // Script loading from file:///android_asset/ still works as it's an absolute path
@@ -1173,6 +1208,10 @@ class ReaderPageFragment : Fragment() {
             "text/html", 
             "UTF-8", 
             null
+        )
+        
+        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
+            "[WEBVIEW_LOAD_ENQUEUED] Window $windowIndex: loadDataWithBaseURL called, waiting for onPageFinished callback"
         )
     }
     
@@ -2248,21 +2287,37 @@ class ReaderPageFragment : Fragment() {
      * @param newWindowIndex The new window/chapter index to display
      */
     fun updateWindow(newWindowIndex: Int) {
-        // Update the window index that was set via arguments
-        requireArguments().putInt(ARG_PAGE_INDEX, newWindowIndex)
+        val oldWindowIndex = requireArguments().getInt(ARG_PAGE_INDEX)
         
         com.rifters.riftedreader.util.AppLogger.d(
             "ReaderPageFragment",
-            "updateWindow called: changing to windowIndex=$newWindowIndex, triggering renderBaseContent"
+            "[FRAGMENT_UPDATE_START] Updating window: $oldWindowIndex -> $newWindowIndex (position=f2)"
         )
+        
+        // Update the window index that was set via arguments
+        requireArguments().putInt(ARG_PAGE_INDEX, newWindowIndex)
         
         // Reset state for the new window
         isPaginatorInitialized = false
         currentInPageIndex = 0
         pendingInitialInPageIndex = null
         
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "[FRAGMENT_UPDATE_STATE] Reset paginator state: isPaginatorInitialized=false, currentInPageIndex=0"
+        )
+        
         // Trigger content reload with new window data
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "[FRAGMENT_UPDATE_RENDER] Calling renderBaseContent() to load window $newWindowIndex"
+        )
         renderBaseContent()
+        
+        com.rifters.riftedreader.util.AppLogger.d(
+            "ReaderPageFragment",
+            "[FRAGMENT_UPDATE_COMPLETE] Window update complete: now displaying window $newWindowIndex"
+        )
     }
 
     companion object {
