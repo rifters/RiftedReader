@@ -733,27 +733,14 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 launch {
                     viewModel.currentWindowIndex.collect { windowIndex ->
                         if (readerMode == ReaderMode.PAGE) {
-                            // Display window by NAME only. Adapter watches _activeWindow and derives position.
-                            viewModel.conveyorBeltSystem?.displayWindow(windowIndex)
+                            // Display window by NAME, get back the position
+                            val position = viewModel.conveyorBeltSystem?.displayWindow(windowIndex) ?: 2
                             
-                            AppLogger.d(
-                                "ReaderActivity",
-                                "Requested display of window=$windowIndex [WINDOW_NAMED]"
-                            )
-                        }
-                    }
-                }
-                
-                launch {
-                    // Watch activeWindow changes and sync RecyclerView position
-                    viewModel.conveyorBeltSystem?.activeWindow?.collect { activeWindow ->
-                        if (readerMode == ReaderMode.PAGE) {
-                            // Get position for this active window
-                            val position = viewModel.conveyorBeltSystem?.getPositionForWindow(activeWindow) ?: 2
-                            if (currentPagerPosition != position) {
+                            // Sync RecyclerView to that position IMMEDIATELY after cache is updated
+                            if (currentPagerPosition != position && position >= 0) {
                                 AppLogger.d(
                                     "ReaderActivity",
-                                    "ActiveWindow=$activeWindow maps to position=$position, syncing RecyclerView"
+                                    "Window=$windowIndex mapped to position=$position, syncing RecyclerView [WINDOW_NAMED]"
                                 )
                                 setCurrentItem(position, false)
                             }

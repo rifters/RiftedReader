@@ -115,17 +115,29 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     /**
-     * Display a window by its NAME (window index), not by position.
-     * Rebuilds cache centered on the window, sets it as active.
-     * Adapter watches _activeWindow and derives everything from that name.
+     * Display a window by its NAME (window index).
+     * The window should already be in the cache (added by STEADY phase).
+     * We just select it as active and return its position.
+     * 
+     * @return The RecyclerView position where this window is, or -1 if not found
      */
-    fun displayWindow(windowIndex: Int) {
-        // 1. Update ConveyorBeltSystem cache/state for this window
+    fun displayWindow(windowIndex: Int): Int {
+        // Trigger background HTML loading for this window
         onWindowEntered(windowIndex)
         
-        // 2. That's it. _activeWindow is now set to windowIndex.
-        // 3. Adapter will see the change and map it to the correct position.
-        log("DISPLAY_WINDOW", "Window $windowIndex is now active, adapter will update")
+        // Set this window as active
+        _activeWindow.value = windowIndex
+        
+        // Force adapter to rebind with the new active window
+        pagerAdapter?.notifyDataSetChanged()
+        
+        // Get position of this window in the cache
+        // (Window should already be in cache from STEADY phase loading it)
+        val position = getPositionForWindow(windowIndex)
+        
+        log("DISPLAY_WINDOW", "Window $windowIndex is active at position=$position (was already in cache)")
+        
+        return position
     }
     
     /**
@@ -412,7 +424,7 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     private fun handleSteadyNavigation(windowIndex: Int) {
-        log("STEADY_NAV", "Navigating to window $windowIndex (named call - no offsets)")
+        log("STEADY_NAV", "STEADY phase: ensuring window $windowIndex is in cache")
         
         // Check if navigating back to window 2 (revert condition)
         if (windowIndex == UNLOCK_WINDOW) {
@@ -420,47 +432,28 @@ class ConveyorBeltSystemViewModel : ViewModel() {
             return
         }
         
-        // If already at this window, nothing to do
-        if (windowIndex == _activeWindow.value) {
-            log("STEADY_NAV", "Already at window $windowIndex, no navigation needed")
-            return
-        }
-        
-        // Named navigation: rebuild cache centered on target window
-        // NO OFFSETS, NO SHIFTS - just build [windowIndex-2, -1, 0, +1, +2]
-        log("STEADY_NAV", "Rebuilding cache centered on target window $windowIndex")
-        
-        val oldCache = windowCache.keys.toList()
-        windowCache.clear()
-        
-        for (offset in -2..2) {
-            val idx = windowIndex + offset
-            if (idx >= 0 && idx <= _windowCount.value - 1) {
-                windowCache[idx] = true
+        // Window should already be in cache (loaded by paginator)
+        // If not, add it (shouldn't happen, but safety check)
+        if (windowIndex !in windowCache) {
+            log("STEADY_NAV", "Window $windowIndex not in cache, adding it (should have been preloaded)")
+            windowCache[windowIndex] = true
+            
+            // Keep cache at 5 windows max - remove oldest if needed
+            while (windowCache.size > 5) {
+                val oldest = windowCache.keys.first()
+                windowCache.remove(oldest)
+                log("STEADY_NAV", "Removed oldest window $oldest to keep cache at 5")
             }
         }
         
-        // Update tracking
+        // Update tracking if needed
         maxLogicalWindowCreated = windowCache.keys.maxOrNull() ?: maxLogicalWindowCreated
         minLogicalWindowCreated = windowCache.keys.minOrNull() ?: minLogicalWindowCreated
         
         // Update state
-        _activeWindow.value = windowIndex
         _buffer.value = windowCache.keys.toList()
         
-        log("STEADY_NAV", "Rebuilt cache: ${windowCache.keys.toList()}, activeWindow=$windowIndex")
-        
-        // Calculate what changed for shift notification
-        val windowsToRemove = oldCache.filter { it !in windowCache }
-        val windowsToAdd = windowCache.keys.filter { it !in oldCache }
-        
-        if (windowsToRemove.isNotEmpty() || windowsToAdd.isNotEmpty()) {
-            applyBufferShift(PendingShift(windowsToRemove, windowsToAdd, windowIndex, "named"))
-            log("STEADY_NAV", "Applied buffer shift: remove=$windowsToRemove, add=$windowsToAdd")
-        }
-        
-        // Preload windows in new cache
-        preloadWindowsAsync(windowCache.keys.toList())
+        log("STEADY_NAV", "Cache now: ${windowCache.keys.toList()}")
     }
     
     private fun handleSteadyForward(windowIndex: Int, shiftCount: Int) {
