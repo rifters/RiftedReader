@@ -27,7 +27,6 @@ import com.rifters.riftedreader.pagination.WindowSyncHelpers
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -1313,32 +1312,8 @@ class ReaderViewModel(
         }
     }
     
-    /**
-     * Reset window index back to center after buffer shift.
-     * Called by ConveyorBeltSystem after shifting the buffer.
-     * 
-     * The buffer has shifted, so the same window number now maps to a different adapter position.
-     * We need to force the currentWindowIndex collection to fire so RecyclerView syncs to the new position.
-     * 
-     * We do this by temporarily setting to -1, then back to the center window.
-     * This ensures the collection fires even if currentWindowIndex value hasn't changed numerically.
-     * 
-     * @param newCenterWindow The window that is now at CENTER_INDEX after the shift
-     */
-    fun resetWindowIndexToCenter(newCenterWindow: Int) {
-        AppLogger.d("ReaderViewModel",
-            "resetWindowIndexToCenter: recentering to window $newCenterWindow (buffer shift complete) [RECENTER_AFTER_SHIFT]")
-        
-        // Force collection to fire by going through a temporary state
-        // This ensures RecyclerView syncs even if the window number didn't change
-        viewModelScope.launch {
-            _currentWindowIndex.value = -1  // Temporary invalid state
-            delay(1)  // Brief delay to ensure collection processes
-            _currentWindowIndex.value = newCenterWindow  // Reset to correct center window
-            AppLogger.d("ReaderViewModel",
-                "resetWindowIndexToCenter: view recentered, currentWindowIndex now $newCenterWindow [RECENTER_COMPLETE]")
-        }
-    }
+    // NOTE: resetWindowIndexToCenter() removed - buffer shift now directly scrolls RecyclerView
+    // This avoids using -1 temporary state which triggers validation errors in SlidingWindowManager
     
     /**
      * Navigate to a specific window index (for RecyclerView navigation).
