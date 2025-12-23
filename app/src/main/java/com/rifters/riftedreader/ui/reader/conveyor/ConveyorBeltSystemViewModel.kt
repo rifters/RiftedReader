@@ -619,8 +619,13 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     fun getCenterWindow(): Int? {
-        // Center window is always activeWindow (position 2 in the 5-window display)
-        return _activeWindow.value
+        // Get the windowId at the center position (index 2) of the 5-window buffer
+        val bufferList = windowCache.keys.toList()
+        return if (bufferList.size >= CENTER_INDEX + 1) {
+            bufferList[CENTER_INDEX]
+        } else {
+            null
+        }
     }
     
     private fun log(event: String, message: String) {
