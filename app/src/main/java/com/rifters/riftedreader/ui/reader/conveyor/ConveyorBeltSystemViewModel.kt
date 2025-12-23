@@ -420,9 +420,7 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     private fun handleSteadyNavigation(windowIndex: Int) {
-        log("STEADY", "Navigating to window $windowIndex")
-        
-        val currentCenter = _activeWindow.value
+        log("STEADY_NAV", "Navigating to window $windowIndex (named call - no offsets)")
         
         // Check if navigating back to window 2 (revert condition)
         if (windowIndex == UNLOCK_WINDOW) {
@@ -430,19 +428,47 @@ class ConveyorBeltSystemViewModel : ViewModel() {
             return
         }
         
-        // Calculate shift direction and amount
-        val shiftDelta = windowIndex - currentCenter
-        
-        if (shiftDelta > 0) {
-            // Navigate forward: shift right
-            handleSteadyForward(windowIndex, shiftDelta)
-        } else if (shiftDelta < 0) {
-            // Navigate backward: shift left
-            handleSteadyBackward(windowIndex, -shiftDelta)
-        } else {
-            log("STEADY", "Already at window $windowIndex (center)")
-            _activeWindow.value = windowIndex
+        // If already at this window, nothing to do
+        if (windowIndex == _activeWindow.value) {
+            log("STEADY_NAV", "Already at window $windowIndex, no navigation needed")
+            return
         }
+        
+        // Named navigation: rebuild cache centered on target window
+        // NO OFFSETS, NO SHIFTS - just build [windowIndex-2, -1, 0, +1, +2]
+        log("STEADY_NAV", "Rebuilding cache centered on target window $windowIndex")
+        
+        val oldCache = windowCache.keys.toList()
+        windowCache.clear()
+        
+        for (offset in -2..2) {
+            val idx = windowIndex + offset
+            if (idx >= 0 && idx <= _windowCount.value - 1) {
+                windowCache[idx] = true
+            }
+        }
+        
+        // Update tracking
+        maxLogicalWindowCreated = windowCache.keys.maxOrNull() ?: maxLogicalWindowCreated
+        minLogicalWindowCreated = windowCache.keys.minOrNull() ?: minLogicalWindowCreated
+        
+        // Update state
+        _activeWindow.value = windowIndex
+        _buffer.value = windowCache.keys.toList()
+        
+        log("STEADY_NAV", "Rebuilt cache: ${windowCache.keys.toList()}, activeWindow=$windowIndex")
+        
+        // Calculate what changed for shift notification
+        val windowsToRemove = oldCache.filter { it !in windowCache }
+        val windowsToAdd = windowCache.keys.filter { it !in oldCache }
+        
+        if (windowsToRemove.isNotEmpty() || windowsToAdd.isNotEmpty()) {
+            applyBufferShift(PendingShift(windowsToRemove, windowsToAdd, windowIndex, "named"))
+            log("STEADY_NAV", "Applied buffer shift: remove=$windowsToRemove, add=$windowsToAdd")
+        }
+        
+        // Preload windows in new cache
+        preloadWindowsAsync(windowCache.keys.toList())
     }
     
     private fun handleSteadyForward(windowIndex: Int, shiftCount: Int) {
@@ -465,6 +491,10 @@ class ConveyorBeltSystemViewModel : ViewModel() {
             
             log("SHIFT", "Forward shift $i: remove $oldestKey, add $newWindow (cache now: ${windowCache.keys.toList()})")
         }
+        
+        // Update active window to the target
+        _activeWindow.value = windowIndex
+        _buffer.value = windowCache.keys.toList()
         
         log("STEADY_FORWARD", "Final cache: ${windowCache.keys.toList()}, activeWindow: $windowIndex, maxLogical: $maxLogicalWindowCreated")
         
