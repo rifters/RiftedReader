@@ -112,26 +112,21 @@ class ReaderPagerAdapter(
 
     override fun onBindViewHolder(holder: PageViewHolder, position: Int) {
         val totalWindows = viewModel.windowCount.value
-        val currentWindowIndex = viewModel.currentWindowIndex.value
-        
-        // FIX: Calculate logical window from center position, not from buffer array index
-        // Position 2 is always the CENTER window (locked in RecyclerView)
-        // Position 0,1 are before center; Position 3,4 are after center
-        // logicalWindowIndex = currentWindowIndex + (position - CENTER_POSITION)
-        val CENTER_POSITION = 2
-        val offsetFromCenter = position - CENTER_POSITION
-        val logicalWindowIndex = currentWindowIndex + offsetFromCenter
-        
-        // Validate against buffer if available
         val buffer = viewModel.conveyorBeltSystem?.buffer?.value
-        if (buffer != null && position < buffer.size && buffer[position] != logicalWindowIndex) {
-            AppLogger.w("ReaderPagerAdapter", 
-                "[PAGINATION_DEBUG] MISMATCH: position=$position, logicalFromCenter=$logicalWindowIndex, bufferValue=${buffer[position]}, " +
-                "currentWindow=$currentWindowIndex, buffer=$buffer")
+        
+        // Always use buffer - it's the source of truth
+        // STARTUP: buffer=[0,1,2,3,4] (doesn't shift)
+        // STEADY: buffer shifts, invalidatePositionDueToBufferShift() forces rebind to see new values
+        val logicalWindowIndex = if (buffer != null && position < buffer.size) {
+            buffer[position]
+        } else {
+            // No buffer yet - use position as window index
+            position
         }
         
         // [PAGINATION_DEBUG] Enhanced binding logging
-        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onBindViewHolder: " +
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onBindViewHolder: "
+ +
             "position=$position, logicalWindowIndex=$logicalWindowIndex, " +
             "totalWindows=$totalWindows, " +
             "currentWindowIndex=$currentWindowIndex, " +

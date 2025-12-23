@@ -48,7 +48,7 @@ object WindowRenderingDebug {
      * @return ARGB color int with 25% opacity
      */
     fun getDebugColor(windowIndex: Int): Int {
-        return WINDOW_DEBUG_COLORS[windowIndex % WINDOW_DEBUG_COLORS.size]
+        return WINDOW_DEBUG_COLORS[windowIndex]
     }
     
     /**
