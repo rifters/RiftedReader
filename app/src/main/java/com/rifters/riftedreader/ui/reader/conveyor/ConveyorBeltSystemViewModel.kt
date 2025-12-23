@@ -115,6 +115,28 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     /**
+     * Display a window by its NAME (window index), not by position.
+     * Handles all internal state updates and position mapping.
+     * 
+     * @param windowIndex The logical window to display
+     * @return Pair of (success: Boolean, adapterPosition: Int)
+     */
+    fun displayWindow(windowIndex: Int): Pair<Boolean, Int> {
+        // 1. Update ConveyorBeltSystem cache/state for this window
+        onWindowEntered(windowIndex)
+        
+        // 2. Find where this window ended up in the cache (by name lookup)
+        val adapterPosition = getPositionForWindow(windowIndex)
+        
+        // 3. Return whether we found it and what position it's at
+        return if (adapterPosition >= 0) {
+            Pair(true, adapterPosition)
+        } else {
+            Pair(false, 0)
+        }
+    }
+    
+    /**
      * Get the list of windows that should be at each position based on active window.
      * This is used to map positions to window indices for display.
      */

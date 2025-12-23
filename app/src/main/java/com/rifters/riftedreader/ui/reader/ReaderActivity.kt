@@ -732,30 +732,22 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 
                 launch {
                     viewModel.currentWindowIndex.collect { windowIndex ->
-                        // When user navigates to a new window, notify ConveyorBeltSystem to update buffer
                         if (readerMode == ReaderMode.PAGE) {
-                            // Call onWindowEntered to update buffer via linkedMapOf, trigger phase transitions, preload HTML
-                            viewModel.conveyorBeltSystem?.onWindowEntered(windowIndex)
-                            AppLogger.d(
-                                "ReaderActivity",
-                                "Notified ConveyorBeltSystem: onWindowEntered($windowIndex) [CONVEYOR_NOTIFICATION]"
-                            )
+                            // Display window by NAME, not by array position
+                            // displayWindow() handles: cache update, position lookup, everything
+                            val (success, adapterPosition) = viewModel.conveyorBeltSystem?.displayWindow(windowIndex) 
+                                ?: Pair(false, 0)
                             
-                            // Ask the map: "what position is this window at?"
-                            // Uses getPositionForWindow which queries the LinkedHashMap directly
-                            val adapterPosition = viewModel.conveyorBeltSystem?.getPositionForWindow(windowIndex) ?: -1
-                            
-                            if (adapterPosition >= 0 && currentPagerPosition != adapterPosition) {
+                            if (success && currentPagerPosition != adapterPosition) {
                                 AppLogger.d(
                                     "ReaderActivity",
-                                    "Syncing RecyclerView: logicalWindow=$windowIndex -> adapterPosition=$adapterPosition " +
-                                    "(found in windowCache) [WINDOW_TO_ADAPTER_MAP]"
+                                    "Displaying window=$windowIndex at position=$adapterPosition [WINDOW_DISPLAY]"
                                 )
                                 setCurrentItem(adapterPosition, false)
-                            } else if (adapterPosition < 0) {
+                            } else if (!success) {
                                 AppLogger.w(
                                     "ReaderActivity",
-                                    "Window $windowIndex not found in cache! [WINDOW_NOT_IN_CACHE]"
+                                    "Failed to display window=$windowIndex [DISPLAY_FAILED]"
                                 )
                             }
                         }
