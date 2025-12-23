@@ -357,33 +357,33 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     private fun transitionToSteady(windowIndex: Int) {
         log("TRANSITION", "Moving to window $windowIndex triggers STEADY phase")
         
-        // Calculate how many new windows we need to add to reach target window
-        // We need to load windows from activeWindow+3 onwards
-        val windowsToAdd = mutableListOf<Int>()
-        val activeWin = _activeWindow.value
+        // In STEADY, we need a centered buffer around the new active window
+        // activeWindow is at position 2 (center), so we need [activeWindow-2 to activeWindow+2]
         
-        // The next windows we'll need in steady state (beyond current cache)
-        for (i in 1..2) {
-            val nextWin = maxLogicalWindowCreated + i
-            windowsToAdd.add(nextWin)
+        // Clear old STARTUP buffer and build new STEADY buffer centered on windowIndex
+        windowCache.clear()
+        
+        // Create a centered buffer: [windowIndex-2, windowIndex-1, windowIndex, windowIndex+1, windowIndex+2]
+        for (offset in -2..2) {
+            val windowIdx = windowIndex + offset
+            if (windowIdx >= 0 && windowIdx <= _windowCount.value - 1) {
+                windowCache[windowIdx] = true
+            }
         }
         
-        // Add new windows to cache
-        windowsToAdd.forEach { windowIndex ->
-            windowCache[windowIndex] = true
-        }
-        
+        // Track the max window we've created
         maxLogicalWindowCreated = windowCache.keys.maxOrNull() ?: maxLogicalWindowCreated
+        minLogicalWindowCreated = windowCache.keys.minOrNull() ?: minLogicalWindowCreated
         
         _activeWindow.value = windowIndex
         _phase.value = ConveyorPhase.STEADY
         _buffer.value = windowCache.keys.toList()
         
         log("TRANSITION", "*** PHASE TRANSITION: STARTUP → STEADY ***")
-        log("TRANSITION", "New cache: ${windowCache.keys.toList()}, activeWindow: $windowIndex, maxLogical: $maxLogicalWindowCreated")
+        log("TRANSITION", "New cache: ${windowCache.keys.toList()}, activeWindow: $windowIndex, minLogical: $minLogicalWindowCreated, maxLogical: $maxLogicalWindowCreated")
         
-        // Preload new windows asynchronously
-        preloadWindowsAsync(windowsToAdd)
+        // Preload all windows in the new buffer asynchronously
+        preloadWindowsAsync(windowCache.keys.toList())
     }
     
     private fun handleSteadyNavigation(windowIndex: Int) {
@@ -458,11 +458,17 @@ class ConveyorBeltSystemViewModel : ViewModel() {
             // Add previous new window (going backward)
             minLogicalWindowCreated--
             val newWindow = minLogicalWindowCreated
-            windowCache[newWindow] = true  // This adds to the front when we iterate keys later
             windowsToAdd.add(newWindow)
             
-            log("SHIFT", "Backward shift $i: remove $newestKey, add $newWindow (cache now: ${windowCache.keys.toList()})")
+            log("SHIFT", "Backward shift $i: remove $newestKey, add $newWindow")
         }
+        
+        // Rebuild cache with new windows prepended to maintain insertion order
+        val newCache = linkedMapOf<Int, Boolean>()
+        windowsToAdd.forEach { newCache[it] = true }  // Add new windows first (oldest)
+        windowCache.forEach { (k, v) -> newCache[k] = v }  // Add existing windows
+        windowCache.clear()
+        windowCache.putAll(newCache)
         
         log("STEADY_BACKWARD", "Final cache: ${windowCache.keys.toList()}, activeWindow: $windowIndex, minLogical: $minLogicalWindowCreated")
         
