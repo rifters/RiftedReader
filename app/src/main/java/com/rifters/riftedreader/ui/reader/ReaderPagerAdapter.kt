@@ -108,6 +108,8 @@ class ReaderPagerAdapter(
     override fun onBindViewHolder(holder: PageViewHolder, position: Int) {
         // Get the windowId for this position from the list
         val windowId = getItem(position)
+        holder.boundWindowId = windowId
+        holder.boundAdapterPosition = position
         val totalWindows = viewModel.windowCount.value
         
         // [BIND_BUFFER_SNAPSHOT] Enhanced binding logging with conveyor state
@@ -121,80 +123,121 @@ class ReaderPagerAdapter(
             "containerWidth=${holder.containerView.width}, " +
             "containerHeight=${holder.containerView.height}")
         
-        // Use windowId for fragment tag (not position)
-        val fragmentTag = "w$windowId"
-
-        // Ensure the holder's container is not already hosting a different fragment.
-        // RecyclerView recycles holders, so the container may still have a fragment attached.
-        fragmentManager.findFragmentById(holder.containerView.id)?.let { existingInContainer ->
-            if (existingInContainer.tag != fragmentTag) {
-                AppLogger.d(
-                    "ReaderPagerAdapter",
-                    "[BIND_BUFFER_SNAPSHOT] Removing fragment from recycled container: " +
-                        "containerId=${holder.containerView.id}, existingTag=${existingInContainer.tag}, newTag=$fragmentTag"
-                )
-                fragmentManager.beginTransaction()
-                    .remove(existingInContainer)
-                    .commitAllowingStateLoss()
-            }
-        }
-        
-        // If a fragment already exists for this windowId and is currently attached to this
-        // holder's container, we can treat it as a cache hit.
-        val existingFragment = fragmentManager.findFragmentByTag(fragmentTag)
-        if (existingFragment != null && existingFragment.isAdded && existingFragment.view?.parent === holder.containerView) {
+        // IMPORTANT: RecyclerView may bind (and prefetch) holders that are not attached to window yet.
+        // Committing a fragment transaction to a container that isn't in the view hierarchy will crash:
+        // "No view found for id ... for fragment ...".
+        // Only attach/replace fragments once the holder is attached to window.
+        if (holder.itemView.isAttachedToWindow) {
+            scheduleAttachFragment(holder, position, windowId)
+        } else {
             AppLogger.d(
                 "ReaderPagerAdapter",
-                "[BIND_BUFFER_SNAPSHOT] Fragment CACHE_HIT (in correct container): " +
-                    "position=$position, windowId=$windowId, fragmentTag=$fragmentTag, containerId=${holder.containerView.id}"
+                "[BIND_BUFFER_SNAPSHOT] Deferring fragment attach (holder not attached): position=$position, windowId=$windowId, containerId=${holder.containerView.id}"
             )
-            return
         }
+    }
 
-        // If a stale fragment exists for this tag but is attached elsewhere, remove it.
-        if (existingFragment != null && existingFragment.isAdded && existingFragment.view?.parent !== holder.containerView) {
-            AppLogger.w(
-                "ReaderPagerAdapter",
-                "[BIND_BUFFER_SNAPSHOT] Fragment tag exists in different container; removing stale instance: " +
-                    "windowId=$windowId, fragmentTag=$fragmentTag"
-            )
-            fragmentManager.beginTransaction()
-                .remove(existingFragment)
-                .commitAllowingStateLoss()
-        }
-        
-        // Create new fragment for this windowId
-        val fragment = ReaderPageFragment.newInstance(windowId)
-        AppLogger.d("ReaderPagerAdapter", "[BIND_BUFFER_SNAPSHOT] Fragment CACHE_MISS: " +
-            "position=$position, windowId=$windowId, fragmentTag=$fragmentTag, " +
-            "activeFragments=${activeFragments.size}, creating new fragment")
-        
-        // Capture holder position for validation in the posted transaction
-        val holderPosition = position
-        
-        // Post the transaction to ensure we're not in a layout pass
-        mainHandler.post {
-            if (!activity.isFinishing && !activity.isDestroyed) {
-                // Verify holder still represents the same position
-                if (holder.adapterPosition == holderPosition) {
-                    fragmentManager.beginTransaction()
-                        .replace(holder.containerView.id, fragment, fragmentTag)
-                        .commitAllowingStateLoss()
-                    
-                    // Track active fragment
-                    activeFragments.add(windowId)
-                    
-                    AppLogger.d("ReaderPagerAdapter", "[BIND_BUFFER_SNAPSHOT] Fragment COMMITTED: " +
-                        "position=$position, windowId=$windowId, containerId=${holder.containerView.id}, " +
-                        "activeFragments=${activeFragments.size}, fragmentTag=$fragmentTag")
-                } else {
-                    AppLogger.w("ReaderPagerAdapter", "[BIND_BUFFER_SNAPSHOT] Fragment SKIPPED (position changed): " +
-                        "original=$holderPosition, current=${holder.adapterPosition}")
-                }
-            } else {
-                AppLogger.w("ReaderPagerAdapter", "[BIND_BUFFER_SNAPSHOT] Fragment SKIPPED (activity finishing): " +
-                    "position=$holderPosition")
+    override fun onViewAttachedToWindow(holder: PageViewHolder) {
+        super.onViewAttachedToWindow(holder)
+        val position = holder.adapterPosition
+        if (position == RecyclerView.NO_POSITION) return
+        val windowId = getItem(position)
+        holder.boundWindowId = windowId
+        holder.boundAdapterPosition = position
+        scheduleAttachFragment(holder, position, windowId)
+    }
+
+    private fun scheduleAttachFragment(holder: PageViewHolder, position: Int, windowId: Int) {
+        val fragmentTag = "w$windowId"
+        val expectedPosition = position
+        val expectedWindowId = windowId
+
+        holder.itemView.post {
+            if (activity.isFinishing || activity.isDestroyed) {
+                AppLogger.w(
+                    "ReaderPagerAdapter",
+                    "[BIND_BUFFER_SNAPSHOT] Fragment SKIPPED (activity finishing): position=$expectedPosition windowId=$expectedWindowId"
+                )
+                return@post
             }
+
+            // Holder may have been rebound/recycled by the time this runs.
+            val currentPos = holder.adapterPosition
+            if (currentPos != expectedPosition || currentPos == RecyclerView.NO_POSITION) {
+                AppLogger.w(
+                    "ReaderPagerAdapter",
+                    "[BIND_BUFFER_SNAPSHOT] Fragment SKIPPED (position changed): expected=$expectedPosition current=$currentPos"
+                )
+                return@post
+            }
+
+            if (!holder.itemView.isAttachedToWindow) {
+                AppLogger.w(
+                    "ReaderPagerAdapter",
+                    "[BIND_BUFFER_SNAPSHOT] Fragment SKIPPED (still not attached): position=$expectedPosition windowId=$expectedWindowId"
+                )
+                return@post
+            }
+
+            // Ensure list mapping hasn't changed.
+            if (expectedPosition !in 0 until itemCount || getItem(expectedPosition) != expectedWindowId) {
+                AppLogger.w(
+                    "ReaderPagerAdapter",
+                    "[BIND_BUFFER_SNAPSHOT] Fragment SKIPPED (windowId remapped): position=$expectedPosition expectedWindowId=$expectedWindowId actual=${getItem(expectedPosition)}"
+                )
+                return@post
+            }
+
+            // Ensure the holder's container is not already hosting a different fragment.
+            fragmentManager.findFragmentById(holder.containerView.id)?.let { existingInContainer ->
+                if (existingInContainer.tag != fragmentTag) {
+                    AppLogger.d(
+                        "ReaderPagerAdapter",
+                        "[BIND_BUFFER_SNAPSHOT] Removing fragment from recycled container: containerId=${holder.containerView.id}, existingTag=${existingInContainer.tag}, newTag=$fragmentTag"
+                    )
+                    fragmentManager.beginTransaction()
+                        .remove(existingInContainer)
+                        .commitAllowingStateLoss()
+                }
+            }
+
+            // Cache hit if the correct fragment is already attached to this container.
+            val existingFragment = fragmentManager.findFragmentByTag(fragmentTag)
+            if (existingFragment != null && existingFragment.isAdded && existingFragment.view?.parent === holder.containerView) {
+                AppLogger.d(
+                    "ReaderPagerAdapter",
+                    "[BIND_BUFFER_SNAPSHOT] Fragment CACHE_HIT (in correct container): position=$expectedPosition, windowId=$expectedWindowId, fragmentTag=$fragmentTag, containerId=${holder.containerView.id}"
+                )
+                return@post
+            }
+
+            // If a stale fragment exists for this tag but is attached elsewhere, remove it.
+            if (existingFragment != null && existingFragment.isAdded && existingFragment.view?.parent !== holder.containerView) {
+                AppLogger.w(
+                    "ReaderPagerAdapter",
+                    "[BIND_BUFFER_SNAPSHOT] Fragment tag exists in different container; removing stale instance: windowId=$expectedWindowId, fragmentTag=$fragmentTag"
+                )
+                fragmentManager.beginTransaction()
+                    .remove(existingFragment)
+                    .commitAllowingStateLoss()
+            }
+
+            val fragment = ReaderPageFragment.newInstance(expectedWindowId)
+            AppLogger.d(
+                "ReaderPagerAdapter",
+                "[BIND_BUFFER_SNAPSHOT] Fragment ATTACH: position=$expectedPosition, windowId=$expectedWindowId, fragmentTag=$fragmentTag, containerId=${holder.containerView.id}"
+            )
+
+            fragmentManager.beginTransaction()
+                .replace(holder.containerView.id, fragment, fragmentTag)
+                .commitAllowingStateLoss()
+
+            activeFragments.add(expectedWindowId)
+
+            AppLogger.d(
+                "ReaderPagerAdapter",
+                "[BIND_BUFFER_SNAPSHOT] Fragment COMMITTED: position=$expectedPosition, windowId=$expectedWindowId, containerId=${holder.containerView.id}, activeFragments=${activeFragments.size}, fragmentTag=$fragmentTag"
+            )
         }
     }
 
@@ -294,5 +337,8 @@ class ReaderPagerAdapter(
             "chaptersPerWindow=${viewModel.chaptersPerWindow}")
     }
 
-    class PageViewHolder(val containerView: ViewGroup) : RecyclerView.ViewHolder(containerView)
+    class PageViewHolder(val containerView: ViewGroup) : RecyclerView.ViewHolder(containerView) {
+        var boundWindowId: Int = -1
+        var boundAdapterPosition: Int = RecyclerView.NO_POSITION
+    }
 }
