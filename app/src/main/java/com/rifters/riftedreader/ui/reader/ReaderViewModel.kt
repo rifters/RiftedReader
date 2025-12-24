@@ -1410,9 +1410,30 @@ class ReaderViewModel(
         _currentWindowIndex.value = windowIndex
         AppLogger.d("ReaderViewModel",
             "goToWindow: _currentWindowIndex updated from $previousWindow to $windowIndex [WINDOW_STATE_UPDATE]")
-        
-        // ConveyorBeltSystemViewModel handles all window management
-        // No manual preloading needed - the conveyor system manages buffer shifts automatically
+
+        // CRITICAL: In CONTINUOUS + PAGE mode, the RecyclerView cannot be user-dragged (by design),
+        // so buffer shifting must be driven by window navigation events, not scroll events.
+        // Notify the conveyor so it can recenter/update the 5-slot buffer and preload HTML as needed.
+        if (paginationMode == PaginationMode.CONTINUOUS && isConveyorPrimary) {
+            val conveyor = conveyorBeltSystem
+            if (conveyor == null) {
+                AppLogger.w(
+                    "ReaderViewModel",
+                    "goToWindow: conveyorBeltSystem is null in CONTINUOUS mode (window=$windowIndex) [CONVEYOR_MISSING]"
+                )
+            } else if (!conveyor.isInitialized.value) {
+                AppLogger.w(
+                    "ReaderViewModel",
+                    "goToWindow: conveyor not initialized yet (window=$windowIndex). Buffer update deferred. [CONVEYOR_NOT_READY]"
+                )
+            } else {
+                AppLogger.d(
+                    "ReaderViewModel",
+                    "goToWindow: notifying conveyor onWindowEntered($windowIndex) (prev=$previousWindow) [CONVEYOR_WINDOW_ENTERED]"
+                )
+                conveyor.onWindowEntered(windowIndex)
+            }
+        }
         
         if (isContinuousMode) {
             viewModelScope.launch {
