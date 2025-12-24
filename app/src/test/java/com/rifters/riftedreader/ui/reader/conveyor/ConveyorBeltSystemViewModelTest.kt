@@ -273,4 +273,127 @@ class ConveyorBeltSystemViewModelTest {
         // Initial buffer is [0, 1, 2, 3, 4], center is at index 2, value is 2
         assertEquals(2, viewModel.getCenterWindow())
     }
+    
+    // ========================================================================
+    // Slot Mapping Tests
+    // ========================================================================
+    
+    @Test
+    fun `getWindowIndexAtPosition returns correct window index`() {
+        viewModel.initialize(startWindow = 5, totalWindowCount = 10)
+        // Buffer should be [3, 4, 5, 6, 7] with offset=3
+        
+        assertEquals(3, viewModel.getWindowIndexAtPosition(0))
+        assertEquals(4, viewModel.getWindowIndexAtPosition(1))
+        assertEquals(5, viewModel.getWindowIndexAtPosition(2))
+        assertEquals(6, viewModel.getWindowIndexAtPosition(3))
+        assertEquals(7, viewModel.getWindowIndexAtPosition(4))
+    }
+    
+    @Test
+    fun `getPositionForWindow returns correct position`() {
+        viewModel.initialize(startWindow = 5, totalWindowCount = 10)
+        // Buffer should be [3, 4, 5, 6, 7] with offset=3
+        
+        assertEquals(0, viewModel.getPositionForWindow(3))
+        assertEquals(1, viewModel.getPositionForWindow(4))
+        assertEquals(2, viewModel.getPositionForWindow(5))
+        assertEquals(3, viewModel.getPositionForWindow(6))
+        assertEquals(4, viewModel.getPositionForWindow(7))
+    }
+    
+    @Test
+    fun `getPositionForWindow returns -1 for window not in buffer`() {
+        viewModel.initialize(startWindow = 5, totalWindowCount = 10)
+        // Buffer should be [3, 4, 5, 6, 7]
+        
+        assertEquals(-1, viewModel.getPositionForWindow(0))
+        assertEquals(-1, viewModel.getPositionForWindow(8))
+        assertEquals(-1, viewModel.getPositionForWindow(100))
+    }
+    
+    // ========================================================================
+    // Buffer Shift Tests
+    // ========================================================================
+    
+    @Test
+    fun `shiftForward increments offset and updates slots`() {
+        viewModel.initialize(startWindow = 2, totalWindowCount = 10)
+        // Initial buffer: [0, 1, 2, 3, 4] with offset=0
+        
+        viewModel.shiftForward(1)
+        
+        // After shift: [1, 2, 3, 4, 5] with offset=1
+        assertEquals(listOf(1, 2, 3, 4, 5), viewModel.buffer.value)
+        assertEquals(1, viewModel.getWindowIndexAtPosition(0))
+        assertEquals(5, viewModel.getWindowIndexAtPosition(4))
+    }
+    
+    @Test
+    fun `shiftForward by multiple positions`() {
+        viewModel.initialize(startWindow = 2, totalWindowCount = 10)
+        // Initial buffer: [0, 1, 2, 3, 4] with offset=0
+        
+        viewModel.shiftForward(3)
+        
+        // After shift: [3, 4, 5, 6, 7] with offset=3
+        assertEquals(listOf(3, 4, 5, 6, 7), viewModel.buffer.value)
+    }
+    
+    @Test
+    fun `shiftForward respects maximum offset`() {
+        viewModel.initialize(startWindow = 2, totalWindowCount = 10)
+        // Max offset for 10 windows with 5-slot buffer is 5
+        
+        viewModel.shiftForward(10)  // Try to shift beyond bounds
+        
+        // Should clamp to max offset: [5, 6, 7, 8, 9] with offset=5
+        assertEquals(listOf(5, 6, 7, 8, 9), viewModel.buffer.value)
+    }
+    
+    @Test
+    fun `shiftBackward decrements offset and updates slots`() {
+        viewModel.initialize(startWindow = 7, totalWindowCount = 10)
+        // Initial buffer: [5, 6, 7, 8, 9] with offset=5
+        
+        viewModel.shiftBackward(1)
+        
+        // After shift: [4, 5, 6, 7, 8] with offset=4
+        assertEquals(listOf(4, 5, 6, 7, 8), viewModel.buffer.value)
+        assertEquals(4, viewModel.getWindowIndexAtPosition(0))
+        assertEquals(8, viewModel.getWindowIndexAtPosition(4))
+    }
+    
+    @Test
+    fun `shiftBackward by multiple positions`() {
+        viewModel.initialize(startWindow = 7, totalWindowCount = 10)
+        // Initial buffer: [5, 6, 7, 8, 9] with offset=5
+        
+        viewModel.shiftBackward(3)
+        
+        // After shift: [2, 3, 4, 5, 6] with offset=2
+        assertEquals(listOf(2, 3, 4, 5, 6), viewModel.buffer.value)
+    }
+    
+    @Test
+    fun `shiftBackward respects minimum offset of 0`() {
+        viewModel.initialize(startWindow = 2, totalWindowCount = 10)
+        // Initial buffer: [0, 1, 2, 3, 4] with offset=0
+        
+        viewModel.shiftBackward(10)  // Try to shift beyond bounds
+        
+        // Should clamp to min offset: [0, 1, 2, 3, 4] with offset=0
+        assertEquals(listOf(0, 1, 2, 3, 4), viewModel.buffer.value)
+    }
+    
+    @Test
+    fun `shift forward then backward returns to original state`() {
+        viewModel.initialize(startWindow = 5, totalWindowCount = 10)
+        val originalBuffer = viewModel.buffer.value
+        
+        viewModel.shiftForward(2)
+        viewModel.shiftBackward(2)
+        
+        assertEquals(originalBuffer, viewModel.buffer.value)
+    }
 }

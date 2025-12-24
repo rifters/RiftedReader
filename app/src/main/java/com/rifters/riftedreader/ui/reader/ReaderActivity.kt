@@ -321,9 +321,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     
                     // Conveyor-belt buffer shift logic
                     // Detect visible center position and trigger shifts
+                    val lm = this@ReaderActivity.layoutManager
                     if (viewModel.isConveyorPrimary && conveyorBeltSystem.phase.value == ConveyorPhase.STEADY) {
-                        val first = layoutManager.findFirstVisibleItemPosition()
-                        val last = layoutManager.findLastVisibleItemPosition()
+                        val first = lm.findFirstVisibleItemPosition()
+                        val last = lm.findLastVisibleItemPosition()
                         
                         if (first == RecyclerView.NO_POSITION) return
                         

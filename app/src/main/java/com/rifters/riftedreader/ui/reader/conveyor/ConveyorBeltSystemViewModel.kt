@@ -150,7 +150,7 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         if (count <= 0) return
         
         val oldOffset = offset
-        val oldSlots = slots.copyOf()
+        val oldBuffer = getValidBuffer()
         
         // Increment offset (bounded by totalWindowCount)
         val maxOffset = (totalWindowCount - BUFFER_SIZE).coerceAtLeast(0)
@@ -159,16 +159,18 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         // Recompute slots
         updateSlots()
         
+        val newBuffer = getValidBuffer()
+        
         log("BUFFER_SHIFT", 
             "[BUFFER_SHIFT] Forward shift: count=$count, " +
             "oldOffset=$oldOffset, newOffset=$offset, " +
-            "oldSlots=${oldSlots.toList()}, newSlots=${slots.toList()}")
+            "oldBuffer=$oldBuffer, newBuffer=$newBuffer")
         
         // Update StateFlow (triggers DiffUtil in adapter)
-        _buffer.value = slots.toList()
+        _buffer.value = newBuffer
         
         // Prefetch new windows that appeared in buffer
-        val newWindows = slots.filter { it !in oldSlots }
+        val newWindows = newBuffer.filter { it !in oldBuffer }
         if (newWindows.isNotEmpty()) {
             log("PREFETCH", "Prefetching new windows after forward shift: $newWindows")
             preloadWindowsAsync(newWindows)
@@ -188,7 +190,7 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         if (count <= 0) return
         
         val oldOffset = offset
-        val oldSlots = slots.copyOf()
+        val oldBuffer = getValidBuffer()
         
         // Decrement offset (min 0)
         offset = (offset - count).coerceAtLeast(0)
@@ -196,16 +198,18 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         // Recompute slots
         updateSlots()
         
+        val newBuffer = getValidBuffer()
+        
         log("BUFFER_SHIFT",
             "[BUFFER_SHIFT] Backward shift: count=$count, " +
             "oldOffset=$oldOffset, newOffset=$offset, " +
-            "oldSlots=${oldSlots.toList()}, newSlots=${slots.toList()}")
+            "oldBuffer=$oldBuffer, newBuffer=$newBuffer")
         
         // Update StateFlow (triggers DiffUtil in adapter)
-        _buffer.value = slots.toList()
+        _buffer.value = newBuffer
         
         // Prefetch new windows that appeared in buffer
-        val newWindows = slots.filter { it !in oldSlots }
+        val newWindows = newBuffer.filter { it !in oldBuffer }
         if (newWindows.isNotEmpty()) {
             log("PREFETCH", "Prefetching new windows after backward shift: $newWindows")
             preloadWindowsAsync(newWindows)
@@ -214,12 +218,21 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     
     /**
      * Update slots array based on current offset.
-     * slots[i] = offset + i
+     * Only includes valid windows (bounded by totalWindowCount).
      */
     private fun updateSlots() {
         for (i in 0 until BUFFER_SIZE) {
-            slots[i] = offset + i
+            val windowIndex = offset + i
+            slots[i] = if (windowIndex < totalWindowCount) windowIndex else -1
         }
+    }
+    
+    /**
+     * Get the current valid buffer (only windows within bounds).
+     * Filters out -1 entries for books with fewer than 5 windows.
+     */
+    private fun getValidBuffer(): List<Int> {
+        return slots.filter { it >= 0 && it < totalWindowCount }
     }
     
     /**
@@ -355,7 +368,7 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     
     fun onWindowEntered(windowIndex: Int) {
         log("STATE", "onWindowEntered($windowIndex)")
-        log("STATE", "Current: offset=$offset, slots=${slots.toList()}, activeWindow=${_activeWindow.value}, phase=${_phase.value}")
+        log("STATE", "Current: offset=$offset, buffer=${getValidBuffer()}, activeWindow=${_activeWindow.value}, phase=${_phase.value}")
         log("STATE", "shiftsUnlocked=$shiftsUnlocked")
         
         // Trigger background HTML loading for the window user just entered
@@ -414,13 +427,13 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         _activeWindow.value = windowIndex
         _phase.value = ConveyorPhase.STEADY
-        _buffer.value = slots.toList()
+        _buffer.value = getValidBuffer()
         
         log("TRANSITION", "*** PHASE TRANSITION: STARTUP → STEADY ***")
-        log("TRANSITION", "New buffer: offset=$offset, slots=${slots.toList()}, activeWindow=$windowIndex")
+        log("TRANSITION", "New buffer: offset=$offset, buffer=${getValidBuffer()}, activeWindow=$windowIndex")
         
         // Preload all windows in the new buffer asynchronously
-        preloadWindowsAsync(slots.toList())
+        preloadWindowsAsync(getValidBuffer())
     }
     
     private fun handleSteadyNavigation(windowIndex: Int) {
@@ -445,13 +458,13 @@ class ConveyorBeltSystemViewModel : ViewModel() {
             val maxOffset = (totalWindowCount - BUFFER_SIZE).coerceAtLeast(0)
             offset = newOffset.coerceAtMost(maxOffset)
             updateSlots()
-            _buffer.value = slots.toList()
+            _buffer.value = getValidBuffer()
             
-            log("STEADY_NAV", "Buffer recentered: offset=$offset, slots=${slots.toList()}")
-            preloadWindowsAsync(slots.toList())
+            log("STEADY_NAV", "Buffer recentered: offset=$offset, buffer=${getValidBuffer()}")
+            preloadWindowsAsync(getValidBuffer())
         }
         
-        log("STEADY_NAV", "Buffer: offset=$offset, slots=${slots.toList()}, position=$position")
+        log("STEADY_NAV", "Buffer: offset=$offset, buffer=${getValidBuffer()}, position=$position")
     }
     
     private fun revertToStartup() {
@@ -461,20 +474,20 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         offset = 0
         updateSlots()
         
-        _buffer.value = slots.toList()
+        _buffer.value = getValidBuffer()
         _activeWindow.value = UNLOCK_WINDOW
         _phase.value = ConveyorPhase.STARTUP
         shiftsUnlocked = false
         
         log("REVERT", "*** PHASE TRANSITION: STEADY → STARTUP ***")
-        log("REVERT", "Buffer reverted: offset=$offset, slots=${slots.toList()}, activeWindow=$UNLOCK_WINDOW")
+        log("REVERT", "Buffer reverted: offset=$offset, buffer=${getValidBuffer()}, activeWindow=$UNLOCK_WINDOW")
         
         // Clear HTML cache on revert since we're going back to initial windows
         htmlCache.clear()
         log("REVERT", "HTML cache cleared")
         
         // Preload initial windows asynchronously
-        preloadWindowsAsync(slots.toList())
+        preloadWindowsAsync(getValidBuffer())
     }
     
     // Methods needed by ConveyorDebugActivity and ConveyorBeltIntegrationBridge
@@ -497,8 +510,8 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         offset = initialOffset
         updateSlots()
         
-        // Update StateFlow with slots
-        _buffer.value = slots.toList()
+        // Update StateFlow with valid buffer
+        _buffer.value = getValidBuffer()
         _activeWindow.value = clampedStart
         _phase.value = ConveyorPhase.STARTUP
         shiftsUnlocked = false
@@ -511,10 +524,10 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         htmlCache.clear()
         
         log("INIT", "Conveyor initialized: windowCount=$totalWindowCount, offset=$offset, " +
-            "slots=${slots.toList()}, activeWindow=$clampedStart, isInitialized=true")
+            "buffer=${getValidBuffer()}, activeWindow=$clampedStart, isInitialized=true")
         
         // Preload initial buffer windows asynchronously
-        preloadWindowsAsync(slots.toList())
+        preloadWindowsAsync(getValidBuffer())
     }
     
     fun simulateNextWindow() {
