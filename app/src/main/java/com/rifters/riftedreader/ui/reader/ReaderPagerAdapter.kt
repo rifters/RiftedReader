@@ -195,7 +195,10 @@ class ReaderPagerAdapter(
         }
     }
 
-
+    override fun getItemId(position: Int): Long {
+        // Each window has a unique ID based on position
+        return position.toLong()
+    }
     
     /**
      * Get the fragment at the given position if it exists.
@@ -289,11 +292,8 @@ class ReaderPagerAdapter(
     }
 
     init {
-        // Stable IDs removed: They cause blank screen issues because RecyclerView assumes
-        // items with the same position (ID) contain the same content, which is not true
-        // after window buffer shifts or window count changes. Without stable IDs, RecyclerView
-        // properly rebinds all items after notifyDataSetChanged(), fixing the blank screen regression.
-        // See issue: [regression] Window switching now causes blank/white screen after commit 1195481
+        // Enable stable IDs for better item animations
+        setHasStableIds(true)
         
         AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Adapter initialized: " +
             "paginationMode=${viewModel.paginationMode}, " +
