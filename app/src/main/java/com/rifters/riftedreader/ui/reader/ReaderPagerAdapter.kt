@@ -99,13 +99,14 @@ class ReaderPagerAdapter(
         val windowId = getItem(position)
         val totalWindows = viewModel.windowCount.value
         
-        // [PAGINATION_DEBUG] Enhanced binding logging
-        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onBindViewHolder: "
+        // [BIND_BUFFER_SNAPSHOT] Enhanced binding logging with conveyor state
+        AppLogger.d("ReaderPagerAdapter", "[BIND_BUFFER_SNAPSHOT] onBindViewHolder: "
  +
             "position=$position, windowId=$windowId, " +
             "totalWindows=$totalWindows, " +
             "activeWindow=${viewModel.conveyorBeltSystem?.activeWindow?.value}, " +
             "phase=${viewModel.conveyorBeltSystem?.phase?.value}, " +
+            "buffer=${viewModel.conveyorBeltSystem?.buffer?.value}, " +
             "containerWidth=${holder.containerView.width}, " +
             "containerHeight=${holder.containerView.height}")
         
@@ -118,7 +119,7 @@ class ReaderPagerAdapter(
         if (existingFragment != null && existingFragment.isAdded) {
             // Fragment already exists and is added - this is a cache hit
             // No need to recreate, adapter just rebound the same windowId to this position
-            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment REUSED: " +
+            AppLogger.d("ReaderPagerAdapter", "[BIND_BUFFER_SNAPSHOT] Fragment CACHE_HIT: " +
                 "position=$position, windowId=$windowId, fragmentTag=$fragmentTag, isAdded=${existingFragment.isAdded}, " +
                 "isVisible=${existingFragment.isVisible}")
             return
@@ -126,9 +127,9 @@ class ReaderPagerAdapter(
         
         // Create new fragment for this windowId
         val fragment = ReaderPageFragment.newInstance(windowId)
-        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment CREATING: " +
+        AppLogger.d("ReaderPagerAdapter", "[BIND_BUFFER_SNAPSHOT] Fragment CACHE_MISS: " +
             "position=$position, windowId=$windowId, fragmentTag=$fragmentTag, " +
-            "activeFragments=${activeFragments.size}")
+            "activeFragments=${activeFragments.size}, creating new fragment")
         
         // Capture holder position for validation in the posted transaction
         val holderPosition = position
@@ -141,7 +142,7 @@ class ReaderPagerAdapter(
                     fragmentManager.beginTransaction().apply {
                         // Remove any existing fragment if present but not properly cleaned up
                         fragmentManager.findFragmentByTag(fragmentTag)?.let { 
-                            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Removing stale fragment: " +
+                            AppLogger.d("ReaderPagerAdapter", "[BIND_BUFFER_SNAPSHOT] Removing stale fragment: " +
                                 "fragmentTag=$fragmentTag")
                             remove(it) 
                         }
@@ -151,16 +152,16 @@ class ReaderPagerAdapter(
                     // Track active fragment
                     activeFragments.add(windowId)
                     
-                    AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment COMMITTED: " +
+                    AppLogger.d("ReaderPagerAdapter", "[BIND_BUFFER_SNAPSHOT] Fragment COMMITTED: " +
                         "position=$position, windowId=$windowId, containerId=${holder.containerView.id}, " +
-                        "activeFragments=${activeFragments.size}, fragmentTag=$fragmentTag [FRAGMENT_ADDED]")
+                        "activeFragments=${activeFragments.size}, fragmentTag=$fragmentTag")
                 } else {
-                    AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment SKIPPED (position changed): " +
-                        "original=$holderPosition, current=${holder.adapterPosition} [POSITION_CHANGED]")
+                    AppLogger.w("ReaderPagerAdapter", "[BIND_BUFFER_SNAPSHOT] Fragment SKIPPED (position changed): " +
+                        "original=$holderPosition, current=${holder.adapterPosition}")
                 }
             } else {
-                AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment SKIPPED (activity finishing): " +
-                    "position=$holderPosition [ACTIVITY_FINISHING]")
+                AppLogger.w("ReaderPagerAdapter", "[BIND_BUFFER_SNAPSHOT] Fragment SKIPPED (activity finishing): " +
+                    "position=$holderPosition")
             }
         }
     }
