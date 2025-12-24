@@ -153,9 +153,21 @@ class ReaderViewModel(
     // WindowBufferManager has been deprecated and removed in favor of ConveyorBeltSystemViewModel
     // All window buffer management is now handled by ConveyorBeltSystemViewModel
     
-    // Conveyor Belt System for managing window transitions and buffer state
-    // This is the primary window controller in development branch
+    // Conveyor Belt System for managing window transitions and buffer state.
+    // NOTE: This is attached by the Activity after the ReaderViewModel is created.
+    // We must support late-binding to avoid a race where window initialization completes
+    // before the conveyor is available.
     private var _conveyorBeltSystem: ConveyorBeltSystemViewModel? = null
+
+    private data class PendingConveyorInit(
+        val startWindow: Int,
+        val totalWindows: Int,
+        val paginator: com.rifters.riftedreader.domain.pagination.ContinuousPaginator,
+        val windowManager: com.rifters.riftedreader.domain.pagination.SlidingWindowManager,
+        val bookId: String
+    )
+
+    private var pendingConveyorInit: PendingConveyorInit? = null
     
     // Public accessor for conveyor system
     val conveyorBeltSystem: ConveyorBeltSystemViewModel?
@@ -170,16 +182,45 @@ class ReaderViewModel(
     val isConveyorPrimary: Boolean
         get() = _conveyorBeltSystem != null
     
-    // Fallback StateFlow for when conveyor system is not initialized
-    private val _fallbackConveyorReady = MutableStateFlow(false).asStateFlow()
-    
+    // Stable readiness StateFlow.
+    // Do NOT expose a dynamic getter based on _conveyorBeltSystem because fragments may capture
+    // the fallback flow before the conveyor is attached.
+    private val _isConveyorReady = MutableStateFlow(false)
+
     /**
      * StateFlow indicating whether the conveyor system is ready (initialized and preloaded).
      * Fragments should wait for this to become true before requesting window HTML in continuous mode.
-     * This ensures getWindowHtml() calls hit the preloaded cache instead of triggering regeneration.
      */
-    val isConveyorReady: StateFlow<Boolean>
-        get() = _conveyorBeltSystem?.isInitialized ?: _fallbackConveyorReady
+    val isConveyorReady: StateFlow<Boolean> = _isConveyorReady.asStateFlow()
+
+    private fun initializeConveyorIfPossible(conveyorSystem: ConveyorBeltSystemViewModel) {
+        val pending = pendingConveyorInit ?: return
+
+        if (pending.totalWindows <= 0) {
+            AppLogger.w(
+                "ReaderViewModel",
+                "[CONVEYOR_ACTIVE] Skipping late init: totalWindows=${pending.totalWindows}"
+            )
+            return
+        }
+
+        // Set HTML loading dependencies first
+        conveyorSystem.setHtmlLoadingDependencies(
+            paginator = pending.paginator,
+            windowManager = pending.windowManager,
+            bookId = pending.bookId
+        )
+
+        // Then initialize the buffer
+        conveyorSystem.initialize(pending.startWindow, pending.totalWindows)
+
+        AppLogger.d(
+            "ReaderViewModel",
+            "[CONVEYOR_ACTIVE] Conveyor initialized (late-bind): startWindow=${pending.startWindow}, totalWindows=${pending.totalWindows}, phase=${conveyorSystem.phase.value}"
+        )
+
+        pendingConveyorInit = null
+    }
     
     // Cache for pre-wrapped HTML to enable fast access for windows 0-4 during initial load
     private val preWrappedHtmlCache = mutableMapOf<Int, String>()
@@ -527,26 +568,33 @@ class ReaderViewModel(
                 )
                 
                 isContinuousInitialized = true
-                
-                // Initialize ConveyorBeltSystemViewModel as the authoritative buffer manager
-                // This replaces the deprecated WindowBufferManager system
+
+                // Conveyor is attached by the Activity after ReaderViewModel creation.
+                // Store init parameters and initialize immediately if it's already present.
+                pendingConveyorInit = PendingConveyorInit(
+                    startWindow = initialWindowIndex,
+                    totalWindows = computedWindowCount,
+                    paginator = paginator,
+                    windowManager = slidingWindowManager,
+                    bookId = bookId
+                )
+
                 val conveyorSystem = _conveyorBeltSystem
-                if (conveyorSystem != null && computedWindowCount > 0) {
-                    // Set HTML loading dependencies first
-                    conveyorSystem.setHtmlLoadingDependencies(
-                        paginator = paginator,
-                        windowManager = slidingWindowManager,
-                        bookId = bookId
-                    )
-                    
-                    // Then initialize the buffer
-                    conveyorSystem.initialize(initialWindowIndex, computedWindowCount)
-                    AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] ConveyorBeltSystemViewModel initialized: " +
-                        "startWindow=$initialWindowIndex, totalWindows=$computedWindowCount, " +
-                        "phase=${conveyorSystem.phase.value}")
+                if (conveyorSystem != null) {
+                    // Ensure readiness flow follows the real conveyor.
+                    // (If setConveyorBeltSystem was called earlier, it already starts this collector.)
+                    viewModelScope.launch {
+                        conveyorSystem.isInitialized.collect { ready ->
+                            _isConveyorReady.value = ready
+                        }
+                    }
+
+                    initializeConveyorIfPossible(conveyorSystem)
                 } else {
-                    AppLogger.w("ReaderViewModel", "[CONVEYOR_ACTIVE] Conveyor initialization skipped: " +
-                        "conveyorSystem=${conveyorSystem != null}, windowCount=$computedWindowCount")
+                    AppLogger.w(
+                        "ReaderViewModel",
+                        "[CONVEYOR_ACTIVE] Conveyor not attached yet; deferring init: startWindow=$initialWindowIndex totalWindows=$computedWindowCount"
+                    )
                 }
                 
                 // Pre-generate wrapped HTML for initial windows (0-4 or fewer if book has fewer windows)
@@ -783,6 +831,16 @@ class ReaderViewModel(
     fun setConveyorBeltSystem(conveyorSystem: ConveyorBeltSystemViewModel) {
         _conveyorBeltSystem = conveyorSystem
         AppLogger.d("ReaderViewModel", "[CONVEYOR] Conveyor belt system reference set")
+
+        // Keep readiness flow in sync even if the conveyor is attached after fragments start observing.
+        viewModelScope.launch {
+            conveyorSystem.isInitialized.collect { ready ->
+                _isConveyorReady.value = ready
+            }
+        }
+
+        // If continuous initialization already computed window count/start window, init now.
+        initializeConveyorIfPossible(conveyorSystem)
     }
     
     /**
