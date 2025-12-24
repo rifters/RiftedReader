@@ -1242,9 +1242,10 @@ class ReaderViewModel(
             AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Getting window HTML: windowIndex=$windowIndex, chapters=$firstChapterInWindow-$lastChapterInWindow (totalChapters=$totalChapters, windowSize=$windowSize)")
             
             // Check ConveyorBeltSystemViewModel cache first if conveyor is primary
+            // TASK 3 FIX: Add empty-payload guard - only use cached HTML if it's non-empty
             if (isConveyorPrimary) {
                 val conveyorHtml = _conveyorBeltSystem?.getCachedWindowHtml(windowIndex)
-                if (conveyorHtml != null) {
+                if (conveyorHtml != null && conveyorHtml.isNotEmpty()) {
                     AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] Using ConveyorBeltSystemViewModel cached HTML for window $windowIndex (htmlLength=${conveyorHtml.length})")
                     return WindowHtmlPayload(
                         html = conveyorHtml,
@@ -1254,16 +1255,22 @@ class ReaderViewModel(
                         windowSize = windowSize,
                         totalChapters = totalChapters
                     )
+                } else if (conveyorHtml != null && conveyorHtml.isEmpty()) {
+                    AppLogger.w("ReaderViewModel", "[CONVEYOR_ACTIVE] Cached HTML for window $windowIndex is EMPTY, will regenerate")
                 }
             }
             
             // Check pre-wrapped cache (initial load optimization)
+            // TASK 3 FIX: Add empty-payload guard - only use cached HTML if it's non-empty
             val cachedHtml = preWrappedHtmlCache[windowIndex]
-            val html = if (cachedHtml != null) {
+            val html = if (cachedHtml != null && cachedHtml.isNotEmpty()) {
                 AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Using cached pre-wrapped HTML for window $windowIndex")
                 cachedHtml
             } else {
-                // Generate HTML if not in cache
+                if (cachedHtml != null && cachedHtml.isEmpty()) {
+                    AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] Cached HTML for window $windowIndex is EMPTY, regenerating")
+                }
+                // Generate HTML if not in cache or if cached HTML is empty
                 val provider = com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider(
                     paginator,
                     slidingWindowManager
@@ -1372,16 +1379,22 @@ class ReaderViewModel(
                 val firstChapter = slidingWindowManager.firstChapterInWindow(windowIndex)
                     .coerceIn(0, totalChapters - 1)
                 
+                // TASK 1 FIX: Navigate to the midpoint chapter of the window instead of the first chapter
+                // This aligns paginator loading with UI window ranges
+                // For a 5-chapter window: midpoint is at index 2 (offset by (5-1)/2 = 2 from start)
+                val midpointOffset = (chaptersPerWindow - 1) / 2
+                val midpointChapter = (firstChapter + midpointOffset).coerceIn(0, totalChapters - 1)
+                
                 AppLogger.d("ReaderViewModel", 
-                    "goToWindow: navigating to firstChapter=$firstChapter in window=$windowIndex " +
+                    "goToWindow: navigating to midpointChapter=$midpointChapter (offset=$midpointOffset from firstChapter=$firstChapter) in window=$windowIndex " +
                     "(totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow) [CHAPTER_NAV]")
                 
-                // Navigate to the first chapter in this window
-                val globalPage = paginator.navigateToChapter(firstChapter, 0)
+                // Navigate to the midpoint chapter in this window
+                val globalPage = paginator.navigateToChapter(midpointChapter, 0)
                 updateForGlobalPage(globalPage)
                 
                 AppLogger.d("ReaderViewModel", 
-                    "goToWindow SUCCESS: windowIndex=$windowIndex -> firstChapter=$firstChapter, " +
+                    "goToWindow SUCCESS: windowIndex=$windowIndex -> midpointChapter=$midpointChapter (firstChapter=$firstChapter), " +
                     "globalPage=$globalPage [WINDOW_NAV_SUCCESS]")
             }
         } else {

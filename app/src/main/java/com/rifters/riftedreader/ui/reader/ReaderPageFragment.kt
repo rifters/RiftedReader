@@ -977,22 +977,30 @@ class ReaderPageFragment : Fragment() {
                         )
                         
                         if (windowPayload != null) {
-                            // Update resolved location metadata now that we have the payload
-                            resolvedChapterIndex = windowPayload.chapterIndex
-                            targetInPageIndex = windowPayload.inPageIndex
-                            pendingInitialInPageIndex = windowPayload.inPageIndex.takeIf { it > 0 }
-                            currentInPageIndex = windowPayload.inPageIndex
-                            
-                            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
-                                "[WINDOW_INIT] Window $windowIndex metadata resolved: chapter=${windowPayload.chapterIndex}, inPage=${windowPayload.inPageIndex}"
-                            )
-                            
-                            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
-                                "[PAGINATION_DEBUG] Using window HTML for windowIndex=$windowIndex: window=${windowPayload.windowIndex}, " +
-                                "firstChapter=${windowPayload.chapterIndex} (${windowPayload.windowSize} chapters per window, totalChapters=${windowPayload.totalChapters}), " +
-                                "htmlLength=${windowPayload.html.length}"
-                            )
-                            windowPayload.html
+                            // TASK 3 FIX: Guard against loading empty HTML into WebView
+                            if (windowPayload.html.isEmpty()) {
+                                com.rifters.riftedreader.util.AppLogger.w("ReaderPageFragment", 
+                                    "[WINDOW_HTML] EMPTY HTML: Window HTML for windowIndex=$windowIndex is empty, falling back to single chapter"
+                                )
+                                html  // Fallback to single chapter HTML
+                            } else {
+                                // Update resolved location metadata now that we have the payload
+                                resolvedChapterIndex = windowPayload.chapterIndex
+                                targetInPageIndex = windowPayload.inPageIndex
+                                pendingInitialInPageIndex = windowPayload.inPageIndex.takeIf { it > 0 }
+                                currentInPageIndex = windowPayload.inPageIndex
+                                
+                                com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+                                    "[WINDOW_INIT] Window $windowIndex metadata resolved: chapter=${windowPayload.chapterIndex}, inPage=${windowPayload.inPageIndex}"
+                                )
+                                
+                                com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
+                                    "[PAGINATION_DEBUG] Using window HTML for windowIndex=$windowIndex: window=${windowPayload.windowIndex}, " +
+                                    "firstChapter=${windowPayload.chapterIndex} (${windowPayload.windowSize} chapters per window, totalChapters=${windowPayload.totalChapters}), " +
+                                    "htmlLength=${windowPayload.html.length}"
+                                )
+                                windowPayload.html
+                            }
                         } else {
                             com.rifters.riftedreader.util.AppLogger.w("ReaderPageFragment", 
                                 "[WINDOW_HTML] NULL PAYLOAD: Failed to get window HTML for windowIndex=$windowIndex, falling back to single chapter"
