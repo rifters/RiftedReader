@@ -334,7 +334,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         AppLogger.d(
                             "ReaderActivity",
                             "[BUFFER_SHIFT] Scroll detected: first=$first, last=$last, center=$center, " +
-                            "offset=${conveyorBeltSystem.buffer.value.firstOrNull() ?: 0}"
+                            "offset=${conveyorBeltSystem.getOffset()}, buffer=${conveyorBeltSystem.buffer.value}"
                         )
                         
                         // Shift forward if center is at slots[3] or slots[4]

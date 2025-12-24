@@ -88,15 +88,22 @@ class ConveyorBeltSystemViewModel : ViewModel() {
      * Public method used by ReaderPagerAdapter to map positions to window indices.
      * 
      * @param position RecyclerView position (0-4)
-     * @return Real window index at this position
+     * @return Real window index at this position, or 0 if invalid
      */
     fun getWindowIndexAtPosition(position: Int): Int {
-        return if (position in 0 until BUFFER_SIZE) {
-            slots[position]
-        } else {
-            log("GET_WINDOW_AT_POS", "Position $position out of range [0, $BUFFER_SIZE), returning fallback")
-            position  // Fallback if position out of range
+        if (position !in 0 until BUFFER_SIZE) {
+            log("GET_WINDOW_AT_POS", "Position $position out of range [0, $BUFFER_SIZE), returning 0")
+            return 0  // Safe fallback
         }
+        
+        val windowIndex = slots[position]
+        if (windowIndex < 0 || windowIndex >= totalWindowCount) {
+            // Invalid slot (can happen for books with < 5 windows)
+            log("GET_WINDOW_AT_POS", "Slot at position $position has invalid window $windowIndex, returning 0")
+            return 0  // Safe fallback
+        }
+        
+        return windowIndex
     }
     
     /**
@@ -553,8 +560,21 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     
     fun getCenterWindow(): Int? {
         // Get the windowId at the center position (index 2) of the 5-window buffer
-        return slots[CENTER_INDEX]
+        val centerWindowIndex = slots[CENTER_INDEX]
+        
+        // Return null if center slot is invalid (can happen for books with < 5 windows)
+        return if (centerWindowIndex >= 0 && centerWindowIndex < totalWindowCount) {
+            centerWindowIndex
+        } else {
+            null
+        }
     }
+    
+    /**
+     * Get the current offset value for logging/debugging.
+     * The offset maps slot[0] to the real window index.
+     */
+    fun getOffset(): Int = offset
     
     private fun log(event: String, message: String) {
         val formattedMessage = "$LOG_PREFIX [$event] $message"
