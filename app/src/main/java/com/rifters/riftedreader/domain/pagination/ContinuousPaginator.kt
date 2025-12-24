@@ -371,17 +371,19 @@ class ContinuousPaginator(
         // TASK 2 FIX: Buffer eviction guards
         // Only evict chapters when:
         // 1. We have more than 5 windows worth of chapters loaded (windowSize * 5)
-        // 2. The chapter is NOT in the active window or its neighbors (2 ahead/2 behind)
+        // 2. The chapter is NOT in the active window or neighbor windows
         //
         // This prevents unloading chapters that are immediately needed after navigation,
         // which was causing blank window rendering in continuous mode.
         
-        // Calculate which chapters belong to active window and its neighbors
-        // Active window: centerChapterIndex ± windowSize/2
-        // Neighbors: 2 windows ahead and 2 behind = ± 2 * windowSize from center
-        val neighborRange = 2 * windowSize
-        val protectedStart = (centerChapterIndex - neighborRange).coerceAtLeast(0)
-        val protectedEnd = (centerChapterIndex + neighborRange).coerceAtMost(totalChapters - 1)
+        // The active window and its neighbors (2 ahead, 2 behind) must stay loaded
+        // Each UI window contains windowSize chapters, so we need to protect:
+        // - Active window and 2 windows before: 3 * windowSize chapters before center
+        // - Active window and 2 windows after: 3 * windowSize chapters after center
+        // This gives us a 5-window buffer (current + 2 before + 2 after)
+        val protectedWindowRadius = 2 * windowSize // 2 windows on each side
+        val protectedStart = (centerChapterIndex - protectedWindowRadius).coerceAtLeast(0)
+        val protectedEnd = (centerChapterIndex + protectedWindowRadius).coerceAtMost(totalChapters - 1)
         val protectedChapters = (protectedStart..protectedEnd).toSet()
         
         // Determine which chapters to unload (those not in current window and not protected)
@@ -394,7 +396,7 @@ class ContinuousPaginator(
         val safeToUnload = loadedChapters.size > (windowSize * 5)
         
         if (safeToUnload && toUnload.isNotEmpty()) {
-            AppLogger.d(TAG, "Unloading ${toUnload.size} chapters (protected: $protectedStart-$protectedEnd, loaded: ${loadedChapters.size})")
+            AppLogger.d(TAG, "Unloading ${toUnload.size} chapters (protected range: [$protectedStart, $protectedEnd], loaded: ${loadedChapters.size})")
             toUnload.forEach { chapterIndex ->
                 AppLogger.d(TAG, "Unloading chapter $chapterIndex")
                 loadedChapters.remove(chapterIndex)
@@ -404,7 +406,7 @@ class ContinuousPaginator(
                 AppLogger.d(TAG, "Skipping unload: loadedChapters.size=${loadedChapters.size} <= ${windowSize * 5}")
             }
             if (toUnload.isEmpty()) {
-                AppLogger.d(TAG, "Skipping unload: no chapters to unload (all are in active window or protected neighbors)")
+                AppLogger.d(TAG, "Skipping unload: no chapters to unload (all are in active window or protected range [$protectedStart, $protectedEnd])")
             }
         }
         
