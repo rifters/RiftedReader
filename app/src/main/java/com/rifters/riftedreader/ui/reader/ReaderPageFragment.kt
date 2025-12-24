@@ -71,6 +71,20 @@ class ReaderPageFragment : Fragment() {
     private var streamingInFlightDirection: BoundaryDirection? = null
     private var lastStreamingFailureToastAt: Long = 0L
     private var lastStreamingErrorMessage: String? = null
+
+    private fun launchIfViewAlive(context: String, block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) {
+        val owner = try {
+            viewLifecycleOwner
+        } catch (e: IllegalStateException) {
+            com.rifters.riftedreader.util.AppLogger.w(
+                "ReaderPageFragment",
+                "[LIFECYCLE_GUARD] Skipping launch ($context): view destroyed for windowIndex=$windowIndex"
+            )
+            return
+        }
+
+        owner.lifecycleScope.launch(block = block)
+    }
     
     // Track current in-page position to preserve during reloads
     private var currentInPageIndex: Int = 0
@@ -362,7 +376,7 @@ class ReaderPageFragment : Fragment() {
                         // Jump to last page via PaginatorBridge callback
                         // The minimal_paginator will call onPaginationReady when ready
                         // At that point we can jump to the last page
-                        viewLifecycleOwner.lifecycleScope.launch {
+                        launchIfViewAlive("jump_to_last_page_after_pagination") {
                             kotlinx.coroutines.delay(200) // Wait for paginator initialization
                             try {
                                 binding.pageWebView.evaluateJavascript(
@@ -420,7 +434,7 @@ class ReaderPageFragment : Fragment() {
                 "[CONTENT_LOAD] Continuous mode: waiting for conveyor readiness before rendering window $windowIndex"
             )
             
-            viewLifecycleOwner.lifecycleScope.launch {
+            launchIfViewAlive("continuous_wait_for_conveyor_then_render") {
                 val initialReady = readerViewModel.isConveyorReady.value
                 com.rifters.riftedreader.util.AppLogger.d(
                     "ReaderPageFragment",
@@ -463,7 +477,7 @@ class ReaderPageFragment : Fragment() {
         }
 
         // Set up highlight observer (used by both modes)
-        viewLifecycleOwner.lifecycleScope.launch {
+        launchIfViewAlive("highlight_observer") {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 readerViewModel.highlight.collect { highlight ->
                     if (highlight?.pageIndex == pageIndex) {
@@ -477,7 +491,7 @@ class ReaderPageFragment : Fragment() {
             }
         }
 
-        viewLifecycleOwner.lifecycleScope.launch {
+        launchIfViewAlive("reader_settings_observer") {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 readerViewModel.readerSettings.collect { settings ->
                     // Always update TextView settings
@@ -528,7 +542,7 @@ class ReaderPageFragment : Fragment() {
                             if (isWebViewReady && binding.pageWebView.visibility == View.VISIBLE) {
                                 // Apply font size change directly via JavaScript
                                 // minimal_paginator.js handles position preservation automatically
-                                viewLifecycleOwner.lifecycleScope.launch {
+                                launchIfViewAlive("apply_font_size_change_js") {
                                     try {
                                         com.rifters.riftedreader.util.AppLogger.d(
                                             "ReaderPageFragment",
@@ -615,7 +629,7 @@ class ReaderPageFragment : Fragment() {
      * Still uses _pages, pageContentCache, and observePageContent.
      */
     private fun setupChapterBasedContentObserver() {
-        viewLifecycleOwner.lifecycleScope.launch {
+        launchIfViewAlive("chapter_based_content_observer") {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 readerViewModel.observePageContent(pageIndex).collect { page ->
                     // Skip empty pages in continuous mode (shouldn't happen here but safety check)
@@ -728,7 +742,7 @@ class ReaderPageFragment : Fragment() {
                             val isNext = cumulativeScrollX > 0
                             
                             // Use unified edge-aware navigation helper
-                            viewLifecycleOwner.lifecycleScope.launch {
+                            launchIfViewAlive("scroll_in_page_navigation") {
                                 handlePagedNavigation(isNext, "SCROLL")
                             }
                             
@@ -771,7 +785,7 @@ class ReaderPageFragment : Fragment() {
                         val isNext = velocityX < 0
                         
                         // Use unified edge-aware navigation helper
-                        viewLifecycleOwner.lifecycleScope.launch {
+                        launchIfViewAlive("fling_in_page_navigation") {
                             handlePagedNavigation(isNext, "FLING")
                         }
                         
@@ -865,7 +879,7 @@ class ReaderPageFragment : Fragment() {
     private fun applyPendingInitialInPage() {
         val target = pendingInitialInPageIndex ?: return
         if (_binding == null || !isWebViewReady) return
-        viewLifecycleOwner.lifecycleScope.launch {
+        launchIfViewAlive("apply_pending_initial_in_page") {
             try {
                 kotlinx.coroutines.delay(200) // Wait for paginator initialization
                 binding.pageWebView.evaluateJavascript(
@@ -1028,7 +1042,7 @@ class ReaderPageFragment : Fragment() {
             
             // In continuous mode with streaming enabled, use window HTML
             // Otherwise use the single chapter HTML as before
-            viewLifecycleOwner.lifecycleScope.launch {
+            launchIfViewAlive("render_base_content_load_html") {
                 try {
                     // Cache window payload to avoid duplicate calls
                     var cachedWindowPayload: WindowHtmlPayload? = null
@@ -1753,7 +1767,7 @@ class ReaderPageFragment : Fragment() {
         skipNextBoundaryDirection = direction
         streamingInFlightDirection = direction
         lastStreamingErrorMessage = null
-        viewLifecycleOwner.lifecycleScope.launch {
+        launchIfViewAlive("handle_streaming_request") {
             com.rifters.riftedreader.util.AppLogger.event(
                 "ReaderPageFragment",
                 "[STREAM_START] direction=$direction target=$targetGlobalIndex page=$pageIndex",
@@ -1941,7 +1955,7 @@ class ReaderPageFragment : Fragment() {
             "ReaderPageFragment",
             "handleHardwarePageKey ACCEPTED: windowIndex=$pageIndex, launching navigation for isNext=$isNext [EDGE_DEBUG]"
         )
-        viewLifecycleOwner.lifecycleScope.launch {
+        launchIfViewAlive("handle_hardware_page_key") {
             handlePagedNavigation(isNext, "HARDWARE_KEY")
         }
 
@@ -2020,7 +2034,7 @@ class ReaderPageFragment : Fragment() {
                     )
                     
                     // Capture position with character offset after navigation
-                    viewLifecycleOwner.lifecycleScope.launch {
+                    launchIfViewAlive("capture_position_after_next") {
                         captureAndPersistPosition()
                     }
                     return true
@@ -2049,7 +2063,7 @@ class ReaderPageFragment : Fragment() {
                     )
                     
                     // Capture position with character offset after navigation
-                    viewLifecycleOwner.lifecycleScope.launch {
+                    launchIfViewAlive("capture_position_after_prev") {
                         captureAndPersistPosition()
                     }
                     return true
