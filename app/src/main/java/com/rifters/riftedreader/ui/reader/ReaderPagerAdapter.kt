@@ -1,5 +1,6 @@
 package com.rifters.riftedreader.ui.reader
 
+import android.view.View
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
@@ -87,6 +88,16 @@ class ReaderPagerAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_reader_page, parent, false)
+
+        // CRITICAL: RecyclerView items all inflate the same layout ID. For FragmentManager transactions,
+        // the container view ID must be unique per holder instance, otherwise fragments may attach
+        // to the wrong page and render blank.
+        if (view.id == View.NO_ID) {
+            view.id = View.generateViewId()
+        } else {
+            // Even if an ID exists in XML, it will be duplicated across holders. Replace with unique.
+            view.id = View.generateViewId()
+        }
         
         AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onCreateViewHolder: " +
             "parentWidth=${parent.width}, parentHeight=${parent.height}")
@@ -112,17 +123,44 @@ class ReaderPagerAdapter(
         
         // Use windowId for fragment tag (not position)
         val fragmentTag = "w$windowId"
+
+        // Ensure the holder's container is not already hosting a different fragment.
+        // RecyclerView recycles holders, so the container may still have a fragment attached.
+        fragmentManager.findFragmentById(holder.containerView.id)?.let { existingInContainer ->
+            if (existingInContainer.tag != fragmentTag) {
+                AppLogger.d(
+                    "ReaderPagerAdapter",
+                    "[BIND_BUFFER_SNAPSHOT] Removing fragment from recycled container: " +
+                        "containerId=${holder.containerView.id}, existingTag=${existingInContainer.tag}, newTag=$fragmentTag"
+                )
+                fragmentManager.beginTransaction()
+                    .remove(existingInContainer)
+                    .commitAllowingStateLoss()
+            }
+        }
         
-        // Check if fragment already exists for this windowId
+        // If a fragment already exists for this windowId and is currently attached to this
+        // holder's container, we can treat it as a cache hit.
         val existingFragment = fragmentManager.findFragmentByTag(fragmentTag)
-        
-        if (existingFragment != null && existingFragment.isAdded) {
-            // Fragment already exists and is added - this is a cache hit
-            // No need to recreate, adapter just rebound the same windowId to this position
-            AppLogger.d("ReaderPagerAdapter", "[BIND_BUFFER_SNAPSHOT] Fragment CACHE_HIT: " +
-                "position=$position, windowId=$windowId, fragmentTag=$fragmentTag, isAdded=${existingFragment.isAdded}, " +
-                "isVisible=${existingFragment.isVisible}")
+        if (existingFragment != null && existingFragment.isAdded && existingFragment.view?.parent === holder.containerView) {
+            AppLogger.d(
+                "ReaderPagerAdapter",
+                "[BIND_BUFFER_SNAPSHOT] Fragment CACHE_HIT (in correct container): " +
+                    "position=$position, windowId=$windowId, fragmentTag=$fragmentTag, containerId=${holder.containerView.id}"
+            )
             return
+        }
+
+        // If a stale fragment exists for this tag but is attached elsewhere, remove it.
+        if (existingFragment != null && existingFragment.isAdded && existingFragment.view?.parent !== holder.containerView) {
+            AppLogger.w(
+                "ReaderPagerAdapter",
+                "[BIND_BUFFER_SNAPSHOT] Fragment tag exists in different container; removing stale instance: " +
+                    "windowId=$windowId, fragmentTag=$fragmentTag"
+            )
+            fragmentManager.beginTransaction()
+                .remove(existingFragment)
+                .commitAllowingStateLoss()
         }
         
         // Create new fragment for this windowId
@@ -139,15 +177,9 @@ class ReaderPagerAdapter(
             if (!activity.isFinishing && !activity.isDestroyed) {
                 // Verify holder still represents the same position
                 if (holder.adapterPosition == holderPosition) {
-                    fragmentManager.beginTransaction().apply {
-                        // Remove any existing fragment if present but not properly cleaned up
-                        fragmentManager.findFragmentByTag(fragmentTag)?.let { 
-                            AppLogger.d("ReaderPagerAdapter", "[BIND_BUFFER_SNAPSHOT] Removing stale fragment: " +
-                                "fragmentTag=$fragmentTag")
-                            remove(it) 
-                        }
-                        add(holder.containerView.id, fragment, fragmentTag)
-                    }.commitAllowingStateLoss()
+                    fragmentManager.beginTransaction()
+                        .replace(holder.containerView.id, fragment, fragmentTag)
+                        .commitAllowingStateLoss()
                     
                     // Track active fragment
                     activeFragments.add(windowId)
@@ -168,32 +200,23 @@ class ReaderPagerAdapter(
 
     override fun onViewRecycled(holder: PageViewHolder) {
         super.onViewRecycled(holder)
-        val position = holder.adapterPosition
-        
-        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onViewRecycled: position=$position")
-        
-        // Only remove fragment if position is valid
-        if (position != RecyclerView.NO_POSITION && position < itemCount) {
-            val windowId = getItem(position)
-            val fragmentTag = "w$windowId"
-            val fragment = fragmentManager.findFragmentByTag(fragmentTag)
-            if (fragment != null && fragment.isAdded) {
-                // Post to ensure we're not in a layout pass
-                mainHandler.post {
-                    if (!activity.isFinishing && !activity.isDestroyed) {
-                        // Re-check fragment state after post
-                        val currentFragment = fragmentManager.findFragmentByTag(fragmentTag)
-                        if (currentFragment != null && currentFragment.isAdded) {
-                            fragmentManager.beginTransaction()
-                                .remove(currentFragment)
-                                .commitAllowingStateLoss()
-                            
-                            // Track removal
-                            activeFragments.remove(windowId)
-                            
-                            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment REMOVED: " +
-                                "position=$position, windowId=$windowId, activeFragments=${activeFragments.size}")
-                        }
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onViewRecycled: containerId=${holder.containerView.id}")
+
+        // Remove whatever fragment is currently attached to this recycled container.
+        val fragmentInContainer = fragmentManager.findFragmentById(holder.containerView.id)
+        if (fragmentInContainer != null && fragmentInContainer.isAdded) {
+            val tag = fragmentInContainer.tag
+            mainHandler.post {
+                if (!activity.isFinishing && !activity.isDestroyed) {
+                    fragmentManager.findFragmentById(holder.containerView.id)?.let { current ->
+                        fragmentManager.beginTransaction()
+                            .remove(current)
+                            .commitAllowingStateLoss()
+                        tag?.removePrefix("w")?.toIntOrNull()?.let { activeFragments.remove(it) }
+                        AppLogger.d(
+                            "ReaderPagerAdapter",
+                            "[PAGINATION_DEBUG] Fragment REMOVED from recycled container: containerId=${holder.containerView.id}, tag=${current.tag}"
+                        )
                     }
                 }
             }

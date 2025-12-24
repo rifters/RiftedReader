@@ -277,6 +277,65 @@ class ReaderPageFragment : Fragment() {
                         "ReaderPageFragment",
                         "[MIN_PAGINATOR] Configured and initialized for windowIndex=$windowIndex, mode=$mode"
                     )
+
+                    // Diagnostics: HTML can be non-empty but still render "blank" if:
+                    // - WebView size is 0, contentHeight is 0
+                    // - window-root is missing (initPaginator targets it)
+                    // - minimalPaginator did not load / is not ready
+                    // Keep this lightweight; it helps prove whether the DOM is present.
+                    try {
+                        val contentHeightPx = view?.contentHeight ?: 0
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "[WEBVIEW_RENDER_DIAG] windowIndex=$windowIndex url=$url size=${webViewWidth}x${webViewHeight} contentHeight=$contentHeightPx"
+                        )
+
+                        // Post to allow layout/paint to settle before querying DOM.
+                        binding.pageWebView.post {
+                            if (_binding == null || !isAdded) return@post
+                            binding.pageWebView.evaluateJavascript(
+                                """
+                                (function() {
+                                  try {
+                                    var root = document.getElementById('window-root');
+                                    var body = document.body;
+                                    var htmlLen = body ? (body.innerHTML || '').length : -1;
+                                    var textLen = body ? (body.innerText || '').length : -1;
+                                    var readyState = document.readyState;
+                                    var hasInit = (typeof window.initPaginator === 'function');
+                                    var hasMP = (typeof window.minimalPaginator !== 'undefined' && window.minimalPaginator);
+                                    var mpReady = (hasMP && typeof window.minimalPaginator.isReady === 'function') ? window.minimalPaginator.isReady() : null;
+                                    var pageCount = (hasMP && mpReady && typeof window.minimalPaginator.getPageCount === 'function') ? window.minimalPaginator.getPageCount() : null;
+                                    var scrollH = Math.max(document.documentElement ? document.documentElement.scrollHeight : 0, body ? body.scrollHeight : 0);
+                                    return JSON.stringify({
+                                      readyState: readyState,
+                                      hasWindowRoot: !!root,
+                                      bodyHtmlLen: htmlLen,
+                                      bodyTextLen: textLen,
+                                      scrollHeight: scrollH,
+                                      hasInitPaginator: hasInit,
+                                      hasMinimalPaginator: !!hasMP,
+                                      minimalPaginatorReady: mpReady,
+                                      minimalPaginatorPageCount: pageCount
+                                    });
+                                  } catch (e) {
+                                    return JSON.stringify({ error: String(e) });
+                                  }
+                                })();
+                                """.trimIndent()
+                            ) { result ->
+                                com.rifters.riftedreader.util.AppLogger.d(
+                                    "ReaderPageFragment",
+                                    "[WEBVIEW_DOM_DIAG] windowIndex=$windowIndex result=$result"
+                                )
+                            }
+                        }
+                    } catch (e: Exception) {
+                        com.rifters.riftedreader.util.AppLogger.w(
+                            "ReaderPageFragment",
+                            "[WEBVIEW_RENDER_DIAG] Failed to collect diagnostics for windowIndex=$windowIndex: ${e.message}"
+                        )
+                    }
                     
                     // Set font size directly via JavaScript
                     com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "[PAGINATION_DEBUG] Setting font size via JS: ${settings.textSizeSp}px")
@@ -362,12 +421,35 @@ class ReaderPageFragment : Fragment() {
             )
             
             viewLifecycleOwner.lifecycleScope.launch {
-                // Wait for conveyor readiness just once - filter for true, then take first
-                readerViewModel.isConveyorReady.filter { it }.first()
+                val initialReady = readerViewModel.isConveyorReady.value
                 com.rifters.riftedreader.util.AppLogger.d(
                     "ReaderPageFragment",
-                    "[CONTENT_LOAD] Conveyor ready - rendering window $windowIndex from preloaded cache"
+                    "[CONTENT_LOAD] Conveyor ready state at subscribe: $initialReady for window $windowIndex"
                 )
+
+                // Wait for conveyor readiness just once - but do not block forever.
+                // If it doesn't become ready, render anyway (will fall back to generating HTML).
+                val ready = try {
+                    kotlinx.coroutines.withTimeout(10_000) {
+                        readerViewModel.isConveyorReady.filter { it }.first()
+                        true
+                    }
+                } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                    false
+                }
+
+                if (ready) {
+                    com.rifters.riftedreader.util.AppLogger.d(
+                        "ReaderPageFragment",
+                        "[CONTENT_LOAD] Conveyor ready - rendering window $windowIndex from preloaded cache"
+                    )
+                } else {
+                    com.rifters.riftedreader.util.AppLogger.w(
+                        "ReaderPageFragment",
+                        "[CONTENT_LOAD] Conveyor NOT ready after timeout; rendering window $windowIndex anyway (may regenerate HTML)"
+                    )
+                }
+
                 renderBaseContent()
             }
         } else {

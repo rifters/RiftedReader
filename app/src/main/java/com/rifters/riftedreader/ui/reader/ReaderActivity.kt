@@ -172,6 +172,57 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 handleTapZone(tapZone)
                 return true
             }
+
+            override fun onFling(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float
+            ): Boolean {
+                // In continuous PAGE mode, swipes should behave like hardware page keys:
+                // advance within the current window; only at edges should windows change.
+                if (readerMode != ReaderMode.PAGE || viewModel.paginationMode != PaginationMode.CONTINUOUS) {
+                    return false
+                }
+
+                val start = e1 ?: return false
+                val dx = e2.x - start.x
+                val dy = e2.y - start.y
+
+                val absDx = kotlin.math.abs(dx)
+                val absDy = kotlin.math.abs(dy)
+
+                // Basic horizontal fling thresholds
+                val minDistancePx = 64f
+                val minVelocityPxPerSec = 800f
+                if (absDx < minDistancePx || absDx < absDy || kotlin.math.abs(velocityX) < minVelocityPxPerSec) {
+                    return false
+                }
+
+                // Fling left = next, fling right = previous
+                val isNext = dx < 0
+
+                val windowId = viewModel.currentWindowIndex.value
+                val fragTag = "w$windowId"
+                val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
+
+                AppLogger.d(
+                    "ReaderActivity",
+                    "SWIPE_FLING: isNext=$isNext, windowId=$windowId, fragTag=$fragTag, fragFound=${frag != null} [SWIPE_AS_PAGE]"
+                )
+
+                val handled = frag?.handleHardwarePageKey(isNext = isNext) == true
+                if (!handled) {
+                    AppLogger.w(
+                        "ReaderActivity",
+                        "SWIPE_FLING not handled (paginator not ready or fragment missing). Blocking window scroll per spec. [SWIPE_AS_PAGE]"
+                    )
+                } else {
+                    controlsManager.onUserInteraction()
+                }
+
+                return true
+            }
         })
         
         // Set up touch listeners that coordinate gestures with scrolling/paging
@@ -232,8 +283,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 "ReaderActivity",
                 "RecyclerView.onTouch RETURNED=$result for action=$actionName"
             )
-            // Don't consume the event - let RecyclerView handle paging
-            false
+
+            // In continuous PAGE mode, consume touch so RecyclerView cannot scroll windows directly.
+            // Navigation is driven by WebView paginator; edges trigger window changes.
+            if (readerMode == ReaderMode.PAGE && viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                true
+            } else {
+                // Don't consume the event - let RecyclerView handle paging
+                false
+            }
         }
         
         binding.contentScrollView.setOnTouchListener(scrollTouchListener)
@@ -385,6 +443,16 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             "RecyclerView settled: position=$position, currentPagerPosition=$currentPagerPosition, " +
                             "wasProgrammatic=$wasProgrammatic, vmWindow=${viewModel.currentWindowIndex.value} [SCROLL_SETTLE]"
                         )
+
+                        // In continuous mode, adapter positions are ephemeral (buffer shifts).
+                        // Always map position -> windowId before updating the ViewModel.
+                        val settledWindowId = pagerAdapter.getWindowIdAtPosition(position)
+                        if (position >= 0 && settledWindowId == -1) {
+                            AppLogger.w(
+                                "ReaderActivity",
+                                "[SCROLL_SETTLE] No windowId for settled position=$position; itemCount=${pagerAdapter.itemCount}"
+                            )
+                        }
                         
                         // Debug: Log window navigation coherence (if debug window rendering is enabled)
                         val debugSettings = viewModel.readerSettings.value
@@ -402,25 +470,33 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         if (position >= 0 && position != currentPagerPosition) {
                             val previousWindow = currentPagerPosition
                             currentPagerPosition = position
+
+                            val previousWindowId = pagerAdapter.getWindowIdAtPosition(previousWindow)
+                            val currentWindowId = pagerAdapter.getWindowIdAtPosition(position)
                             
                             // Determine navigation direction for logging
                             val direction = if (position > previousWindow) "NEXT" else "PREV"
                             
                             AppLogger.d(
                                 "ReaderActivity",
-                                "WINDOW_ENTER: windowIndex=$position, previousWindow=$previousWindow, direction=$direction, " +
+                                "WINDOW_ENTER: adapterPos=$position, windowId=$currentWindowId, previousAdapterPos=$previousWindow, previousWindowId=$previousWindowId, direction=$direction, " +
                                         "mode=${if (wasProgrammatic) "PROGRAMMATIC" else "USER_GESTURE"}, " +
                                         "paginationMode=${viewModel.paginationMode} [WINDOW_CHANGE]"
                             )
                             
                             // Only update ViewModel if position changed AND not during programmatic scroll
                             // (programmatic scrolls already updated ViewModel before scrolling)
-                            if (readerMode == ReaderMode.PAGE && viewModel.currentWindowIndex.value != position && !wasProgrammatic) {
+                            if (
+                                readerMode == ReaderMode.PAGE &&
+                                currentWindowId != -1 &&
+                                viewModel.currentWindowIndex.value != currentWindowId &&
+                                !wasProgrammatic
+                            ) {
                                 AppLogger.d(
                                     "ReaderActivity",
-                                    "Updating ViewModel window: $previousWindow -> $position (triggered by user gesture) [WINDOW_SWITCH_REASON]"
+                                    "Updating ViewModel window: $previousWindowId -> $currentWindowId (triggered by user gesture) [WINDOW_SWITCH_REASON]"
                                 )
-                                viewModel.goToWindow(position)
+                                viewModel.goToWindow(currentWindowId)
                             } else if (wasProgrammatic) {
                                 AppLogger.d(
                                     "ReaderActivity",
