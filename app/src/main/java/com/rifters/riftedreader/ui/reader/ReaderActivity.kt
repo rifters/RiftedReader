@@ -79,6 +79,29 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var programmaticScrollInProgress: Boolean = false
     // Flag to track if initial buffer-to-UI sync has been performed
     private var initialBufferSyncCompleted: Boolean = false
+
+    private fun syncRecyclerViewToWindowId(windowId: Int, reason: String) {
+        if (readerMode != ReaderMode.PAGE || viewModel.paginationMode != PaginationMode.CONTINUOUS) return
+
+        val position = pagerAdapter.getPositionForWindowId(windowId)
+        if (position >= 0) {
+            if (currentPagerPosition != position) {
+                AppLogger.d(
+                    "ReaderActivity",
+                    "Window=$windowId mapped to position=$position, syncing RecyclerView ($reason) [WINDOW_NAVIGATION]"
+                )
+                programmaticScrollInProgress = true
+                setCurrentItem(position, false)
+            }
+        } else {
+            // IMPORTANT: Do NOT fallback to slot 2/center here.
+            // Buffer updates are async; a fallback can land on the wrong windowId (e.g., win1 request -> snaps to win2).
+            AppLogger.w(
+                "ReaderActivity",
+                "Window=$windowId not found in adapter list; will retry after buffer update ($reason) [WINDOW_NOT_FOUND]"
+            )
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppLogger.event("ReaderActivity", "onCreate started", "ui/ReaderActivity/lifecycle")
@@ -380,7 +403,14 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     // Conveyor-belt buffer shift logic
                     // Detect visible center position and trigger shifts
                     val lm = this@ReaderActivity.layoutManager
-                    if (viewModel.isConveyorPrimary && conveyorBeltSystem.phase.value == ConveyorPhase.STEADY) {
+                    // Only shift the buffer on genuine user drags.
+                    // Programmatic scrolls (edge navigation, TOC jumps) must not cause buffer shifts.
+                    if (
+                        viewModel.isConveyorPrimary &&
+                        conveyorBeltSystem.phase.value == ConveyorPhase.STEADY &&
+                        isUserScrolling &&
+                        !programmaticScrollInProgress
+                    ) {
                         val first = lm.findFirstVisibleItemPosition()
                         val last = lm.findLastVisibleItemPosition()
                         
@@ -841,29 +871,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 
                 launch {
                     viewModel.currentWindowIndex.collect { windowIndex ->
-                        if (readerMode == ReaderMode.PAGE && viewModel.paginationMode == PaginationMode.CONTINUOUS) {
-                            // After navigation, resolve windowId to adapter position
-                            val position = pagerAdapter.getPositionForWindowId(windowIndex)
-                            
-                            // If windowId found in current list, scroll to it
-                            if (position >= 0 && currentPagerPosition != position) {
-                                AppLogger.d(
-                                    "ReaderActivity",
-                                    "Window=$windowIndex mapped to position=$position, syncing RecyclerView [WINDOW_NAVIGATION]"
-                                )
-                                // Set flag to avoid circular update from scroll listener
-                                programmaticScrollInProgress = true
-                                setCurrentItem(position, false)
-                            } else if (position < 0) {
-                                AppLogger.w(
-                                    "ReaderActivity",
-                                    "Window=$windowIndex not found in adapter list (fallback to position 0) [WINDOW_NOT_FOUND]"
-                                )
-                                // Fallback: scroll to center position if windowId not found
-                                programmaticScrollInProgress = true
-                                setCurrentItem(2, false)
-                            }
-                        }
+                        syncRecyclerViewToWindowId(windowIndex, reason = "currentWindowIndex.collect")
                     }
                 }
                 
@@ -879,6 +887,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             AppLogger.d(
                                 "ReaderActivity",
                                 "[BUFFER_UPDATE] Adapter list updated: itemCount=${pagerAdapter.itemCount}"
+                            )
+
+                            // Retry syncing to the currently requested window after the list updates.
+                            syncRecyclerViewToWindowId(
+                                viewModel.currentWindowIndex.value,
+                                reason = "buffer.submitList.callback"
                             )
                         }
                     }
@@ -1284,27 +1298,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             
             val moved = viewModel.nextWindow()
             if (moved) {
-                // After navigation, map active windowId to adapter position
-                val activeWindowId = viewModel.currentWindowIndex.value
-                val position = pagerAdapter.getPositionForWindowId(activeWindowId)
-                
-                if (position >= 0) {
-                    AppLogger.d(
-                        "ReaderActivity",
-                        "Programmatically scrolling RecyclerView to position=$position for windowId=$activeWindowId (user navigation), readerMode=$readerMode [PROGRAMMATIC_WINDOW_CHANGE]"
-                    )
-                    // Set flag before scrolling to prevent circular update from OnScrollListener
-                    programmaticScrollInProgress = true
-                    setCurrentItem(position, animated)
-                } else {
-                    AppLogger.w(
-                        "ReaderActivity",
-                        "WindowId=$activeWindowId not found in adapter list after navigation (fallback to center) [NAV_POSITION_NOT_FOUND]"
-                    )
-                    // Fallback to center position (buffer shift should have occurred)
-                    programmaticScrollInProgress = true
-                    setCurrentItem(2, animated)
-                }
+                // RecyclerView syncing is handled centrally by currentWindowIndex collector + buffer submitList callback.
             } else if (!moved) {
                 AppLogger.w(
                     "ReaderActivity",
@@ -1356,27 +1350,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             
             val moved = viewModel.previousWindow()
             if (moved) {
-                // After navigation, map active windowId to adapter position
-                val activeWindowId = viewModel.currentWindowIndex.value
-                val position = pagerAdapter.getPositionForWindowId(activeWindowId)
-                
-                if (position >= 0) {
-                    AppLogger.d(
-                        "ReaderActivity",
-                        "Programmatically scrolling RecyclerView to position=$position for windowId=$activeWindowId (user navigation), readerMode=$readerMode [PROGRAMMATIC_WINDOW_CHANGE]"
-                    )
-                    // Set flag before scrolling to prevent circular update from OnScrollListener
-                    programmaticScrollInProgress = true
-                    setCurrentItem(position, animated)
-                } else {
-                    AppLogger.w(
-                        "ReaderActivity",
-                        "WindowId=$activeWindowId not found in adapter list after navigation (fallback to center) [NAV_POSITION_NOT_FOUND]"
-                    )
-                    // Fallback to center position (buffer shift should have occurred)
-                    programmaticScrollInProgress = true
-                    setCurrentItem(2, animated)
-                }
+                // RecyclerView syncing is handled centrally by currentWindowIndex collector + buffer submitList callback.
             } else if (!moved) {
                 AppLogger.w(
                     "ReaderActivity",
@@ -1434,28 +1408,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 // In CONTINUOUS mode, always update RecyclerView position regardless of readerMode
                 // Set flag only after navigation succeeds to avoid race condition
                 viewModel.setJumpToLastPageFlag()
-                
-                // After navigation, map active windowId to adapter position
-                val activeWindowId = viewModel.currentWindowIndex.value
-                val position = pagerAdapter.getPositionForWindowId(activeWindowId)
-                
-                if (position >= 0) {
-                    AppLogger.d(
-                        "ReaderActivity",
-                        "Programmatically scrolling RecyclerView to position=$position for windowId=$activeWindowId with jump-to-last-page flag, readerMode=$readerMode [PROGRAMMATIC_WINDOW_CHANGE]"
-                    )
-                    // Set flag before scrolling to prevent circular update from OnScrollListener
-                    programmaticScrollInProgress = true
-                    setCurrentItem(position, animated)
-                } else {
-                    AppLogger.w(
-                        "ReaderActivity",
-                        "WindowId=$activeWindowId not found in adapter list after navigation (fallback to center) [NAV_POSITION_NOT_FOUND]"
-                    )
-                    // Fallback to center position
-                    programmaticScrollInProgress = true
-                    setCurrentItem(2, animated)
-                }
+                // RecyclerView syncing is handled centrally by currentWindowIndex collector + buffer submitList callback.
             } else if (!moved) {
                 AppLogger.w(
                     "ReaderActivity",
