@@ -13,6 +13,7 @@ import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
@@ -98,6 +99,9 @@ class ReaderPageFragment : Fragment() {
     // Track if paginator has completed initialization (onPaginationReady callback received)
     // This prevents navigation logic from using stale/default values before paginator is ready
     private var isPaginatorInitialized: Boolean = false
+
+    // Guard against tight recovery loops if the WebView renderer crashes.
+    private var hasHandledWebViewRendererGone: Boolean = false
     
     // Track previous settings to detect what changed
     private var previousSettings: com.rifters.riftedreader.data.preferences.ReaderSettings? = null
@@ -419,6 +423,44 @@ class ReaderPageFragment : Fragment() {
                     android.util.Log.e("ReaderPageFragment", "WebView error: $description")
                     com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "WebView error: $description", Exception("WebView error code: $errorCode"))
                 }
+
+                @android.annotation.TargetApi(26)
+                override fun onRenderProcessGone(
+                    view: WebView?,
+                    detail: RenderProcessGoneDetail?
+                ): Boolean {
+                    // Returning false here can crash the host app process. Return true to handle.
+                    val didCrash = detail?.didCrash() ?: false
+                    val priorityAtExit = detail?.rendererPriorityAtExit()
+
+                    com.rifters.riftedreader.util.AppLogger.e(
+                        "ReaderPageFragment",
+                        "[WEBVIEW_RENDERER_GONE] windowIndex=$windowIndex didCrash=$didCrash priorityAtExit=$priorityAtExit",
+                        Exception("WebView renderer process gone")
+                    )
+
+                    if (hasHandledWebViewRendererGone) {
+                        return true
+                    }
+                    hasHandledWebViewRendererGone = true
+                    isWebViewReady = false
+                    isPaginatorInitialized = false
+
+                    // Best-effort recovery: clear and re-render.
+                    launchIfViewAlive("webview_renderer_gone_recover") {
+                        try {
+                            binding.pageWebView.stopLoading()
+                            binding.pageWebView.loadUrl("about:blank")
+                        } catch (_: Exception) {
+                            // Renderer is gone; ignore.
+                        }
+
+                        renderBaseContent()
+                        hasHandledWebViewRendererGone = false
+                    }
+
+                    return true
+                }
             }
             
             // Set up gesture detection for in-page horizontal swipes
@@ -600,7 +642,17 @@ class ReaderPageFragment : Fragment() {
                 stopLoading()
                 // Fix: Replace webViewClient BEFORE calling loadUrl to prevent onPageFinished callback
                 // This prevents race condition where onPageFinished could trigger prepareTtsChunks
-                webViewClient = WebViewClient()
+                webViewClient = object : WebViewClient() {
+                    @android.annotation.TargetApi(26)
+                    override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                        com.rifters.riftedreader.util.AppLogger.e(
+                            "ReaderPageFragment",
+                            "[WEBVIEW_RENDERER_GONE][TEARDOWN] windowIndex=$windowIndex pageIndex=$pageIndex",
+                            Exception("WebView renderer process gone during teardown")
+                        )
+                        return true
+                    }
+                }
                 // Remove JavaScript interfaces to clean up
                 removeJavascriptInterface("AndroidTtsBridge")
                 removeJavascriptInterface("PaginatorBridge")
