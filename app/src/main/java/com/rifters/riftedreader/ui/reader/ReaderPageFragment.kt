@@ -1211,65 +1211,61 @@ class ReaderPageFragment : Fragment() {
     
     /**
      * Ensure WebView is measured (width/height > 0) before loading HTML.
-     * Uses doOnLayout guard to defer loading until layout is complete.
      * This prevents column width computation issues caused by loading into unmeasured WebViews.
+     *
+     * IMPORTANT: In the horizontal RecyclerView window model, newly-created fragments can momentarily
+     * have a 0x0 WebView during the same frame as a window transition. If we only attach a layout
+     * listener and never get a subsequent layout, the window will stay blank. We therefore retry
+     * for a short bounded period and then fall back to loading anyway.
      */
     private fun ensureMeasuredAndLoadHtml(wrappedHtml: String) {
         if (_binding == null) return
         
         val webView = binding.pageWebView
-        val webViewWidth = webView.width
-        val webViewHeight = webView.height
-        
-        if (webViewWidth > 0 && webViewHeight > 0) {
-            // WebView is already measured, load immediately
-            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
-                "[PAGINATION_DEBUG] WebView already measured: ${webViewWidth}x${webViewHeight}, loading HTML immediately"
-            )
-            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
-                "[ENSURE_MEASURED_LOAD] Window $windowIndex: WebView already measured, calling loadHtmlIntoWebView"
-            )
-            loadHtmlIntoWebView(wrappedHtml)
-        } else {
-            // WebView not yet measured, defer loading until after layout
-            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
-                "[PAGINATION_DEBUG] WebView not yet measured (${webViewWidth}x${webViewHeight}), deferring HTML load"
-            )
-            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
-                "[ENSURE_MEASURED_DEFER] Window $windowIndex: Deferring HTML load until WebView is measured"
-            )
-            webView.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
-                override fun onGlobalLayout() {
-                    // Guard against fragment being destroyed or view being detached
-                    if (_binding == null || !isAdded || view == null) {
-                        try {
-                            webView.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                        } catch (e: IllegalStateException) {
-                            // ViewTreeObserver is not alive, ignore
-                        }
-                        return
-                    }
-                    
-                    val newWidth = webView.width
-                    val newHeight = webView.height
-                    
-                    if (newWidth > 0 && newHeight > 0) {
-                        try {
-                            webView.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                        } catch (e: IllegalStateException) {
-                            // ViewTreeObserver is not alive, ignore
-                        }
-                        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", 
-                            "[PAGINATION_DEBUG] WebView measured after layout: ${newWidth}x${newHeight}, loading HTML"
-                        )
-                        com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment",
-                            "[ENSURE_MEASURED_CALLBACK] Window $windowIndex: WebView now measured, calling loadHtmlIntoWebView"
-                        )
-                        loadHtmlIntoWebView(wrappedHtml)
-                    }
-                }
-            })
+
+        // Token to avoid cross-calls if a new render starts before this one completes.
+        val attemptWindowIndex = windowIndex
+        val maxAttempts = 40 // ~2s at 50ms
+        val delayMs = 50L
+
+        fun attemptLoad(attempt: Int) {
+            if (_binding == null || !isAdded || view == null) return
+
+            val w = webView.width
+            val h = webView.height
+            if (w > 0 && h > 0) {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "[ENSURE_MEASURED_LOAD] Window $attemptWindowIndex: WebView measured ${w}x${h} on attempt=$attempt, loading HTML"
+                )
+                loadHtmlIntoWebView(wrappedHtml)
+                return
+            }
+
+            if (attempt == 0) {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "[ENSURE_MEASURED_DEFER] Window $attemptWindowIndex: WebView is ${w}x${h}; requesting layout + retrying"
+                )
+                webView.requestLayout()
+                (webView.parent as? View)?.requestLayout()
+            }
+
+            if (attempt >= maxAttempts) {
+                com.rifters.riftedreader.util.AppLogger.w(
+                    "ReaderPageFragment",
+                    "[ENSURE_MEASURED_FALLBACK] Window $attemptWindowIndex: WebView still ${w}x${h} after ${maxAttempts} attempts; loading HTML anyway"
+                )
+                loadHtmlIntoWebView(wrappedHtml)
+                return
+            }
+
+            webView.postDelayed({
+                attemptLoad(attempt + 1)
+            }, delayMs)
         }
+
+        attemptLoad(0)
     }
     
     /**
