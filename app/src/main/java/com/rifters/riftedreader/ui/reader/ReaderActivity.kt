@@ -41,6 +41,7 @@ import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
 import com.rifters.riftedreader.ui.reader.ReaderThemePaletteResolver
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorDebugActivity
+import com.rifters.riftedreader.ui.reader.conveyor.ConveyorPhase
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.TimeoutCancellationException
@@ -315,6 +316,40 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             
             // Set up scroll listener to detect page changes
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    super.onScrolled(recyclerView, dx, dy)
+                    
+                    // Conveyor-belt buffer shift logic
+                    // Detect visible center position and trigger shifts
+                    val lm = this@ReaderActivity.layoutManager
+                    if (viewModel.isConveyorPrimary && conveyorBeltSystem.phase.value == ConveyorPhase.STEADY) {
+                        val first = lm.findFirstVisibleItemPosition()
+                        val last = lm.findLastVisibleItemPosition()
+                        
+                        if (first == RecyclerView.NO_POSITION) return
+                        
+                        // Calculate center position
+                        val center = (first + last) / 2
+                        
+                        AppLogger.d(
+                            "ReaderActivity",
+                            "[BUFFER_SHIFT] Scroll detected: first=$first, last=$last, center=$center, " +
+                            "offset=${conveyorBeltSystem.getOffset()}, buffer=${conveyorBeltSystem.buffer.value}"
+                        )
+                        
+                        // Shift forward if center is at slots[3] or slots[4]
+                        if (center >= 3) {
+                            AppLogger.d("ReaderActivity", "[BUFFER_SHIFT] Triggering forward shift (center=$center)")
+                            conveyorBeltSystem.shiftForward(1)
+                        }
+                        // Shift backward if center is at slots[1] or slots[0]
+                        else if (center <= 1) {
+                            AppLogger.d("ReaderActivity", "[BUFFER_SHIFT] Triggering backward shift (center=$center)")
+                            conveyorBeltSystem.shiftBackward(1)
+                        }
+                    }
+                }
+                
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                     super.onScrollStateChanged(recyclerView, newState)
                     val stateName = when (newState) {
