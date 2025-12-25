@@ -1775,29 +1775,70 @@ class ReaderPageFragment : Fragment() {
         // Forward to existing boundary handling logic
         // This reuses the navigation code that the old paginator used
         val readerActivity = activity as? ReaderActivity ?: return
-        when (boundaryDir) {
-            BoundaryDirection.NEXT -> {
-                // Mark as a programmatic navigation so we can guard follow-up boundaries.
-                lastNavigationDirection = BoundaryDirection.NEXT
-                lastNavigationTimestamp = now
-                com.rifters.riftedreader.util.AppLogger.d(
+
+        // Defensive: verify the paginator is truly at an edge before triggering a window switch.
+        // This prevents spurious boundary callbacks (e.g., due to late layout/scroll events) from
+        // causing unexpected window jumps.
+        launchIfViewAlive("verify_boundary_before_window_nav") {
+            if (!isWebViewReady || !isPaginatorInitialized) {
+                com.rifters.riftedreader.util.AppLogger.w(
                     "ReaderPageFragment",
-                    "[MIN_PAGINATOR] Navigating to next page from windowIndex=$windowIndex"
+                    "[BOUNDARY_GUARD] Ignoring boundary; paginator not ready: isWebViewReady=$isWebViewReady isPaginatorInitialized=$isPaginatorInitialized window=$windowIndex dir=$boundaryDir"
                 )
-                readerActivity.navigateToNextPage(animated = true)
+                return@launchIfViewAlive
             }
-            BoundaryDirection.PREVIOUS -> {
-                // Mark as a programmatic navigation so we can guard follow-up boundaries.
-                lastNavigationDirection = BoundaryDirection.PREVIOUS
-                lastNavigationTimestamp = now
-                com.rifters.riftedreader.util.AppLogger.d(
+
+            val pageCount = binding.pageWebView.evaluateJavascriptSuspend(
+                "window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getPageCount() : -1"
+            ).toIntOrNull() ?: -1
+
+            val currentPage = binding.pageWebView.evaluateJavascriptSuspend(
+                "window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getCurrentPage() : -1"
+            ).toIntOrNull() ?: -1
+
+            if (pageCount <= 0 || currentPage < 0) {
+                com.rifters.riftedreader.util.AppLogger.w(
                     "ReaderPageFragment",
-                    "[MIN_PAGINATOR] Navigating to previous page from windowIndex=$windowIndex"
+                    "[BOUNDARY_GUARD] Ignoring boundary; invalid paginator state: currentPage=$currentPage pageCount=$pageCount window=$windowIndex dir=$boundaryDir"
                 )
-                if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
-                    readerActivity.navigateToPreviousPage(animated = true)
-                } else {
-                    readerActivity.navigateToPreviousChapterToLastPage(animated = true)
+                return@launchIfViewAlive
+            }
+
+            val atEdge = when (boundaryDir) {
+                BoundaryDirection.NEXT -> currentPage >= pageCount - 1
+                BoundaryDirection.PREVIOUS -> currentPage <= 0
+            }
+
+            if (!atEdge) {
+                com.rifters.riftedreader.util.AppLogger.w(
+                    "ReaderPageFragment",
+                    "[BOUNDARY_GUARD] Ignoring spurious boundary; not at edge: currentPage=$currentPage pageCount=$pageCount window=$windowIndex dir=$boundaryDir"
+                )
+                return@launchIfViewAlive
+            }
+
+            when (boundaryDir) {
+                BoundaryDirection.NEXT -> {
+                    lastNavigationDirection = BoundaryDirection.NEXT
+                    lastNavigationTimestamp = System.currentTimeMillis()
+                    com.rifters.riftedreader.util.AppLogger.d(
+                        "ReaderPageFragment",
+                        "[MIN_PAGINATOR] Edge verified (page=$currentPage/${pageCount - 1}); navigating NEXT from windowIndex=$windowIndex"
+                    )
+                    readerActivity.navigateToNextPage(animated = true)
+                }
+                BoundaryDirection.PREVIOUS -> {
+                    lastNavigationDirection = BoundaryDirection.PREVIOUS
+                    lastNavigationTimestamp = System.currentTimeMillis()
+                    com.rifters.riftedreader.util.AppLogger.d(
+                        "ReaderPageFragment",
+                        "[MIN_PAGINATOR] Edge verified (page=$currentPage); navigating PREVIOUS from windowIndex=$windowIndex"
+                    )
+                    if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                        readerActivity.navigateToPreviousPage(animated = true)
+                    } else {
+                        readerActivity.navigateToPreviousChapterToLastPage(animated = true)
+                    }
                 }
             }
         }
