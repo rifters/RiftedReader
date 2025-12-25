@@ -68,6 +68,7 @@
         columnContainer: null,
         contentWrapper: null,
         isNavigating: false,  // Flag to prevent scroll listener interference during programmatic navigation
+        isSnapping: false,  // Prevent snap->scroll->snap loops
         lastRecomputeTime: null,  // Track last recompute for debouncing
         mutationObserver: null  // MutationObserver for dynamic content changes
     };
@@ -917,6 +918,16 @@
         // Use columnContainer.scroll instead of window.scroll
         state.columnContainer.addEventListener('scroll', function() {
             if (!state.isPaginationReady) return;
+
+            // If we're currently snapping, don't schedule additional snap operations.
+            // This prevents a snap->scroll->snap loop if widths jitter slightly.
+            if (state.isSnapping) {
+                if (scrollEndTimeout) {
+                    clearTimeout(scrollEndTimeout);
+                    scrollEndTimeout = null;
+                }
+                return;
+            }
             
             // Skip state updates during programmatic navigation to prevent interference
             if (state.isNavigating) {
@@ -965,7 +976,7 @@
         
         // Modern browsers: use scrollend event for better performance on container
         state.columnContainer.addEventListener('scrollend', function() {
-            if (!state.isPaginationReady || state.isNavigating) return;
+            if (!state.isPaginationReady || state.isNavigating || state.isSnapping) return;
             
             // Clear fallback timeout since scrollend fired
             if (scrollEndTimeout) {
@@ -993,6 +1004,13 @@
             log('SNAP_GUARD', 'snapToNearestPage ignored during programmatic navigation');
             return;
         }
+
+        // Mark as snapping so scroll events don't schedule redundant snaps.
+        // We'll clear this on the next animation frame.
+        state.isSnapping = true;
+        requestAnimationFrame(function() {
+            state.isSnapping = false;
+        });
         
         // DIAGNOSTIC: Log appliedColumnWidth at start of snap
         log('DIAGNOSTIC', `snapToNearestPage START - appliedColumnWidth=${state.appliedColumnWidth}px, viewportWidth=${state.viewportWidth}px`);
@@ -1129,10 +1147,9 @@
     function recomputeIfNeeded() {
         if (!state.isPaginationReady) return;
 
-        // Optional: keep widths fresh before recomputing page counts.
-        if (config.enableWidthSync) {
-            updateViewportWidth('RECOMPUTE');
-        }
+        // IMPORTANT: recomputeIfNeeded is intended to react to *content* changes
+        // (images/fonts), not viewport sizing. Width sync here can create
+        // oscillations when scroll snapping is active.
         
         const oldPageCount = state.pageCount;
         const oldCurrentPage = state.currentPage;
@@ -1190,13 +1207,22 @@
                 measured = state.lastStableViewportWidth || FALLBACK_WIDTH;
             }
 
-            const prev = state.lastStableViewportWidth || state.viewportWidth || 0;
+            const prevStable = state.lastStableViewportWidth || state.viewportWidth || 0;
+            const delta = prevStable ? Math.abs(prevStable - measured) : 0;
+
+            // Ignore tiny jitter (e.g., scrollbar/layout rounding) to prevent
+            // repeated tiny width changes from destabilizing snapping.
+            const shouldUpdate = !prevStable || delta >= 2;
+            if (!shouldUpdate) {
+                return;
+            }
+
             state.viewportWidth = measured;
             state.appliedColumnWidth = measured;
             state.lastStableViewportWidth = measured;
 
-            if (prev && Math.abs(prev - measured) >= 2) {
-                log('WIDTH_CHANGE', `${reason}: ${prev}px → ${measured}px`);
+            if (prevStable) {
+                log('WIDTH_CHANGE', `${reason}: ${prevStable}px → ${measured}px`);
             }
         } catch (e) {
             // ignore
