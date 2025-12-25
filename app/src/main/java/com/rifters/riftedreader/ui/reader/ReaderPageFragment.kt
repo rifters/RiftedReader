@@ -2288,14 +2288,14 @@ class ReaderPageFragment : Fragment() {
             "WINDOW_EXIT: windowIndex=$currentWindow, direction=NEXT, target=$targetWindow, " +
             "totalWindows=$totalWindows [WINDOW_NAV]"
         )
-        
-        // Validate target window exists before requesting navigation
+
+        // IMPORTANT: Do not block end-of-book here.
+        // Let ReaderActivity.navigateToNextPage() own end-of-book completion + closing.
         if (targetWindow >= totalWindows) {
             com.rifters.riftedreader.util.AppLogger.w(
                 "ReaderPageFragment",
-                "Cannot navigate to next window: target=$targetWindow >= totalWindows=$totalWindows [NAV_BLOCKED]"
+                "End of book boundary hit in fragment: target=$targetWindow >= totalWindows=$totalWindows; handing off to activity for completion. [BOOK_COMPLETE_HANDOFF]"
             )
-            return
         }
         
         // Set navigation direction to prevent spurious boundary detection

@@ -77,6 +77,49 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         return "offset=$offset buffer=${getValidBuffer()} activeWindow=${_activeWindow.value} phase=${_phase.value} shiftsUnlocked=$shiftsUnlocked cacheKeys=${htmlCache.keys.sorted()}"
     }
 
+    private fun evictHtmlCacheToBuffer(allowedWindows: Set<Int>, reason: String) {
+        val toRemove = htmlCache.keys.filter { it !in allowedWindows }
+        if (toRemove.isEmpty()) return
+
+        toRemove.forEach { htmlCache.remove(it) }
+        BufferLogger.log(
+            event = "CACHE_EVICT",
+            message = "reason=$reason",
+            details = mapOf(
+                "removed" to toRemove.sorted().toString(),
+                "allowed" to allowedWindows.toList().sorted().toString(),
+                "snapshot" to bufferSnapshot()
+            )
+        )
+    }
+
+    private fun applyNewOffset(newOffset: Int, reason: String) {
+        val oldBuffer = getValidBuffer()
+        val oldOffset = offset
+
+        offset = newOffset
+        updateSlots()
+        val newBuffer = getValidBuffer()
+
+        _buffer.value = newBuffer
+
+        val added = newBuffer.filter { it !in oldBuffer }
+        val removed = oldBuffer.filter { it !in newBuffer }
+        if (added.isNotEmpty() || removed.isNotEmpty() || oldOffset != offset) {
+            BufferLogger.log(
+                event = "BUFFER_MUTATION",
+                message = "reason=$reason oldOffset=$oldOffset newOffset=$offset",
+                details = mapOf(
+                    "added" to added.toString(),
+                    "removed" to removed.toString(),
+                    "snapshot" to bufferSnapshot()
+                )
+            )
+        }
+
+        evictHtmlCacheToBuffer(newBuffer.toSet(), reason = reason)
+    }
+
     private fun bufferLog(event: String, message: String) {
         BufferLogger.log(
             event = event,
@@ -183,10 +226,10 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         // Increment offset (bounded by totalWindowCount)
         val maxOffset = (totalWindowCount - BUFFER_SIZE).coerceAtLeast(0)
         offset = (offset + count).coerceAtMost(maxOffset)
-        
+
         // Recompute slots
         updateSlots()
-        
+
         val newBuffer = getValidBuffer()
         
         log("BUFFER_SHIFT", 
@@ -212,6 +255,9 @@ class ConveyorBeltSystemViewModel : ViewModel() {
                 )
             )
         }
+
+        // Enforce 5-slot cache discipline
+        evictHtmlCacheToBuffer(newBuffer.toSet(), reason = "shiftForward")
         if (newWindows.isNotEmpty()) {
             log("PREFETCH", "Prefetching new windows after forward shift: $newWindows")
             preloadWindowsAsync(newWindows)
@@ -264,6 +310,9 @@ class ConveyorBeltSystemViewModel : ViewModel() {
                 )
             )
         }
+
+        // Enforce 5-slot cache discipline
+        evictHtmlCacheToBuffer(newBuffer.toSet(), reason = "shiftBackward")
         if (newWindows.isNotEmpty()) {
             log("PREFETCH", "Prefetching new windows after backward shift: $newWindows")
             preloadWindowsAsync(newWindows)
@@ -475,14 +524,13 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         val centerOffset = BUFFER_SIZE / 2
         val newOffset = (windowIndex - centerOffset).coerceAtLeast(0)
         val maxOffset = (totalWindowCount - BUFFER_SIZE).coerceAtLeast(0)
-        offset = newOffset.coerceAtMost(maxOffset)
-        
-        // Update slots
-        updateSlots()
-        
+        val clampedOffset = newOffset.coerceAtMost(maxOffset)
+
         _activeWindow.value = windowIndex
         _phase.value = ConveyorPhase.STEADY
-        _buffer.value = getValidBuffer()
+
+        // Apply buffer change via a single path that logs mutation + enforces cache discipline
+        applyNewOffset(newOffset = clampedOffset, reason = "transitionToSteady")
         
         log("TRANSITION", "*** PHASE TRANSITION: STARTUP → STEADY ***")
         log("TRANSITION", "New buffer: offset=$offset, buffer=${getValidBuffer()}, activeWindow=$windowIndex")
@@ -513,9 +561,8 @@ class ConveyorBeltSystemViewModel : ViewModel() {
             val centerOffset = BUFFER_SIZE / 2
             val newOffset = (windowIndex - centerOffset).coerceAtLeast(0)
             val maxOffset = (totalWindowCount - BUFFER_SIZE).coerceAtLeast(0)
-            offset = newOffset.coerceAtMost(maxOffset)
-            updateSlots()
-            _buffer.value = getValidBuffer()
+            val clampedOffset = newOffset.coerceAtMost(maxOffset)
+            applyNewOffset(newOffset = clampedOffset, reason = "steadyRecenter")
             
             log("STEADY_NAV", "Buffer recentered: offset=$offset, buffer=${getValidBuffer()}")
             preloadWindowsAsync(getValidBuffer())
