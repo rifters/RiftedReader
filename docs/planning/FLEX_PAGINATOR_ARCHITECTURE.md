@@ -38,6 +38,12 @@ Window Creation:
 
 User Navigates:
   └─ Display window immediately (zero latency)
+
+> Implementation note (current repo state)
+>
+> - Pre-slicing exists, but the current slicer uses a fixed viewport height and height *estimation*.
+> - “Zero latency display” requires that offscreen slicing uses the **same viewport + CSS** as the on-screen reader.
+> - Treat this doc as the target architecture; see the Phase 1 “Reality Check” in `FLEX_PAGINATOR_INTEGRATION_CHECKLIST.md` for current gaps.
 ```
 
 ### 4. Character Offset Tracking
@@ -48,6 +54,11 @@ Pages are tracked by **text position**, not layout:
 - Offsets survive font size changes
 - Bookmarks use `(window, page, charOffset)` tuples
 - Position restoration is precise and reliable
+
+> Implementation note (current repo state)
+>
+> - Current JS resets `currentCharOffset` to 0 at each chapter boundary, so offsets are **chapter-local**.
+> - This is compatible with bookmark tuples that include `chapter`, but it is not a single “global char offset” across the whole book.
 
 ## Component Architecture
 

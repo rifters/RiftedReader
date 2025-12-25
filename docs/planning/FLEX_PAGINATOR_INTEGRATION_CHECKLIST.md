@@ -13,6 +13,16 @@ This checklist breaks down the FlexPaginator integration into 5 implementation p
 
 ## Phase 1: Core FlexPaginator (Already Complete ✅)
 
+### Phase 1 Reality Check (Important)
+
+Phase 1 is “complete” in the sense that the end-to-end pipeline exists (assemble HTML → offscreen slice → parse `SliceMetadata`).
+However, there are known intentional limitations in the current implementation that must be addressed before FlexPaginator can become the default reader paginator:
+
+- [ ] Offscreen viewport parity: offscreen slicing must use the same width/height as the on-screen reader WebView (current JS uses fixed height and the offscreen WebView is 1x1).
+- [ ] Real measurement: current JS uses height *estimation* constants, not DOM measurement. This will drift vs real layout.
+- [ ] CSS parity contract: offscreen slicing CSS must be derived from reader settings (font size, line height, margins, hyphenation, theme) and match the on-screen CSS.
+- [ ] Runtime callbacks: `flex_paginator.js` currently only calls `onSlicingComplete/onSlicingError`. Boundary and page-change callbacks in the quick-ref are not implemented yet.
+
 ### Data Structures
 - [✅] Create `PageSlice` data class
 - [✅] Create `SliceMetadata` data class

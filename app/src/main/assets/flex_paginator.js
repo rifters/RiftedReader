@@ -40,19 +40,19 @@
     // ========================================================================
     // CONSTANTS
     // ========================================================================
-    const VIEWPORT_HEIGHT_PX = 600; // Target page height (can be adjusted)
+    const DEFAULT_VIEWPORT_HEIGHT_PX = 600; // Fallback target page height
     const MIN_VIEWPORT_WIDTH = 10;
     const FALLBACK_VIEWPORT_WIDTH = 360;
     
     // Height estimation constants
     const CHARS_PER_LINE = 80;
-    const LINE_HEIGHT_PX = 24;
-    const PARAGRAPH_HEIGHT_PX = 48;  // ~2 lines
-    const HEADING1_HEIGHT_PX = 60;
-    const HEADING2_HEIGHT_PX = 48;
-    const HEADING3_HEIGHT_PX = 36;
+    let LINE_HEIGHT_PX = 24;
+    let PARAGRAPH_HEIGHT_PX = 48;  // ~2 lines
+    let HEADING1_HEIGHT_PX = 60;
+    let HEADING2_HEIGHT_PX = 48;
+    let HEADING3_HEIGHT_PX = 36;
     const IMAGE_HEIGHT_PX = 200;
-    const BR_HEIGHT_PX = 24;
+    let BR_HEIGHT_PX = 24;
     
     // ========================================================================
     // STATE
@@ -60,7 +60,7 @@
     let state = {
         windowIndex: window.FLEX_WINDOW_INDEX || 0,
         viewportWidth: 0,
-        viewportHeight: VIEWPORT_HEIGHT_PX,
+        viewportHeight: DEFAULT_VIEWPORT_HEIGHT_PX,
         slices: [],  // Array of PageSlice objects
         isInitialized: false
     };
@@ -77,9 +77,34 @@
     function initialize() {
         try {
             log('INIT', 'Starting flex paginator initialization');
+
+            // Apply injected viewport + typography config when provided.
+            const injectedHeight = (typeof window.FLEX_VIEWPORT_HEIGHT === 'number') ? window.FLEX_VIEWPORT_HEIGHT : null;
+            if (injectedHeight && injectedHeight > 0) {
+                state.viewportHeight = injectedHeight;
+            }
+
+            const injectedWidth = (typeof window.FLEX_VIEWPORT_WIDTH === 'number') ? window.FLEX_VIEWPORT_WIDTH : null;
+            if (injectedWidth && injectedWidth > 0) {
+                state.viewportWidth = injectedWidth;
+            }
+
+            const injectedFontSize = (typeof window.FLEX_FONT_SIZE_PX === 'number') ? window.FLEX_FONT_SIZE_PX : null;
+            const injectedLineHeight = (typeof window.FLEX_LINE_HEIGHT === 'number') ? window.FLEX_LINE_HEIGHT : null;
+
+            if (injectedFontSize && injectedFontSize > 0 && injectedLineHeight && injectedLineHeight > 0) {
+                LINE_HEIGHT_PX = Math.max(1, Math.round(injectedFontSize * injectedLineHeight));
+                BR_HEIGHT_PX = LINE_HEIGHT_PX;
+                PARAGRAPH_HEIGHT_PX = LINE_HEIGHT_PX * 2;
+                HEADING1_HEIGHT_PX = Math.round(LINE_HEIGHT_PX * 2.5);
+                HEADING2_HEIGHT_PX = Math.round(LINE_HEIGHT_PX * 2.0);
+                HEADING3_HEIGHT_PX = Math.round(LINE_HEIGHT_PX * 1.5);
+            }
             
-            // Get viewport dimensions
-            state.viewportWidth = Math.max(window.innerWidth, MIN_VIEWPORT_WIDTH);
+            // Get viewport dimensions (prefer injected width; fallback to window.innerWidth)
+            if (!state.viewportWidth || state.viewportWidth < MIN_VIEWPORT_WIDTH) {
+                state.viewportWidth = Math.max(window.innerWidth, MIN_VIEWPORT_WIDTH);
+            }
             if (state.viewportWidth < MIN_VIEWPORT_WIDTH) {
                 state.viewportWidth = FALLBACK_VIEWPORT_WIDTH;
                 log('WARN', `Viewport width too small, using fallback: ${FALLBACK_VIEWPORT_WIDTH}px`);
@@ -202,7 +227,7 @@
                 height: ${state.viewportHeight}px;
                 overflow: hidden;
                 scroll-snap-align: start;
-                padding: 16px;
+                padding: ${(typeof window.FLEX_PAGE_PADDING_PX === 'number' && window.FLEX_PAGE_PADDING_PX >= 0) ? window.FLEX_PAGE_PADDING_PX : 16}px;
                 box-sizing: border-box;
             `;
             flexContainer.appendChild(currentPage);

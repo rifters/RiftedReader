@@ -72,7 +72,11 @@ class OffscreenSlicingWebView(context: Context) {
      * @return SliceMetadata with page slices and character offsets
      * @throws SlicingException if slicing fails or times out
      */
-    suspend fun sliceWindow(wrappedHtml: String, windowIndex: Int): SliceMetadata {
+    suspend fun sliceWindow(
+        wrappedHtml: String,
+        windowIndex: Int,
+        config: FlexSlicingConfig = FlexSlicingConfig()
+    ): SliceMetadata {
         return suspendCancellableCoroutine { continuation ->
             AppLogger.d(TAG, "[SLICE] Starting slicing for window $windowIndex")
             
@@ -110,7 +114,7 @@ class OffscreenSlicingWebView(context: Context) {
             // The flex_paginator.js will be injected via <script> tag in the HTML
             mainHandler.post {
                 try {
-                    val htmlWithScript = injectFlexPaginatorScript(wrappedHtml, windowIndex)
+                    val htmlWithScript = injectFlexPaginatorScript(wrappedHtml, windowIndex, config)
                     webView.loadDataWithBaseURL(
                         "file:///android_asset/",
                         htmlWithScript,
@@ -127,6 +131,13 @@ class OffscreenSlicingWebView(context: Context) {
             }
         }
     }
+
+    /**
+     * Backward-compatible overload.
+     */
+    suspend fun sliceWindow(wrappedHtml: String, windowIndex: Int): SliceMetadata {
+        return sliceWindow(wrappedHtml = wrappedHtml, windowIndex = windowIndex, config = FlexSlicingConfig())
+    }
     
     /**
      * Inject flex_paginator.js script into the HTML document.
@@ -136,7 +147,12 @@ class OffscreenSlicingWebView(context: Context) {
      * 2. Perform node-walking slicing
      * 3. Call AndroidBridge.onSlicingComplete(metadataJson)
      */
-    private fun injectFlexPaginatorScript(wrappedHtml: String, windowIndex: Int): String {
+    private fun injectFlexPaginatorScript(
+        wrappedHtml: String,
+        windowIndex: Int,
+        config: FlexSlicingConfig
+    ): String {
+        val sanitizedFontFamily = sanitizeCssFontFamily(config.fontFamily)
         return buildString {
             append("<!DOCTYPE html>\n")
             append("<html>\n")
@@ -145,7 +161,8 @@ class OffscreenSlicingWebView(context: Context) {
             append("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
             append("  <style>\n")
             append("    * { margin: 0; padding: 0; box-sizing: border-box; }\n")
-            append("    body { font-family: sans-serif; font-size: 16px; line-height: 1.6; }\n")
+            append("    html, body { width: 100%; height: 100%; }\n")
+            append("    body { font-family: $sanitizedFontFamily; font-size: ${config.fontSizePx}px; line-height: ${config.lineHeight}; }\n")
             append("    section { margin-bottom: 1em; }\n")
             append("  </style>\n")
             append("</head>\n")
@@ -155,11 +172,31 @@ class OffscreenSlicingWebView(context: Context) {
             append("  <script>\n")
             append("    // Window index for metadata validation\n")
             append("    window.FLEX_WINDOW_INDEX = $windowIndex;\n")
+            append("    // Viewport + typography configuration (must match on-screen reader for true parity)\n")
+            append("    window.FLEX_VIEWPORT_WIDTH = ${config.viewportWidthPx};\n")
+            append("    window.FLEX_VIEWPORT_HEIGHT = ${config.viewportHeightPx};\n")
+            append("    window.FLEX_FONT_SIZE_PX = ${config.fontSizePx};\n")
+            append("    window.FLEX_LINE_HEIGHT = ${config.lineHeight};\n")
+            append("    window.FLEX_FONT_FAMILY = '$sanitizedFontFamily';\n")
+            append("    window.FLEX_PAGE_PADDING_PX = ${config.pagePaddingPx};\n")
             append("  </script>\n")
             append("  <script src=\"file:///android_asset/flex_paginator.js\"></script>\n")
             append("</body>\n")
             append("</html>\n")
         }
+    }
+
+    private fun sanitizeCssFontFamily(input: String): String {
+        val trimmed = input.trim()
+        if (trimmed.isEmpty()) return "sans-serif"
+        // Allow common characters; drop quotes/semicolons/newlines to avoid breaking CSS/JS.
+        return trimmed
+            .replace("\n", " ")
+            .replace("\r", " ")
+            .replace("\t", " ")
+            .replace("\"", "")
+            .replace("'", "")
+            .replace(";", "")
     }
     
     /**
