@@ -45,6 +45,8 @@ import com.rifters.riftedreader.ui.reader.conveyor.ConveyorPhase
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -79,6 +81,72 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var programmaticScrollInProgress: Boolean = false
     // Flag to track if initial buffer-to-UI sync has been performed
     private var initialBufferSyncCompleted: Boolean = false
+
+    // Prevent window-skips when a key/tap arrives before the WebView paginator has initialized.
+    // We queue a single navigation attempt and execute it once the paginator is ready.
+    private var pendingPagedNavJob: Job? = null
+    private var pendingPagedNavToken: Long = 0L
+
+    private fun queuePagedNavigationUntilReady(windowId: Int, isNext: Boolean, source: String): Boolean {
+        if (viewModel.paginationMode != PaginationMode.CONTINUOUS) return false
+        if (readerMode != ReaderMode.PAGE) return false
+
+        val fragTag = "w$windowId"
+        val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
+        if (frag == null) return false
+
+        // Only queue if the WebView is already on-screen but the paginator init hasn't completed yet.
+        if (!frag.isWebViewReady() || frag.isPaginatorInitialized()) return false
+
+        pendingPagedNavJob?.cancel()
+        pendingPagedNavToken += 1
+        val token = pendingPagedNavToken
+
+        AppLogger.d(
+            "ReaderActivity",
+            "[$source] Queueing navigation until paginator ready: windowId=$windowId isNext=$isNext token=$token [NAV_QUEUE]"
+        )
+
+        pendingPagedNavJob = lifecycleScope.launch {
+            val deadlineMs = 1200L
+            val pollMs = 50L
+            val startMs = System.currentTimeMillis()
+
+            while (System.currentTimeMillis() - startMs < deadlineMs) {
+                // If a newer request came in, abandon this one.
+                if (token != pendingPagedNavToken) return@launch
+
+                // Only execute if we're still on the same active window.
+                if (viewModel.currentWindowIndex.value != windowId) {
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "[$source] Aborting queued nav: activeWindow changed (expected=$windowId actual=${viewModel.currentWindowIndex.value}) token=$token [NAV_QUEUE]"
+                    )
+                    return@launch
+                }
+
+                val currentFrag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
+                if (currentFrag != null && currentFrag.isWebViewReady() && currentFrag.isPaginatorInitialized()) {
+                    val handled = currentFrag.handleHardwarePageKey(isNext = isNext)
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "[$source] Executed queued nav: handled=$handled windowId=$windowId isNext=$isNext token=$token [NAV_QUEUE]"
+                    )
+                    return@launch
+                }
+
+                delay(pollMs)
+            }
+
+            AppLogger.w(
+                "ReaderActivity",
+                "[$source] Dropping queued nav: paginator not ready after timeout windowId=$windowId isNext=$isNext token=$token [NAV_QUEUE_TIMEOUT]"
+            )
+        }
+
+        // Consume the event so we don't fall back to window navigation.
+        return true
+    }
 
     private fun syncRecyclerViewToWindowId(windowId: Int, reason: String) {
         if (readerMode != ReaderMode.PAGE || viewModel.paginationMode != PaginationMode.CONTINUOUS) return
@@ -1089,6 +1157,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         return true
                     }
 
+                    // If the fragment is visible but paginator isn't ready yet, queue the nav instead of
+                    // falling back to window navigation (which can skip a window during transitions).
+                    if (queuePagedNavigationUntilReady(windowId = windowId, isNext = true, source = "HARDWARE_KEY_NAV")) {
+                        return true
+                    }
+
                     // Fallback: navigate chapters/windows
                     AppLogger.d(
                         "ReaderActivity",
@@ -1114,6 +1188,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     )
                     
                     if (frag?.handleHardwarePageKey(isNext = false) == true) {
+                        return true
+                    }
+
+                    if (queuePagedNavigationUntilReady(windowId = windowId, isNext = false, source = "HARDWARE_KEY_NAV")) {
                         return true
                     }
 
@@ -1220,6 +1298,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         controlsManager.onUserInteraction()
                         return
                     }
+
+                    if (queuePagedNavigationUntilReady(windowId = windowId, isNext = true, source = "TAP_ZONE_NAV")) {
+                        controlsManager.onUserInteraction()
+                        return
+                    }
                     
                     // Fallback: direct navigation
                     AppLogger.d(
@@ -1248,6 +1331,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     
                     if (frag?.handleHardwarePageKey(isNext = false) == true) {
                         // Fragment will handle edge-aware navigation
+                        controlsManager.onUserInteraction()
+                        return
+                    }
+
+                    if (queuePagedNavigationUntilReady(windowId = windowId, isNext = false, source = "TAP_ZONE_NAV")) {
                         controlsManager.onUserInteraction()
                         return
                     }

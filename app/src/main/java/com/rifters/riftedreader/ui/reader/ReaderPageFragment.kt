@@ -132,6 +132,13 @@ class ReaderPageFragment : Fragment() {
     private var lastNavigationTimestamp: Long = 0L
     private val NAVIGATION_COOLDOWN_MS = 500L // Time to ignore spurious boundaries after navigation
 
+    // Boundary dedupe: prevents duplicate boundary events (often from the previous window) from
+    // being handled twice and skipping a window (e.g., w12 -> w13 -> w14).
+    private var lastHandledBoundaryWindowIndex: Int? = null
+    private var lastHandledBoundaryDirection: BoundaryDirection? = null
+    private var lastHandledBoundaryTimestamp: Long = 0L
+    private val BOUNDARY_DEDUPE_MS = 1000L
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -1686,6 +1693,19 @@ class ReaderPageFragment : Fragment() {
             "ReaderPageFragment",
             "[MIN_PAGINATOR] Boundary reached: windowIndex=$windowIndex, direction=$direction"
         )
+
+        // In continuous mode, only the active/visible window is allowed to trigger a window transition.
+        // Offscreen WebViews can still emit boundary events during/after programmatic scrolling.
+        if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            val activeWindowIndex = readerViewModel.currentWindowIndex.value
+            if (activeWindowIndex != windowIndex) {
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "[BOUNDARY_GUARD] Ignoring boundary from inactive window: eventWindow=$windowIndex activeWindow=$activeWindowIndex direction=$direction"
+                )
+                return
+            }
+        }
         
         // TASK 4: CONVEYOR AUTHORITATIVE TAKEOVER - Forward boundary events to conveyor
         if (readerViewModel.isConveyorPrimary && readerViewModel.conveyorBeltSystem != null) {
@@ -1709,9 +1729,29 @@ class ReaderPageFragment : Fragment() {
                 return
             }
         }
+
+        // Drop duplicate boundary events from the same window+direction within a short interval.
+        // This is a common cause of "double-advance" during window transitions.
+        val now = System.currentTimeMillis()
+        val isDuplicateBoundary =
+            lastHandledBoundaryWindowIndex == windowIndex &&
+                lastHandledBoundaryDirection == boundaryDir &&
+                (now - lastHandledBoundaryTimestamp) < BOUNDARY_DEDUPE_MS
+
+        if (isDuplicateBoundary) {
+            com.rifters.riftedreader.util.AppLogger.d(
+                "ReaderPageFragment",
+                "[BOUNDARY_GUARD] Ignoring duplicate boundary: window=$windowIndex direction=$boundaryDir (dt=${now - lastHandledBoundaryTimestamp}ms < ${BOUNDARY_DEDUPE_MS}ms)"
+            )
+            return
+        }
+
+        lastHandledBoundaryWindowIndex = windowIndex
+        lastHandledBoundaryDirection = boundaryDir
+        lastHandledBoundaryTimestamp = now
         
         // Guard against spurious boundary triggers after programmatic navigation
-        val timeSinceLastNav = System.currentTimeMillis() - lastNavigationTimestamp
+        val timeSinceLastNav = now - lastNavigationTimestamp
         if (timeSinceLastNav < NAVIGATION_COOLDOWN_MS) {
             // Within cooldown period - check if this is a spurious boundary
             val isSpuriousBoundary = when {
@@ -1737,6 +1777,9 @@ class ReaderPageFragment : Fragment() {
         val readerActivity = activity as? ReaderActivity ?: return
         when (boundaryDir) {
             BoundaryDirection.NEXT -> {
+                // Mark as a programmatic navigation so we can guard follow-up boundaries.
+                lastNavigationDirection = BoundaryDirection.NEXT
+                lastNavigationTimestamp = now
                 com.rifters.riftedreader.util.AppLogger.d(
                     "ReaderPageFragment",
                     "[MIN_PAGINATOR] Navigating to next page from windowIndex=$windowIndex"
@@ -1744,6 +1787,9 @@ class ReaderPageFragment : Fragment() {
                 readerActivity.navigateToNextPage(animated = true)
             }
             BoundaryDirection.PREVIOUS -> {
+                // Mark as a programmatic navigation so we can guard follow-up boundaries.
+                lastNavigationDirection = BoundaryDirection.PREVIOUS
+                lastNavigationTimestamp = now
                 com.rifters.riftedreader.util.AppLogger.d(
                     "ReaderPageFragment",
                     "[MIN_PAGINATOR] Navigating to previous page from windowIndex=$windowIndex"
