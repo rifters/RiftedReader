@@ -539,12 +539,17 @@ class ReaderPageFragment : Fragment() {
                     // Always update TextView settings
                     binding.pageTextView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, settings.textSizeSp)
                     binding.pageTextView.setLineSpacing(0f, settings.lineHeightMultiplier)
+
+                    // IMPORTANT: The first emission after (re)creating the fragment should be treated as
+                    // a baseline, not a "change". Otherwise we can trigger an unnecessary WebView reload
+                    // (renderBaseContent) which resets in-window scroll back to page 0.
+                    val isFirstSettingsEmission = previousSettings == null
                     
-                    // Determine what changed
-                    val themeChanged = previousSettings?.theme != settings.theme
-                    val fontSizeChanged = previousSettings?.textSizeSp != settings.textSizeSp
-                    val lineHeightChanged = previousSettings?.lineHeightMultiplier != settings.lineHeightMultiplier
-                    val modeChanged = previousSettings?.mode != settings.mode
+                    // Determine what changed (only meaningful after the first emission)
+                    val themeChanged = if (isFirstSettingsEmission) false else previousSettings?.theme != settings.theme
+                    val fontSizeChanged = if (isFirstSettingsEmission) false else previousSettings?.textSizeSp != settings.textSizeSp
+                    val lineHeightChanged = if (isFirstSettingsEmission) false else previousSettings?.lineHeightMultiplier != settings.lineHeightMultiplier
+                    val modeChanged = if (isFirstSettingsEmission) false else previousSettings?.mode != settings.mode
                     
                     // Log settings changes
                     if (previousSettings != null) {
@@ -574,6 +579,12 @@ class ReaderPageFragment : Fragment() {
                         rootView = binding.root,
                         enabled = settings.debugWindowRenderingEnabled
                     )
+
+                    // Baseline: don't reload/reflow on first emission; just remember current settings.
+                    if (isFirstSettingsEmission) {
+                        previousSettings = settings
+                        return@collect
+                    }
                     
                     // Handle WebView content updates based on what changed
                     if (latestPageText.isNotEmpty() || !latestPageHtml.isNullOrEmpty()) {
