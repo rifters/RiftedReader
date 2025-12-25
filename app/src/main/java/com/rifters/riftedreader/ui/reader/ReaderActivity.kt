@@ -93,10 +93,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
         val fragTag = "w$windowId"
         val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
-        if (frag == null) return false
 
-        // Only queue if the WebView is already on-screen but the paginator init hasn't completed yet.
-        if (!frag.isWebViewReady() || frag.isPaginatorInitialized()) return false
+        // If the fragment is already ready, don't queue.
+        if (frag != null && frag.isWebViewReady() && frag.isPaginatorInitialized()) return false
 
         pendingPagedNavJob?.cancel()
         pendingPagedNavToken += 1
@@ -1151,15 +1150,24 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         "ReaderActivity",
                         "VOLUME_DOWN pressed: paginationMode=${viewModel.paginationMode}, windowId=$windowId, fragTag=$fragTag, fragFound=${frag != null} [HARDWARE_KEY_NAV]"
                     )
-                    
-                    if (frag?.handleHardwarePageKey(isNext = true) == true) {
-                        // Fragment will handle (consumed)
-                        return true
-                    }
 
-                    // If the fragment is visible but paginator isn't ready yet, queue the nav instead of
-                    // falling back to window navigation (which can skip a window during transitions).
-                    if (queuePagedNavigationUntilReady(windowId = windowId, isNext = true, source = "HARDWARE_KEY_NAV")) {
+                    // Only delegate to the fragment in PAGE mode. In SCROLL mode we want window-based
+                    // navigation and should not trigger in-window horizontal paging.
+                    if (readerMode == ReaderMode.PAGE) {
+                        if (frag?.handleHardwarePageKey(isNext = true) == true) {
+                            return true
+                        }
+
+                        // In PAGE+CONTINUOUS, never fall back to window jumps when the paginator is not ready.
+                        // Queue briefly and consume the key.
+                        if (queuePagedNavigationUntilReady(windowId = windowId, isNext = true, source = "HARDWARE_KEY_NAV")) {
+                            return true
+                        }
+
+                        AppLogger.w(
+                            "ReaderActivity",
+                            "VOLUME_DOWN ignored: fragment/paginator not ready; blocking fallback window jump (mode=PAGE) [HARDWARE_KEY_NAV]"
+                        )
                         return true
                     }
 
@@ -1186,12 +1194,20 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         "ReaderActivity",
                         "VOLUME_UP pressed: paginationMode=${viewModel.paginationMode}, windowId=$windowId, fragTag=$fragTag, fragFound=${frag != null} [HARDWARE_KEY_NAV]"
                     )
-                    
-                    if (frag?.handleHardwarePageKey(isNext = false) == true) {
-                        return true
-                    }
 
-                    if (queuePagedNavigationUntilReady(windowId = windowId, isNext = false, source = "HARDWARE_KEY_NAV")) {
+                    if (readerMode == ReaderMode.PAGE) {
+                        if (frag?.handleHardwarePageKey(isNext = false) == true) {
+                            return true
+                        }
+
+                        if (queuePagedNavigationUntilReady(windowId = windowId, isNext = false, source = "HARDWARE_KEY_NAV")) {
+                            return true
+                        }
+
+                        AppLogger.w(
+                            "ReaderActivity",
+                            "VOLUME_UP ignored: fragment/paginator not ready; blocking fallback window jump (mode=PAGE) [HARDWARE_KEY_NAV]"
+                        )
                         return true
                     }
 
