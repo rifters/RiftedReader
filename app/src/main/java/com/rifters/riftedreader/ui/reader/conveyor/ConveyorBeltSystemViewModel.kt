@@ -390,7 +390,20 @@ class ConveyorBeltSystemViewModel : ViewModel() {
             val html = provider.getWindowHtml(bookId, windowIndex)
             
             if (html != null) {
+                val allowed = getValidBuffer().toSet()
+                if (windowIndex !in allowed) {
+                    // Critical cache invariant: cache should reflect the current 5-slot buffer only.
+                    // Late async loads can complete after the buffer has shifted; do not re-grow the cache.
+                    log(
+                        "HTML_LOAD",
+                        "Window $windowIndex loaded but not in current buffer=$allowed; skipping cache insert"
+                    )
+                    return
+                }
+
                 htmlCache[windowIndex] = html
+                // Enforce cache discipline even if future refactors add other caching paths.
+                evictHtmlCacheToBuffer(allowedWindows = allowed, reason = "htmlLoadComplete")
                 log("HTML_LOAD", "Window $windowIndex loaded: ${html.length} chars")
             } else {
                 log("HTML_LOAD", "Window $windowIndex: HTML provider returned null")
