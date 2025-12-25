@@ -985,6 +985,10 @@ class ReaderViewModel(
                             previewText,
                             percent
                         )
+                    } else {
+                        // Conveyor-driven continuous mode may not have a global paginator/location.
+                        // Still persist progress so the library doesn't remain "Not started".
+                        persistWindowBasedProgress()
                     }
                 } else {
                     repository.updateReadingProgress(
@@ -1073,6 +1077,12 @@ class ReaderViewModel(
     private val characterOffsetMap = mutableMapOf<Int, Int>()
 
     /**
+     * In-window page index tracking per window (0-based).
+     * Used for best-effort persistence when the global paginator is unavailable.
+     */
+    private val inPageIndexMap = mutableMapOf<Int, Int>()
+
+    /**
      * Update reading position with character offset.
      * Called after navigation to capture the current position with stable offset info.
      * 
@@ -1082,6 +1092,7 @@ class ReaderViewModel(
      */
     fun updateReadingPosition(windowIndex: Int, pageInWindow: Int, characterOffset: Int) {
         characterOffsetMap[windowIndex] = characterOffset
+        inPageIndexMap[windowIndex] = pageInWindow
         AppLogger.d(
             "ReaderViewModel",
             "[CHARACTER_OFFSET] Updated position: windowIndex=$windowIndex, pageInWindow=$pageInWindow, offset=$characterOffset"
@@ -1106,14 +1117,57 @@ class ReaderViewModel(
         return offset
     }
 
+    fun getSavedInPageIndex(windowIndex: Int): Int {
+        return inPageIndexMap[windowIndex] ?: 0
+    }
+
     /**
      * Clear character offset for a window (useful after window reload).
      */
     fun clearCharacterOffset(windowIndex: Int) {
         characterOffsetMap.remove(windowIndex)
+        inPageIndexMap.remove(windowIndex)
         AppLogger.d(
             "ReaderViewModel",
             "[CHARACTER_OFFSET] Cleared offset for windowIndex=$windowIndex"
+        )
+    }
+
+    private suspend fun persistWindowBasedProgress(percentOverride: Float? = null) {
+        val totalWindows = _windowCount.value
+        if (totalWindows <= 0) return
+
+        val windowIndex = _currentWindowIndex.value
+        val percent = percentOverride ?: (((windowIndex + 1).toFloat() / totalWindows) * 100f)
+
+        val chapterIndex = slidingWindowManager.firstChapterInWindow(windowIndex).coerceAtLeast(0)
+        val inPageIndex = getSavedInPageIndex(windowIndex).coerceAtLeast(0)
+        val characterOffset = getSavedCharacterOffset(windowIndex).coerceAtLeast(0)
+
+        repository.updateReadingProgressEnhanced(
+            bookId = bookId,
+            chapterIndex = chapterIndex,
+            inPageIndex = inPageIndex,
+            characterOffset = characterOffset,
+            previewText = null,
+            percentComplete = percent.coerceIn(0f, 100f)
+        )
+    }
+
+    /**
+     * Persist completion (100%) so the library shows the book as finished.
+     * This is designed to work even if the global paginator isn't available.
+     */
+    suspend fun persistBookCompleted() {
+        val visibleCount = chapterIndexProvider.visibleChapterCount
+        val lastChapterIndex = (visibleCount - 1).coerceAtLeast(0)
+        repository.updateReadingProgressEnhanced(
+            bookId = bookId,
+            chapterIndex = lastChapterIndex,
+            inPageIndex = 0,
+            characterOffset = 0,
+            previewText = null,
+            percentComplete = 100f
         )
     }
 
@@ -1439,8 +1493,18 @@ class ReaderViewModel(
             viewModelScope.launch {
                 val paginator = continuousPaginator
                 if (paginator == null) {
-                    AppLogger.e("ReaderViewModel", 
-                        "goToWindow ERROR: continuousPaginator is null in CONTINUOUS mode [PAGINATOR_NULL]")
+                    if (isConveyorPrimary) {
+                        AppLogger.w(
+                            "ReaderViewModel",
+                            "goToWindow: continuousPaginator is null; persisting window-based progress (window=$windowIndex) [PAGINATOR_NULL_FALLBACK]"
+                        )
+                        persistWindowBasedProgress()
+                        return@launch
+                    }
+                    AppLogger.e(
+                        "ReaderViewModel",
+                        "goToWindow ERROR: continuousPaginator is null in CONTINUOUS mode [PAGINATOR_NULL]"
+                    )
                     return@launch
                 }
                 

@@ -44,6 +44,7 @@ import com.rifters.riftedreader.ui.reader.conveyor.ConveyorDebugActivity
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorPhase
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import com.rifters.riftedreader.util.AppLogger
+import com.rifters.riftedreader.util.BufferLogger
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -81,6 +82,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var programmaticScrollInProgress: Boolean = false
     // Flag to track if initial buffer-to-UI sync has been performed
     private var initialBufferSyncCompleted: Boolean = false
+
+    // Prevent duplicate end-of-book completion handling from repeated boundary events.
+    private var endOfBookCloseInProgress: Boolean = false
 
     // Prevent window-skips when a key/tap arrives before the WebView paginator has initialized.
     // We queue a single navigation attempt and execute it once the paginator is ready.
@@ -1382,6 +1386,20 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             val nextWindow = currentWindow + 1
             val totalWindows = viewModel.windowCount.value
             val adapterItemCount = pagerAdapter.itemCount
+
+            BufferLogger.log(
+                event = "NAV_NEXT",
+                message = "navigateToNextPage window mode",
+                details = mapOf(
+                    "paginationMode" to viewModel.paginationMode.name,
+                    "readerMode" to readerMode.name,
+                    "currentWindow" to currentWindow.toString(),
+                    "nextWindow" to nextWindow.toString(),
+                    "totalWindows" to totalWindows.toString(),
+                    "adapterItemCount" to adapterItemCount.toString(),
+                    "pid" to android.os.Process.myPid().toString()
+                )
+            )
             
             AppLogger.d(
                 "ReaderActivity",
@@ -1392,11 +1410,38 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             
             // Validate target window is within bounds before attempting navigation
             if (nextWindow >= totalWindows) {
-                AppLogger.w(
-                    "ReaderActivity",
-                    "Cannot navigate to next window: nextWindow=$nextWindow exceeds bounds " +
-                    "(totalWindows=$totalWindows) [NAV_BLOCKED]"
-                )
+                // End-of-book: persist completion and close.
+                if (!endOfBookCloseInProgress) {
+                    endOfBookCloseInProgress = true
+                    AppLogger.i(
+                        "ReaderActivity",
+                        "End of book reached: window=$currentWindow totalWindows=$totalWindows. Marking complete and closing. [BOOK_COMPLETE]"
+                    )
+                    BufferLogger.log(
+                        level = "END",
+                        event = "BOOK_COMPLETE",
+                        message = "End of book reached; persisting completion and closing",
+                        details = mapOf(
+                            "currentWindow" to currentWindow.toString(),
+                            "totalWindows" to totalWindows.toString(),
+                            "pid" to android.os.Process.myPid().toString()
+                        )
+                    )
+                    lifecycleScope.launch {
+                        try {
+                            viewModel.persistBookCompleted()
+                        } catch (e: Exception) {
+                            AppLogger.e("ReaderActivity", "Failed to persist completion at end-of-book", e)
+                        } finally {
+                            finish()
+                        }
+                    }
+                } else {
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "End-of-book close already in progress; ignoring duplicate NEXT boundary. [BOOK_COMPLETE_DUP]"
+                    )
+                }
                 return
             }
             
@@ -1412,6 +1457,19 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         } else {
             val currentIndex = viewModel.currentPage.value
             val nextIndex = currentIndex + 1
+
+            BufferLogger.log(
+                event = "NAV_NEXT",
+                message = "navigateToNextPage page mode",
+                details = mapOf(
+                    "paginationMode" to viewModel.paginationMode.name,
+                    "readerMode" to readerMode.name,
+                    "currentPage" to currentIndex.toString(),
+                    "nextPage" to nextIndex.toString(),
+                    "pid" to android.os.Process.myPid().toString()
+                )
+            )
+
             AppLogger.d(
                 "ReaderActivity",
                 "navigateToNextPage called: currentPage=$currentIndex -> nextPage=$nextIndex mode=$readerMode " +
@@ -1435,6 +1493,20 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             val previousWindow = currentWindow - 1
             val totalWindows = viewModel.windowCount.value
             val adapterItemCount = pagerAdapter.itemCount
+
+            BufferLogger.log(
+                event = "NAV_PREV",
+                message = "navigateToPreviousPage window mode",
+                details = mapOf(
+                    "paginationMode" to viewModel.paginationMode.name,
+                    "readerMode" to readerMode.name,
+                    "currentWindow" to currentWindow.toString(),
+                    "previousWindow" to previousWindow.toString(),
+                    "totalWindows" to totalWindows.toString(),
+                    "adapterItemCount" to adapterItemCount.toString(),
+                    "pid" to android.os.Process.myPid().toString()
+                )
+            )
             
             AppLogger.d(
                 "ReaderActivity",
@@ -1464,6 +1536,19 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         } else {
             val currentIndex = viewModel.currentPage.value
             val previousIndex = currentIndex - 1
+
+            BufferLogger.log(
+                event = "NAV_PREV",
+                message = "navigateToPreviousPage page mode",
+                details = mapOf(
+                    "paginationMode" to viewModel.paginationMode.name,
+                    "readerMode" to readerMode.name,
+                    "currentPage" to currentIndex.toString(),
+                    "previousPage" to previousIndex.toString(),
+                    "pid" to android.os.Process.myPid().toString()
+                )
+            )
+
             AppLogger.d(
                 "ReaderActivity",
                 "navigateToPreviousPage called: currentPage=$currentIndex -> previousPage=$previousIndex mode=$readerMode " +

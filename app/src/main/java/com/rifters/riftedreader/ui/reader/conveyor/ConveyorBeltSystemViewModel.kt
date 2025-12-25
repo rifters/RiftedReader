@@ -76,6 +76,16 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     private fun bufferSnapshot(): String {
         return "offset=$offset buffer=${getValidBuffer()} activeWindow=${_activeWindow.value} phase=${_phase.value} shiftsUnlocked=$shiftsUnlocked cacheKeys=${htmlCache.keys.sorted()}"
     }
+
+    private fun bufferLog(event: String, message: String) {
+        BufferLogger.log(
+            event = event,
+            message = message,
+            details = mapOf(
+                "snapshot" to bufferSnapshot()
+            )
+        )
+    }
     
     /**
      * Map a RecyclerView position (0-4) to the actual window index using slot mapping.
@@ -411,6 +421,7 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     }
     
     fun onWindowEntered(windowIndex: Int) {
+        bufferLog(event = "WINDOW_ENTER", message = "windowIndex=$windowIndex")
         log("STATE", "onWindowEntered($windowIndex)")
         log("STATE", "Current: offset=$offset, buffer=${getValidBuffer()}, activeWindow=${_activeWindow.value}, phase=${_phase.value}")
         log("STATE", "shiftsUnlocked=$shiftsUnlocked")
@@ -475,6 +486,8 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("TRANSITION", "*** PHASE TRANSITION: STARTUP → STEADY ***")
         log("TRANSITION", "New buffer: offset=$offset, buffer=${getValidBuffer()}, activeWindow=$windowIndex")
+
+        bufferLog(event = "PHASE", message = "STARTUP_TO_STEADY activeWindow=$windowIndex")
         
         // Preload all windows in the new buffer asynchronously
         preloadWindowsAsync(getValidBuffer())
@@ -525,6 +538,8 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("REVERT", "*** PHASE TRANSITION: STEADY → STARTUP ***")
         log("REVERT", "Buffer reverted: offset=$offset, buffer=${getValidBuffer()}, activeWindow=$UNLOCK_WINDOW")
+
+        bufferLog(event = "PHASE", message = "STEADY_TO_STARTUP activeWindow=$UNLOCK_WINDOW")
         
         // Clear HTML cache on revert since we're going back to initial windows
         htmlCache.clear()
@@ -569,6 +584,8 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         log("INIT", "Conveyor initialized: windowCount=$totalWindowCount, offset=$offset, " +
             "buffer=${getValidBuffer()}, activeWindow=$clampedStart, isInitialized=true")
+
+        bufferLog(event = "INIT", message = "startWindow=$startWindow clampedStart=$clampedStart totalWindowCount=$totalWindowCount")
         
         // Preload initial buffer windows asynchronously
         preloadWindowsAsync(getValidBuffer())
