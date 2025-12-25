@@ -46,7 +46,13 @@
     // ========================================================================
     let config = {
         mode: 'window',
-        windowIndex: 0
+        windowIndex: 0,
+        // Safety switches:
+        // - enableWidthSync: experimental; keeps viewportWidth/appliedColumnWidth synced to container.
+        //   Default OFF to avoid unintended pagination behavior changes.
+        // - enableNavDriftLog: diagnostic only; logs when scrollLeft/page drifts after goToPage().
+        enableWidthSync: false,
+        enableNavDriftLog: false
     };
     
     let state = {
@@ -90,6 +96,12 @@
     function configure(cfg) {
         config.mode = cfg.mode || config.mode;
         config.windowIndex = cfg.windowIndex !== undefined ? cfg.windowIndex : config.windowIndex;
+        if (cfg.enableWidthSync !== undefined) {
+            config.enableWidthSync = !!cfg.enableWidthSync;
+        }
+        if (cfg.enableNavDriftLog !== undefined) {
+            config.enableNavDriftLog = !!cfg.enableNavDriftLog;
+        }
         log('CONFIGURE', `mode=${config.mode}, windowIndex=${config.windowIndex}`);
     }
     
@@ -170,9 +182,15 @@
             // This is required for column layout to work correctly
             wrapExistingContentAsSegment();
             
-            // Use the actual container width as the source of truth.
-            // window.innerWidth can be transiently wrong in Android WebView during UI/layout churn.
-            updateViewportWidth('INIT');
+            // Default behavior (stable/known-good): use window.innerWidth at init.
+            // Optional (experimental): sync widths to container clientWidth.
+            if (config.enableWidthSync) {
+                updateViewportWidth('INIT');
+            } else {
+                state.viewportWidth = window.innerWidth;
+                state.appliedColumnWidth = state.viewportWidth;
+                state.lastStableViewportWidth = state.viewportWidth;
+            }
             
             log('INIT', `Using measured content width: ${state.viewportWidth}px (containerClientWidth=${state.columnContainer.clientWidth}, contentClientWidth=${state.contentWrapper.clientWidth}, boundingWidth=${state.contentWrapper.getBoundingClientRect().width})`);
             
@@ -363,7 +381,7 @@
 
         // High-signal drift check: if something (reflow/layout clamp) forces scrollLeft away
         // from the requested page after navigation, log it. This is the exact symptom you're seeing.
-        setTimeout(function() {
+        if (config.enableNavDriftLog) setTimeout(function() {
             try {
                 if (!state.columnContainer || state.appliedColumnWidth <= 0) return;
                 const actualScrollLeft = state.columnContainer.scrollLeft;
@@ -659,7 +677,9 @@
             state.columnContainer.style.display = oldDisplay || '';
             
             // Reapply column layout (this will update state.appliedColumnWidth)
-            updateViewportWidth('REFLOW');
+            if (config.enableWidthSync) {
+                updateViewportWidth('REFLOW');
+            }
             applyColumnLayout();
             
             // DIAGNOSTIC: Log appliedColumnWidth after reapplying layout
@@ -778,8 +798,10 @@
      * Apply CSS column layout
      */
     function applyColumnLayout() {
-        // Keep width in sync with the real container size.
-        updateViewportWidth('APPLY_LAYOUT');
+        // Optional: keep width in sync with the real container size.
+        if (config.enableWidthSync) {
+            updateViewportWidth('APPLY_LAYOUT');
+        }
         applyColumnStylesWithWidth(state.contentWrapper, state.appliedColumnWidth);
     }
     
@@ -1107,8 +1129,10 @@
     function recomputeIfNeeded() {
         if (!state.isPaginationReady) return;
 
-        // Keep widths fresh before recomputing page counts.
-        updateViewportWidth('RECOMPUTE');
+        // Optional: keep widths fresh before recomputing page counts.
+        if (config.enableWidthSync) {
+            updateViewportWidth('RECOMPUTE');
+        }
         
         const oldPageCount = state.pageCount;
         const oldCurrentPage = state.currentPage;

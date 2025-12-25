@@ -295,7 +295,9 @@ class ReaderPageFragment : Fragment() {
                         if (window.minimalPaginator) {
                             window.minimalPaginator.configure({
                                 mode: '$mode',
-                                windowIndex: $windowIndex
+                                windowIndex: $windowIndex,
+                                enableWidthSync: false,
+                                enableNavDriftLog: ${com.rifters.riftedreader.BuildConfig.DEBUG}
                             });
                         }
                         """.trimIndent(),
