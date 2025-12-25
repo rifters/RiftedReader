@@ -879,6 +879,13 @@
             
             // Skip state updates during programmatic navigation to prevent interference
             if (state.isNavigating) {
+                // IMPORTANT: Even during programmatic navigation, clear any pending
+                // snap timeout from a prior manual scroll. Otherwise, that timeout
+                // can fire mid-navigation and snap back to the wrong page (often 0).
+                if (scrollEndTimeout) {
+                    clearTimeout(scrollEndTimeout);
+                    scrollEndTimeout = null;
+                }
                 log('SCROLL', 'Scroll event ignored during programmatic navigation');
                 return;
             }
@@ -937,6 +944,14 @@
      */
     function snapToNearestPage() {
         if (!state.isPaginationReady) return;
+
+        // Never snap while a programmatic navigation is in-flight.
+        // This avoids "bounce back" to page 0 after goToPage() when a stale
+        // scroll-end timeout fires or scroll events race with smooth scrolling.
+        if (state.isNavigating) {
+            log('SNAP_GUARD', 'snapToNearestPage ignored during programmatic navigation');
+            return;
+        }
         
         // DIAGNOSTIC: Log appliedColumnWidth at start of snap
         log('DIAGNOSTIC', `snapToNearestPage START - appliedColumnWidth=${state.appliedColumnWidth}px, viewportWidth=${state.viewportWidth}px`);
