@@ -54,9 +54,8 @@ class ReaderPageFragment : Fragment() {
      * - Continuous mode: window index (each window contains 5 chapters)
      * - Chapter-based mode: chapter index (each window contains 1 chapter)
      */
-    private val windowIndex: Int by lazy {
-        requireArguments().getInt(ARG_PAGE_INDEX)
-    }
+    private val windowIndex: Int
+        get() = requireArguments().getInt(ARG_PAGE_INDEX)
     
     // Alias for backward compatibility with existing code
     private val pageIndex: Int get() = windowIndex
@@ -215,6 +214,23 @@ class ReaderPageFragment : Fragment() {
                         "ReaderPageFragment",
                         "[MIN_PAGINATOR] isPaginatorInitialized set to true for windowIndex=$wIdx"
                     )
+
+                    // If this window's WebView is recreated/reloaded while the user is still
+                    // reading it, restore to the most stable known position.
+                    // Prefer pendingInitialInPageIndex (initial navigation target). Otherwise,
+                    // restore by character offset for the active window.
+                    if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                        val activeWindow = readerViewModel.conveyorBeltSystem?.activeWindow?.value
+                        val shouldRestore = activeWindow == null || activeWindow == wIdx
+
+                        if (shouldRestore && pendingInitialInPageIndex == null) {
+                            launchIfViewAlive("pagination_ready_restore_position") {
+                                kotlinx.coroutines.delay(50)
+                                restorePositionWithCharacterOffset()
+                            }
+                        }
+                    }
+
                     // Forward to ViewModel for state updates and conveyor integration
                     readerViewModel.onWindowPaginationReady(wIdx, totalPages)
                 },
@@ -2303,23 +2319,14 @@ class ReaderPageFragment : Fragment() {
             "[WINDOW_RESET] Resetting scroll state for window $windowIndex"
         )
         
-        // Reset WebView scroll position to origin
-        binding.pageWebView.scrollX = 0
-        binding.pageWebView.scrollY = 0
-        
-        // Reset minimal paginator scroll state via JavaScript
-        // This ensures the paginator's internal scroll position is also reset
+        // IMPORTANT: Do NOT directly poke scrollLeft; it can desync visual position from
+        // minimal_paginator's internal state (state.currentPage), causing logs to show e.g.
+        // 20/21 while the UI displays page 0.
+        // Always use the paginator API so scroll + state stay consistent.
+        currentInPageIndex = 0
+        pendingInitialInPageIndex = null
         binding.pageWebView.evaluateJavascript(
-            """
-            if (window.minimalPaginator && window.minimalPaginator.isReady()) {
-                // Reset scroll position in the paginator container
-                var container = document.getElementById('paginator-container');
-                if (container) {
-                    container.scrollLeft = 0;
-                    container.scrollTop = 0;
-                }
-            }
-            """.trimIndent(),
+            "if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage(0, false); }",
             null
         )
         
@@ -2394,6 +2401,14 @@ class ReaderPageFragment : Fragment() {
                 return
             }
 
+            // In conveyor/continuous mode, only auto-restore the active window.
+            if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                val activeWindow = readerViewModel.conveyorBeltSystem?.activeWindow?.value
+                if (activeWindow != null && activeWindow != windowIndex) {
+                    return
+                }
+            }
+
             // Check if ViewModel has a saved character offset for this window
             val savedCharOffset = readerViewModel.getSavedCharacterOffset(pageIndex)
             
@@ -2450,6 +2465,7 @@ class ReaderPageFragment : Fragment() {
      * @param newWindowIndex The new window/chapter index to display
      */
     fun updateWindow(newWindowIndex: Int) {
+        if (_binding == null) return
         val oldWindowIndex = requireArguments().getInt(ARG_PAGE_INDEX)
         
         com.rifters.riftedreader.util.AppLogger.d(
@@ -2459,6 +2475,9 @@ class ReaderPageFragment : Fragment() {
         
         // Update the window index that was set via arguments
         requireArguments().putInt(ARG_PAGE_INDEX, newWindowIndex)
+
+        // Reset transition tracking for the new logical window
+        lastKnownWindowIndex = null
         
         // Reset state for the new window
         isPaginatorInitialized = false

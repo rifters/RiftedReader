@@ -289,6 +289,18 @@
      */
     function getCurrentPage() {
         if (!state.isPaginationReady) return 0;
+
+        // Derive from actual scroll position to avoid state/visual drift.
+        // This protects against rare cases where the container scroll position changes
+        // (e.g., layout churn) without our state.currentPage being updated.
+        if (state.columnContainer && state.appliedColumnWidth > 0) {
+            const currentScrollLeft = state.columnContainer.scrollLeft;
+            const computed = Math.round(currentScrollLeft / state.appliedColumnWidth);
+            const clamped = Math.max(0, Math.min(computed, state.pageCount - 1));
+            state.currentPage = clamped;
+            return clamped;
+        }
+
         return Math.max(0, Math.min(state.currentPage, state.pageCount - 1));
     }
     
