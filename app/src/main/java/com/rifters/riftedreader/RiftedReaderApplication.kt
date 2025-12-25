@@ -2,6 +2,7 @@ package com.rifters.riftedreader
 
 import android.app.Application
 import com.rifters.riftedreader.util.AppLogger
+import com.rifters.riftedreader.util.BufferLogger
 import com.rifters.riftedreader.util.HtmlDebugLogger
 
 /**
@@ -9,22 +10,53 @@ import com.rifters.riftedreader.util.HtmlDebugLogger
  * Handles app-wide initialization
  */
 class RiftedReaderApplication : Application() {
+
+    private var previousExceptionHandler: Thread.UncaughtExceptionHandler? = null
     
     override fun onCreate() {
         super.onCreate()
+
+        installUncaughtExceptionLogger()
         
         // Initialize logger
         AppLogger.init(this)
         AppLogger.startSession(this)
         AppLogger.event("Application", "RiftedReader application started", "app/lifecycle")
+
+        // Dedicated conveyor buffer log (separate from AppLogger session log)
+        BufferLogger.init(this)
+        BufferLogger.startSession(this)
         
         // Initialize HTML debug logger for pagination debugging
         HtmlDebugLogger.init(this)
+    }
+
+    private fun installUncaughtExceptionLogger() {
+        if (previousExceptionHandler != null) return
+
+        previousExceptionHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                AppLogger.e(
+                    "Crash",
+                    "Uncaught exception on thread=${thread.name} (${thread.id})",
+                    throwable
+                )
+                AppLogger.event("Crash", "Process will terminate", "app/crash")
+                AppLogger.endSession()
+            } catch (_: Throwable) {
+                // Best-effort logging only.
+            } finally {
+                previousExceptionHandler?.uncaughtException(thread, throwable)
+            }
+        }
     }
     
     override fun onTerminate() {
         AppLogger.event("Application", "RiftedReader application terminated", "app/lifecycle")
         AppLogger.endSession()
+
+        BufferLogger.endSession()
         
         // Clean up old HTML debug logs
         HtmlDebugLogger.cleanupOldLogs(maxFiles = 50)

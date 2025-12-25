@@ -48,7 +48,9 @@ object WindowRenderingDebug {
      * @return ARGB color int with 25% opacity
      */
     fun getDebugColor(windowIndex: Int): Int {
-        return WINDOW_DEBUG_COLORS[windowIndex % WINDOW_DEBUG_COLORS.size]
+        if (WINDOW_DEBUG_COLORS.isEmpty()) return Color.TRANSPARENT
+        val idx = Math.floorMod(windowIndex, WINDOW_DEBUG_COLORS.size)
+        return WINDOW_DEBUG_COLORS[idx]
     }
     
     /**

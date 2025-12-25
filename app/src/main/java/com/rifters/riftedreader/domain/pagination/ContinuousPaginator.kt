@@ -368,29 +368,46 @@ class ContinuousPaginator(
         
         AppLogger.d(TAG, "Loading window: chapters ${windowIndices.first()}-${windowIndices.last()}")
         
-        // CRITICAL FIX: During initialization (when many windows are preloading),
-        // DO NOT unload chapters that may be needed by other windows being assembled.
-        // The WindowBufferManager will handle cleanup after initialization is complete.
-        // Only unload chapters if we're NOT in an initialization phase (detected by checking
-        // if we have a large number of loaded chapters relative to a single window).
+        // TASK 2 FIX: Buffer eviction guards
+        // Only evict chapters when:
+        // 1. We have more than 5 windows worth of chapters loaded (windowSize * 5)
+        // 2. The chapter is NOT in the active window or neighbor windows
+        //
+        // This prevents unloading chapters that are immediately needed after navigation,
+        // which was causing blank window rendering in continuous mode.
         
-        // Determine which chapters to unload
-        val toUnload = loadedChapters.keys - windowIndices.toSet()
+        // The active window and its neighbors (2 ahead, 2 behind) must stay loaded
+        // Each UI window contains windowSize chapters, so we need to protect:
+        // - Active window and 2 windows before: 3 * windowSize chapters before center
+        // - Active window and 2 windows after: 3 * windowSize chapters after center
+        // This gives us a 5-window buffer (current + 2 before + 2 after)
+        val protectedWindowRadius = 2 * windowSize // 2 windows on each side
+        val protectedStart = (centerChapterIndex - protectedWindowRadius).coerceAtLeast(0)
+        val protectedEnd = (centerChapterIndex + protectedWindowRadius).coerceAtMost(totalChapters - 1)
+        val protectedChapters = (protectedStart..protectedEnd).toSet()
         
-        // SAFETY CHECK: Don't unload if we have fewer loaded chapters than would fill 5 windows.
-        // This prevents premature unloading during buffer initialization when 5 windows (0-4)
-        // are being assembled in parallel. Each window needs 5 chapters, so we need 25 chapters
-        // loaded before it's safe to start unloading. WindowBufferManager will handle cleanup
-        // after all 5 buffer windows are cached.
-        val safeToUnload = loadedChapters.size >= (windowSize * 5)
+        // Determine which chapters to unload (those not in current window and not protected)
+        val toUnload = loadedChapters.keys
+            .filter { it !in windowIndices }
+            .filter { it !in protectedChapters }
         
-        if (safeToUnload) {
+        // SAFETY CHECK: Only unload if we have more than 5 windows worth of chapters loaded
+        // This prevents premature unloading during STARTUP phase when buffer is being assembled
+        val safeToUnload = loadedChapters.size > (windowSize * 5)
+        
+        if (safeToUnload && toUnload.isNotEmpty()) {
+            AppLogger.d(TAG, "Unloading ${toUnload.size} chapters (protected range: [$protectedStart, $protectedEnd], loaded: ${loadedChapters.size})")
             toUnload.forEach { chapterIndex ->
                 AppLogger.d(TAG, "Unloading chapter $chapterIndex")
                 loadedChapters.remove(chapterIndex)
             }
         } else {
-            AppLogger.d(TAG, "Skipping unload during initialization: loadedChapters.size=${loadedChapters.size} < ${windowSize * 5}")
+            if (!safeToUnload) {
+                AppLogger.d(TAG, "Skipping unload: loadedChapters.size=${loadedChapters.size} <= ${windowSize * 5}")
+            }
+            if (toUnload.isEmpty()) {
+                AppLogger.d(TAG, "Skipping unload: no chapters to unload (all are in active window or protected range [$protectedStart, $protectedEnd])")
+            }
         }
         
         // Determine which chapters to load

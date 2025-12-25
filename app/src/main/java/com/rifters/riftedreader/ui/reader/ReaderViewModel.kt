@@ -20,12 +20,11 @@ import com.rifters.riftedreader.domain.parser.BookParser
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.domain.parser.TocEntry
 import com.rifters.riftedreader.domain.parser.TxtParser
-import com.rifters.riftedreader.pagination.DefaultWindowAssembler
 import com.rifters.riftedreader.pagination.PaginationModeGuard
 import com.rifters.riftedreader.pagination.SlidingWindowPaginator
-import com.rifters.riftedreader.pagination.WindowBufferManager
 import com.rifters.riftedreader.pagination.WindowData
 import com.rifters.riftedreader.pagination.WindowSyncHelpers
+import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -92,6 +91,13 @@ class ReaderViewModel(
     val paginationMode: PaginationMode
         get() = readerPreferences.settings.value.paginationMode
     
+    /**
+     * Check if using horizontal windowed pagination mode.
+     * 
+     * Note: "CONTINUOUS mode" in the codebase refers to horizontal windowed pagination
+     * where chapters are grouped into sliding windows (5 chapters per window) for
+     * efficient memory management and smooth horizontal scrolling.
+     */
     val isContinuousMode: Boolean
         get() = paginationMode == PaginationMode.CONTINUOUS
     
@@ -127,7 +133,7 @@ class ReaderViewModel(
     // Chapter index provider for unified chapter indexing with visibility settings
     // Provides mapping between UI indices and spine indices based on visibility settings.
     // NOTE: Chapters are populated during pagination initialization (initializeChapterBasedPagination
-    // or initializeContinuousPagination), not during construction. The initial visibility settings
+    // or initializeHorizontalWindowedPagination), not during construction. The initial visibility settings
     // are applied when observeVisibilitySettingsChanges() starts collecting.
     val chapterIndexProvider = ChapterIndexProvider(chaptersPerWindow)
 
@@ -144,15 +150,77 @@ class ReaderViewModel(
     private var continuousPaginator: ContinuousPaginator? = null
     private var isContinuousInitialized = false
     
-    // WindowBufferManager for two-phase buffer lifecycle in continuous mode
-    // Manages 5-window buffer with STARTUP and STEADY phases
-    private var _windowBufferManager: WindowBufferManager? = null
+    // WindowBufferManager has been deprecated and removed in favor of ConveyorBeltSystemViewModel
+    // All window buffer management is now handled by ConveyorBeltSystemViewModel
     
-    // Public accessor for fragments that need to check buffer state
-    val windowBufferManager: WindowBufferManager?
-        get() = _windowBufferManager
+    // Conveyor Belt System for managing window transitions and buffer state.
+    // NOTE: This is attached by the Activity after the ReaderViewModel is created.
+    // We must support late-binding to avoid a race where window initialization completes
+    // before the conveyor is available.
+    private var _conveyorBeltSystem: ConveyorBeltSystemViewModel? = null
+
+    private data class PendingConveyorInit(
+        val startWindow: Int,
+        val totalWindows: Int,
+        val paginator: com.rifters.riftedreader.domain.pagination.ContinuousPaginator,
+        val windowManager: com.rifters.riftedreader.domain.pagination.SlidingWindowManager,
+        val bookId: String
+    )
+
+    private var pendingConveyorInit: PendingConveyorInit? = null
     
-    private var windowAssembler: DefaultWindowAssembler? = null
+    // Public accessor for conveyor system
+    val conveyorBeltSystem: ConveyorBeltSystemViewModel?
+        get() = _conveyorBeltSystem
+    
+    /**
+     * Check if the conveyor system is active and should be the authoritative window manager.
+     * Returns true when the conveyorBeltSystem is initialized and not null.
+     * 
+     * The conveyor system manages the 5-window sliding buffer for continuous reading mode.
+     */
+    val isConveyorPrimary: Boolean
+        get() = _conveyorBeltSystem != null
+    
+    // Stable readiness StateFlow.
+    // Do NOT expose a dynamic getter based on _conveyorBeltSystem because fragments may capture
+    // the fallback flow before the conveyor is attached.
+    private val _isConveyorReady = MutableStateFlow(false)
+
+    /**
+     * StateFlow indicating whether the conveyor system is ready (initialized and preloaded).
+     * Fragments should wait for this to become true before requesting window HTML in continuous mode.
+     */
+    val isConveyorReady: StateFlow<Boolean> = _isConveyorReady.asStateFlow()
+
+    private fun initializeConveyorIfPossible(conveyorSystem: ConveyorBeltSystemViewModel) {
+        val pending = pendingConveyorInit ?: return
+
+        if (pending.totalWindows <= 0) {
+            AppLogger.w(
+                "ReaderViewModel",
+                "[CONVEYOR_ACTIVE] Skipping late init: totalWindows=${pending.totalWindows}"
+            )
+            return
+        }
+
+        // Set HTML loading dependencies first
+        conveyorSystem.setHtmlLoadingDependencies(
+            paginator = pending.paginator,
+            windowManager = pending.windowManager,
+            bookId = pending.bookId
+        )
+
+        // Then initialize the buffer
+        conveyorSystem.initialize(pending.startWindow, pending.totalWindows)
+
+        AppLogger.d(
+            "ReaderViewModel",
+            "[CONVEYOR_ACTIVE] Conveyor initialized (late-bind): startWindow=${pending.startWindow}, totalWindows=${pending.totalWindows}, phase=${conveyorSystem.phase.value}"
+        )
+
+        pendingConveyorInit = null
+    }
     
     // Cache for pre-wrapped HTML to enable fast access for windows 0-4 during initial load
     private val preWrappedHtmlCache = mutableMapOf<Int, String>()
@@ -277,8 +345,8 @@ class ReaderViewModel(
         
         // Initialize content loading based on pagination mode
         if (isContinuousMode) {
-            AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Starting continuous mode initialization")
-            initializeContinuousPagination()
+            AppLogger.d("ReaderViewModel", "[WINDOWED] Starting horizontal windowed mode initialization")
+            initializeHorizontalWindowedPagination()
         } else {
             AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Starting chapter-based mode initialization")
             initializeChapterBasedPagination()
@@ -407,12 +475,24 @@ class ReaderViewModel(
         }
     }
 
-    private fun initializeContinuousPagination() {
+    /**
+     * Initialize horizontal windowed pagination mode.
+     * 
+     * CONTINUOUS mode = horizontal windowed pagination with 5-chapter windows.
+     * This mode groups chapters into sliding windows for efficient memory management
+     * and smooth horizontal scrolling through the book content.
+     * 
+     * Each window contains up to 5 chapters of content, and windows are managed in
+     * a 5-window buffer (STARTUP and STEADY phases) by the ConveyorBeltSystemViewModel.
+     *
+     * NOTE: minimal paginator is now always used - legacy paginator removed.
+     */
+    private fun initializeHorizontalWindowedPagination() {
         viewModelScope.launch {
             // Begin window build - lock pagination mode during construction
             paginationModeGuard.beginWindowBuild()
             try {
-                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Initializing continuous pagination for book=$bookId")
+                AppLogger.d("ReaderViewModel", "[WINDOWED] Initializing horizontal windowed pagination for book=$bookId")
                 val paginator = ContinuousPaginator(bookFile, parser, windowSize = 5)
                 paginator.initialize()
                 continuousPaginator = paginator
@@ -421,7 +501,7 @@ class ReaderViewModel(
                 val startChapter = book?.currentChapterIndex ?: 0
                 val startInPage = book?.currentInPageIndex ?: 0
                 
-                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Book info: startChapter=$startChapter, startInPage=$startInPage")
+                AppLogger.d("ReaderViewModel", "[WINDOWED] Book info: startChapter=$startChapter, startInPage=$startInPage")
                 
                 // Load the initial window
                 paginator.loadInitialWindow(startChapter)
@@ -431,11 +511,11 @@ class ReaderViewModel(
                 val windowInfo = paginator.getWindowInfo()
                 val totalChapters = windowInfo.totalChapters
                 
-                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] WindowInfo: totalChapters=$totalChapters, totalGlobalPages=${windowInfo.totalGlobalPages}")
+                AppLogger.d("ReaderViewModel", "[WINDOWED] WindowInfo: totalChapters=$totalChapters, totalGlobalPages=${windowInfo.totalGlobalPages}")
                 
                 // Handle empty book case properly - set all state to consistent values
                 if (totalChapters <= 0) {
-                    AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] Book has no chapters - applying fallback")
+                    AppLogger.w("ReaderViewModel", "[WINDOWED] Book has no chapters - applying fallback")
                     _totalPages.value = 0
                     _windowCount.value = 0
                     windowCountLiveData.postValue(0)
@@ -453,12 +533,12 @@ class ReaderViewModel(
                 // Keep LiveData in sync for observers using traditional LiveData pattern
                 windowCountLiveData.postValue(computedWindowCount)
                 
-                // [PAGINATION_DEBUG] Log window computation details
-                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Window computation: totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow, computedWindowCount=$computedWindowCount")
+                // [WINDOWED] Log window computation details
+                AppLogger.d("ReaderViewModel", "[WINDOWED] Window computation: totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow, computedWindowCount=$computedWindowCount")
                 
                 // [FALLBACK] If zero windows computed, create at least one window with all content
                 if (computedWindowCount == 0 && totalChapters > 0) {
-                    AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] FALLBACK: Zero windows computed for $totalChapters chapters - forcing windowCount=1")
+                    AppLogger.e("ReaderViewModel", "[WINDOWED] FALLBACK: Zero windows computed for $totalChapters chapters - forcing windowCount=1")
                     _windowCount.value = 1
                     // Also update LiveData for observers using traditional LiveData pattern
                     windowCountLiveData.postValue(1)
@@ -479,7 +559,7 @@ class ReaderViewModel(
                 val initialWindowIndex = slidingWindowPaginator.getWindowForChapter(safeStartChapter)
                 _currentWindowIndex.value = initialWindowIndex
                 
-                AppLogger.d("ReaderViewModel", "[WINDOW_BUILD] CONTINUOUS complete: totalChapters=$totalChapters, windowCount=$computedWindowCount, initialWindowIndex=$initialWindowIndex")
+                AppLogger.d("ReaderViewModel", "[WINDOWED] Initialization complete: totalChapters=$totalChapters, windowCount=$computedWindowCount, initialWindowIndex=$initialWindowIndex")
                 
                 // Verify invariant
                 paginationModeGuard.assertWindowCountInvariant(
@@ -488,9 +568,34 @@ class ReaderViewModel(
                 )
                 
                 isContinuousInitialized = true
-                
-                // Initialize WindowBufferManager for two-phase buffer lifecycle
-                initializeWindowBufferManager(paginator, totalChapters, initialWindowIndex)
+
+                // Conveyor is attached by the Activity after ReaderViewModel creation.
+                // Store init parameters and initialize immediately if it's already present.
+                pendingConveyorInit = PendingConveyorInit(
+                    startWindow = initialWindowIndex,
+                    totalWindows = computedWindowCount,
+                    paginator = paginator,
+                    windowManager = slidingWindowManager,
+                    bookId = bookId
+                )
+
+                val conveyorSystem = _conveyorBeltSystem
+                if (conveyorSystem != null) {
+                    // Ensure readiness flow follows the real conveyor.
+                    // (If setConveyorBeltSystem was called earlier, it already starts this collector.)
+                    viewModelScope.launch {
+                        conveyorSystem.isInitialized.collect { ready ->
+                            _isConveyorReady.value = ready
+                        }
+                    }
+
+                    initializeConveyorIfPossible(conveyorSystem)
+                } else {
+                    AppLogger.w(
+                        "ReaderViewModel",
+                        "[CONVEYOR_ACTIVE] Conveyor not attached yet; deferring init: startWindow=$initialWindowIndex totalWindows=$computedWindowCount"
+                    )
+                }
                 
                 // Pre-generate wrapped HTML for initial windows (0-4 or fewer if book has fewer windows)
                 // This ensures downstream windows are prepared during initial load
@@ -501,9 +606,9 @@ class ReaderViewModel(
 
                 updateForGlobalPage(initialGlobalPage)
                 
-                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Restored position: chapter=$safeStartChapter, inPage=$startInPage, globalPage=$initialGlobalPage")
+                AppLogger.d("ReaderViewModel", "[WINDOWED] Restored position: chapter=$safeStartChapter, inPage=$startInPage, globalPage=$initialGlobalPage")
             } catch (e: Exception) {
-                AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] Failed to initialize continuous paginator", e)
+                AppLogger.e("ReaderViewModel", "[WINDOWED] Failed to initialize horizontal windowed pagination", e)
                 _pages.value = emptyList()
                 _totalPages.value = 0
                 _windowCount.value = 0
@@ -590,218 +695,42 @@ class ReaderViewModel(
     }
     
     /**
-     * Initialize the WindowBufferManager for two-phase buffer lifecycle management.
-     * 
-     * Called during continuous pagination initialization. Sets up:
-     * 1. DefaultWindowAssembler that delegates to ContinuousPaginatorWindowHtmlProvider
-     * 2. WindowBufferManager with the assembler and slidingWindowPaginator
-     * 3. Initial buffer with 5 windows starting from the given initial window
-     * 
-     * @param paginator The ContinuousPaginator instance for accessing chapter content
-     * @param totalChapters Total number of chapters in the book
-     * @param initialWindowIndex The window to start from
-     */
-    private suspend fun initializeWindowBufferManager(
-        paginator: ContinuousPaginator,
-        totalChapters: Int,
-        initialWindowIndex: Int
-    ) {
-        if (totalChapters <= 0) {
-            AppLogger.w("ReaderViewModel", "[CONVEYOR] Skipping buffer initialization: no chapters")
-            return
-        }
-        
-        try {
-            AppLogger.d("ReaderViewModel", "[CONVEYOR] *** INITIALIZING WINDOWBUFFERMANAGER ***\n" +
-                "  totalChapters=$totalChapters\n" +
-                "  initialWindowIndex=$initialWindowIndex\n" +
-                "  chaptersPerWindow=$chaptersPerWindow")
-            
-            // Create the window assembler that delegates to ContinuousPaginatorWindowHtmlProvider
-            val assembler = DefaultWindowAssembler(
-                paginator = paginator,
-                windowManager = slidingWindowManager,
-                bookId = bookId
-            )
-            // Set total chapters so assembler can validate
-            assembler.setTotalChapters(totalChapters)
-            windowAssembler = assembler
-            
-            // Create the buffer manager
-            val bufferManager = WindowBufferManager(
-                windowAssembler = assembler,
-                paginator = slidingWindowPaginator,
-                coroutineScope = viewModelScope
-            )
-            _windowBufferManager = bufferManager
-            
-            // Initialize the buffer starting from the initial window
-            bufferManager.initialize(initialWindowIndex)
-            
-            // Observe buffer phase changes for logging
-            viewModelScope.launch {
-                bufferManager.phase.collect { phase ->
-                    AppLogger.d("ReaderViewModel", "[CONVEYOR] *** PHASE CHANGE OBSERVED: $phase ***")
-                }
-            }
-            
-            AppLogger.d("ReaderViewModel", "[CONVEYOR] INITIALIZATION COMPLETE: ${bufferManager.getDebugInfo()}")
-        } catch (e: Exception) {
-            AppLogger.e("ReaderViewModel", "[CONVEYOR] Failed to initialize WindowBufferManager", e)
-            // Buffer manager is optional enhancement, continue without it
-            _windowBufferManager = null
-            windowAssembler = null
-        }
-    }
-    
-    /**
-     * Called when the user scrolls to and settles on a new window.
-     * 
-     * This notifies the WindowBufferManager that a window became visible,
-     * triggering phase transition checks and potential buffer shifts.
-     * 
-     * Should be called from ReaderActivity when RecyclerView scroll settles.
-     * 
-     * @param windowIndex The global window index that became visible
-     */
-    fun onWindowBecameVisible(windowIndex: Int) {
-        if (!isContinuousMode || _windowBufferManager == null) {
-            return
-        }
-        
-        val bufferManager = _windowBufferManager ?: return
-        
-        AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] ENTRY: onWindowBecameVisible($windowIndex)")
-        AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] State before: buffer=${bufferManager.getBufferedWindows()}, " +
-            "centerWindow=${bufferManager.getCenterWindowIndex()}, phase=${bufferManager.phase.value}")
-        AppLogger.d("ReaderViewModel", "[CONVEYOR] onWindowBecameVisible: windowIndex=$windowIndex, " +
-            "currentBuffer=${bufferManager.getBufferedWindows()}, phase=${bufferManager.phase.value}")
-        
-        viewModelScope.launch {
-            try {
-                bufferManager.onEnteredWindow(windowIndex)
-                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] After onEnteredWindow: phase=${bufferManager.phase.value}, " +
-                    "buffer=${bufferManager.getBufferedWindows()}, activeWindow=${bufferManager.getActiveWindowIndex()}")
-                AppLogger.d("ReaderViewModel", "[CONVEYOR] After onEnteredWindow: phase=${bufferManager.phase.value}, " +
-                    "buffer=${bufferManager.getBufferedWindows()}, debug=${bufferManager.getDebugInfo()}")
-                AppLogger.d("ReaderViewModel", "[WINDOW_VISIBILITY] EXIT: onWindowBecameVisible($windowIndex) completed")
-            } catch (e: Exception) {
-                AppLogger.e("ReaderViewModel", "[CONVEYOR] Error in onWindowBecameVisible", e)
-            }
-        }
-    }
-    
-    /**
      * Check if buffer should shift forward based on current position within a window.
      * 
-     * Called from ReaderPageFragment when WebView pagination updates indicate
-     * the user is approaching the end of the current window's content.
+     * DEPRECATED: WindowBufferManager has been removed in favor of ConveyorBeltSystemViewModel.
+     * This method is kept for API compatibility but does nothing.
      * 
      * @param currentInPageIndex Current page within the window (0-based)
      * @param totalPagesInWindow Total pages in the current window
      */
     fun maybeShiftForward(currentInPageIndex: Int, totalPagesInWindow: Int) {
-        val phaseCheck = _windowBufferManager?.phase?.value
-        AppLogger.d("ReaderViewModel", "[PHASE_CHECK_BEFORE_SHIFT] maybeShiftForward ENTRY: currentPage=$currentInPageIndex/$totalPagesInWindow, phase=$phaseCheck")
-
-        val bufferManager = _windowBufferManager
-        if (!isContinuousMode || bufferManager == null) {
-            return
-        }
-        
-        // Check if we're at the last window (boundary check)
-        val activeWindow = bufferManager.getActiveWindowIndex()
-        if (!bufferManager.hasNextWindow()) {
-            AppLogger.d("ReaderViewModel", "[CONVEYOR] maybeShiftForward: " +
-                "skipping - already at Window $activeWindow (last window)")
-            return
-        }
-        
-        // Shift forward when user is near the end of the current window
-        // This ensures the next window is ready before they swipe
-        val shouldShift = totalPagesInWindow > 0 && 
-            currentInPageIndex >= (totalPagesInWindow - bufferShiftThresholdPages).coerceAtLeast(0)
-        
-        if (shouldShift && bufferManager.phase.value == WindowBufferManager.Phase.STEADY) {
-            AppLogger.d("ReaderViewModel", "[CONVEYOR] maybeShiftForward TRIGGERED\n" +
-                "  activeWindow=$activeWindow\n" +
-                "  position=$currentInPageIndex/$totalPagesInWindow\n" +
-                "  threshold=${bufferShiftThresholdPages} pages from end\n" +
-                "  phase=${bufferManager.phase.value}\n" +
-                "  currentBuffer=${bufferManager.getBufferedWindows()}")
-            
-            viewModelScope.launch {
-                try {
-                    val shifted = bufferManager.shiftForward()
-                    if (shifted) {
-                        AppLogger.d("ReaderViewModel", "[CONVEYOR] Forward shift completed: ${bufferManager.getDebugInfo()}")
-                    } else {
-                        AppLogger.d("ReaderViewModel", "[CONVEYOR] Forward shift returned false (at boundary)")
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e("ReaderViewModel", "[CONVEYOR] Error in maybeShiftForward", e)
-                }
-            }
-        }
+        // WindowBufferManager is deprecated and removed - this is a no-op
+        return
     }
     
     /**
      * Check if buffer should shift backward based on current position within a window.
      * 
-     * Called from ReaderPageFragment when WebView pagination updates indicate
-     * the user is approaching the beginning of the current window's content.
+     * DEPRECATED: WindowBufferManager has been removed in favor of ConveyorBeltSystemViewModel.
+     * This method is kept for API compatibility but does nothing.
      * 
      * @param currentInPageIndex Current page within the window (0-based)
      */
     fun maybeShiftBackward(currentInPageIndex: Int) {
-        val bufferManager = _windowBufferManager
-        if (!isContinuousMode || bufferManager == null) {
-            return
-        }
-        
-        // Don't attempt to shift backward if we're already at Window 0 (first window)
-        val activeWindow = bufferManager.getActiveWindowIndex()
-        if (!bufferManager.hasPreviousWindow()) {
-            AppLogger.d("ReaderViewModel", "[CONVEYOR] maybeShiftBackward: " +
-                "skipping - already at Window $activeWindow (first window)")
-            return
-        }
-        
-        // Shift backward when user is near the start of the current window
-        // This ensures the previous window is ready before they swipe back
-        val shouldShift = currentInPageIndex < bufferShiftThresholdPages
-        
-        if (shouldShift && bufferManager.phase.value == WindowBufferManager.Phase.STEADY) {
-            AppLogger.d("ReaderViewModel", "[CONVEYOR] maybeShiftBackward TRIGGERED\n" +
-                "  activeWindow=$activeWindow\n" +
-                "  position=$currentInPageIndex (near start)\n" +
-                "  threshold=${bufferShiftThresholdPages} pages from start\n" +
-                "  phase=${bufferManager.phase.value}\n" +
-                "  currentBuffer=${bufferManager.getBufferedWindows()}")
-            
-            viewModelScope.launch {
-                try {
-                    val shifted = bufferManager.shiftBackward()
-                    if (shifted) {
-                        AppLogger.d("ReaderViewModel", "[CONVEYOR] Backward shift completed: ${bufferManager.getDebugInfo()}")
-                    } else {
-                        AppLogger.d("ReaderViewModel", "[CONVEYOR] Backward shift returned false (at boundary)")
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e("ReaderViewModel", "[CONVEYOR] Error in maybeShiftBackward", e)
-                }
-            }
-        }
+        // WindowBufferManager is deprecated and removed - this is a no-op
+        return
     }
     
     /**
      * Get cached window data from WindowBufferManager.
      * 
+     * DEPRECATED: WindowBufferManager has been removed. Always returns null.
+     * 
      * @param windowIndex The window index to look up
-     * @return WindowData if cached, null otherwise
+     * @return Always null (WindowBufferManager is deprecated)
      */
     fun getCachedWindowData(windowIndex: Int): WindowData? {
-        return windowBufferManager?.getCachedWindow(windowIndex)
+        return null
     }
 
     private suspend fun generatePages(): List<PageContent> {
@@ -891,6 +820,124 @@ class ReaderViewModel(
     fun setJumpToLastPageFlag() {
         _jumpToLastPage.value = true
     }
+    
+    /**
+     * Set the conveyor belt system instance.
+     * This should be called early in the reader lifecycle to enable
+     * conveyor-based window management for the minimal paginator.
+     * 
+     * @param conveyorSystem The ConveyorBeltSystemViewModel instance
+     */
+    fun setConveyorBeltSystem(conveyorSystem: ConveyorBeltSystemViewModel) {
+        _conveyorBeltSystem = conveyorSystem
+        AppLogger.d("ReaderViewModel", "[CONVEYOR] Conveyor belt system reference set")
+
+        // Keep readiness flow in sync even if the conveyor is attached after fragments start observing.
+        viewModelScope.launch {
+            conveyorSystem.isInitialized.collect { ready ->
+                _isConveyorReady.value = ready
+            }
+        }
+
+        // If continuous initialization already computed window count/start window, init now.
+        initializeConveyorIfPossible(conveyorSystem)
+    }
+    
+    /**
+     * Called by PaginatorBridge when pagination is ready and stable.
+     * This is the entry point for the minimal paginator integration.
+     * 
+     * The minimal paginator ensures totalPages > 0 before calling this method,
+     * avoiding race conditions with 0-page reports that can occur with the
+     * inpage_paginator.js system.
+     * 
+     * This method performs the same state updates as the existing PaginationBridge
+     * but with the guarantee of stable, non-zero page counts.
+     * 
+     * When the conveyor belt system is set, this method notifies it that the window
+     * has completed stable pagination, allowing for proper phase transitions.
+     * 
+     * @param windowIndex The window index that completed pagination
+     * @param totalPages The total page count for the window (guaranteed > 0)
+     */
+    fun onWindowPaginationReady(windowIndex: Int, totalPages: Int) {
+        // TASK 4: CONVEYOR AUTHORITATIVE TAKEOVER - Log when forwarding to conveyor
+        if (isConveyorPrimary && _conveyorBeltSystem != null) {
+            AppLogger.d(
+                "ReaderViewModel",
+                "[CONVEYOR_ACTIVE] Paginator event forwarded to conveyor: window=$windowIndex totalPages=$totalPages"
+            )
+        } else {
+            AppLogger.d(
+                "ReaderViewModel",
+                "[LEGACY_ACTIVE] [MIN_PAGINATOR] onWindowPaginationReady: windowIndex=$windowIndex, totalPages=$totalPages, " +
+                "currentWindowIndex=$_currentWindowIndex.value"
+            )
+        }
+        
+        // Validate input
+        if (totalPages <= 0) {
+            AppLogger.w(
+                "ReaderViewModel",
+                "[MIN_PAGINATOR] Received invalid totalPages=$totalPages for windowIndex=$windowIndex"
+            )
+            return
+        }
+        
+        // Update state flows to reflect stable pagination completion
+        _totalWebViewPages.value = totalPages
+        
+        // If this is the active window, update metrics and notify conveyor system
+        if (windowIndex == _currentWindowIndex.value) {
+            AppLogger.d(
+                "ReaderViewModel",
+                "[MIN_PAGINATOR] Active window paginated: windowIndex=$windowIndex, totalPages=$totalPages"
+            )
+            
+            // Update chapter pagination metrics (same as existing PaginationBridge)
+            if (isContinuousMode) {
+                viewModelScope.launch {
+                    try {
+                        val location = getPageLocation(windowIndex)
+                        val chapterIndex = location?.chapterIndex ?: windowIndex
+                        updateChapterPaginationMetrics(chapterIndex, totalPages)
+                        AppLogger.d(
+                            "ReaderViewModel",
+                            "[MIN_PAGINATOR] Updated chapter metrics: chapterIndex=$chapterIndex, totalPages=$totalPages"
+                        )
+                    } catch (e: Exception) {
+                        AppLogger.e(
+                            "ReaderViewModel",
+                            "[MIN_PAGINATOR] Error updating chapter pagination metrics",
+                            e
+                        )
+                    }
+                }
+            }
+            
+            // Notify the conveyor belt system that this window has stable pagination
+            _conveyorBeltSystem?.let { conveyor ->
+                AppLogger.d(
+                    "ReaderViewModel",
+                    "[MIN_PAGINATOR] Notifying conveyor system: onWindowEntered($windowIndex)"
+                )
+                conveyor.onWindowEntered(windowIndex)
+                AppLogger.d(
+                    "ReaderViewModel",
+                    "[MIN_PAGINATOR] Conveyor notified - phase=${conveyor.phase.value}, " +
+                    "buffer=${conveyor.buffer.value}, activeWindow=${conveyor.activeWindow.value}"
+                )
+            } ?: AppLogger.d(
+                "ReaderViewModel",
+                "[MIN_PAGINATOR] No conveyor system set - skipping conveyor notification"
+            )
+        } else {
+            AppLogger.d(
+                "ReaderViewModel",
+                "[MIN_PAGINATOR] Non-active window paginated: windowIndex=$windowIndex (current=$_currentWindowIndex.value)"
+            )
+        }
+    }
 
     fun goToPage(page: Int): Boolean {
         val total = _totalPages.value
@@ -938,6 +985,10 @@ class ReaderViewModel(
                             previewText,
                             percent
                         )
+                    } else {
+                        // Conveyor-driven continuous mode may not have a global paginator/location.
+                        // Still persist progress so the library doesn't remain "Not started".
+                        persistWindowBasedProgress()
                     }
                 } else {
                     repository.updateReadingProgress(
@@ -1017,6 +1068,107 @@ class ReaderViewModel(
         } else {
             PageLocation(globalPageIndex, globalPageIndex, 0)
         }
+    }
+
+    /**
+     * Character offset tracking for stable position persistence across font changes and reflows.
+     * Maps window index to character offset for that position.
+     */
+    private val characterOffsetMap = mutableMapOf<Int, Int>()
+
+    /**
+     * In-window page index tracking per window (0-based).
+     * Used for best-effort persistence when the global paginator is unavailable.
+     */
+    private val inPageIndexMap = mutableMapOf<Int, Int>()
+
+    /**
+     * Update reading position with character offset.
+     * Called after navigation to capture the current position with stable offset info.
+     * 
+     * @param windowIndex The window/page index
+     * @param pageInWindow The in-page index within the window
+     * @param characterOffset The character offset from the JavaScript paginator
+     */
+    fun updateReadingPosition(windowIndex: Int, pageInWindow: Int, characterOffset: Int) {
+        characterOffsetMap[windowIndex] = characterOffset
+        inPageIndexMap[windowIndex] = pageInWindow
+        AppLogger.d(
+            "ReaderViewModel",
+            "[CHARACTER_OFFSET] Updated position: windowIndex=$windowIndex, pageInWindow=$pageInWindow, offset=$characterOffset"
+        )
+    }
+
+    /**
+     * Get saved character offset for a window.
+     * Used to restore reading position when returning to a window.
+     * 
+     * @param windowIndex The window index to look up
+     * @return The saved character offset, or 0 if not found
+     */
+    fun getSavedCharacterOffset(windowIndex: Int): Int {
+        val offset = characterOffsetMap[windowIndex] ?: 0
+        if (offset > 0) {
+            AppLogger.d(
+                "ReaderViewModel",
+                "[CHARACTER_OFFSET] Retrieved offset for windowIndex=$windowIndex: offset=$offset"
+            )
+        }
+        return offset
+    }
+
+    fun getSavedInPageIndex(windowIndex: Int): Int {
+        return inPageIndexMap[windowIndex] ?: 0
+    }
+
+    /**
+     * Clear character offset for a window (useful after window reload).
+     */
+    fun clearCharacterOffset(windowIndex: Int) {
+        characterOffsetMap.remove(windowIndex)
+        inPageIndexMap.remove(windowIndex)
+        AppLogger.d(
+            "ReaderViewModel",
+            "[CHARACTER_OFFSET] Cleared offset for windowIndex=$windowIndex"
+        )
+    }
+
+    private suspend fun persistWindowBasedProgress(percentOverride: Float? = null) {
+        val totalWindows = _windowCount.value
+        if (totalWindows <= 0) return
+
+        val windowIndex = _currentWindowIndex.value
+        val percent = percentOverride ?: (((windowIndex + 1).toFloat() / totalWindows) * 100f)
+
+        val chapterIndex = slidingWindowManager.firstChapterInWindow(windowIndex).coerceAtLeast(0)
+        val inPageIndex = getSavedInPageIndex(windowIndex).coerceAtLeast(0)
+        val characterOffset = getSavedCharacterOffset(windowIndex).coerceAtLeast(0)
+
+        repository.updateReadingProgressEnhanced(
+            bookId = bookId,
+            chapterIndex = chapterIndex,
+            inPageIndex = inPageIndex,
+            characterOffset = characterOffset,
+            previewText = null,
+            percentComplete = percent.coerceIn(0f, 100f)
+        )
+    }
+
+    /**
+     * Persist completion (100%) so the library shows the book as finished.
+     * This is designed to work even if the global paginator isn't available.
+     */
+    suspend fun persistBookCompleted() {
+        val visibleCount = chapterIndexProvider.visibleChapterCount
+        val lastChapterIndex = (visibleCount - 1).coerceAtLeast(0)
+        repository.updateReadingProgressEnhanced(
+            bookId = bookId,
+            chapterIndex = lastChapterIndex,
+            inPageIndex = 0,
+            characterOffset = 0,
+            previewText = null,
+            percentComplete = 100f
+        )
     }
 
     suspend fun navigateToChapter(chapterIndex: Int, inPageIndex: Int = 0): Int? {
@@ -1201,27 +1353,36 @@ class ReaderViewModel(
             
             AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Getting window HTML: windowIndex=$windowIndex, chapters=$firstChapterInWindow-$lastChapterInWindow (totalChapters=$totalChapters, windowSize=$windowSize)")
             
-            // Check WindowBufferManager cache first (highest priority - managed buffer)
-            val bufferData = windowBufferManager?.getCachedWindow(windowIndex)
-            if (bufferData != null) {
-                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Using WindowBufferManager cached HTML for window $windowIndex (htmlLength=${bufferData.html.length})")
-                return WindowHtmlPayload(
-                    html = bufferData.html,
-                    windowIndex = windowIndex,
-                    chapterIndex = bufferData.firstChapter,
-                    inPageIndex = 0,
-                    windowSize = windowSize,
-                    totalChapters = totalChapters
-                )
+            // Check ConveyorBeltSystemViewModel cache first if conveyor is primary
+            // TASK 3 FIX: Add empty-payload guard - only use cached HTML if it's non-empty
+            if (isConveyorPrimary) {
+                val conveyorHtml = _conveyorBeltSystem?.getCachedWindowHtml(windowIndex)
+                if (conveyorHtml != null && conveyorHtml.isNotEmpty()) {
+                    AppLogger.d("ReaderViewModel", "[CONVEYOR_ACTIVE] Using ConveyorBeltSystemViewModel cached HTML for window $windowIndex (htmlLength=${conveyorHtml.length})")
+                    return WindowHtmlPayload(
+                        html = conveyorHtml,
+                        windowIndex = windowIndex,
+                        chapterIndex = firstChapterInWindow,
+                        inPageIndex = 0,
+                        windowSize = windowSize,
+                        totalChapters = totalChapters
+                    )
+                } else if (conveyorHtml != null && conveyorHtml.isEmpty()) {
+                    AppLogger.w("ReaderViewModel", "[CONVEYOR_ACTIVE] Cached HTML for window $windowIndex is EMPTY, will regenerate")
+                }
             }
             
-            // Check pre-wrapped cache second (initial load optimization)
+            // Check pre-wrapped cache (initial load optimization)
+            // TASK 3 FIX: Add empty-payload guard - only use cached HTML if it's non-empty
             val cachedHtml = preWrappedHtmlCache[windowIndex]
-            val html = if (cachedHtml != null) {
+            val html = if (cachedHtml != null && cachedHtml.isNotEmpty()) {
                 AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Using cached pre-wrapped HTML for window $windowIndex")
                 cachedHtml
             } else {
-                // Generate HTML if not in cache
+                if (cachedHtml != null && cachedHtml.isEmpty()) {
+                    AppLogger.w("ReaderViewModel", "[PAGINATION_DEBUG] Cached HTML for window $windowIndex is EMPTY, regenerating")
+                }
+                // Generate HTML if not in cache or if cached HTML is empty
                 val provider = com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider(
                     paginator,
                     slidingWindowManager
@@ -1270,6 +1431,9 @@ class ReaderViewModel(
         }
     }
     
+    // NOTE: resetWindowIndexToCenter() removed - buffer shift now directly scrolls RecyclerView
+    // This avoids using -1 temporary state which triggers validation errors in SlidingWindowManager
+    
     /**
      * Navigate to a specific window index (for RecyclerView navigation).
      * Updates the current window and the corresponding global page index.
@@ -1298,15 +1462,49 @@ class ReaderViewModel(
         }
         
         _currentWindowIndex.value = windowIndex
-        AppLogger.d("ReaderViewModel", 
+        AppLogger.d("ReaderViewModel",
             "goToWindow: _currentWindowIndex updated from $previousWindow to $windowIndex [WINDOW_STATE_UPDATE]")
+
+        // CRITICAL: In CONTINUOUS + PAGE mode, the RecyclerView cannot be user-dragged (by design),
+        // so buffer shifting must be driven by window navigation events, not scroll events.
+        // Notify the conveyor so it can recenter/update the 5-slot buffer and preload HTML as needed.
+        if (paginationMode == PaginationMode.CONTINUOUS && isConveyorPrimary) {
+            val conveyor = conveyorBeltSystem
+            if (conveyor == null) {
+                AppLogger.w(
+                    "ReaderViewModel",
+                    "goToWindow: conveyorBeltSystem is null in CONTINUOUS mode (window=$windowIndex) [CONVEYOR_MISSING]"
+                )
+            } else if (!conveyor.isInitialized.value) {
+                AppLogger.w(
+                    "ReaderViewModel",
+                    "goToWindow: conveyor not initialized yet (window=$windowIndex). Buffer update deferred. [CONVEYOR_NOT_READY]"
+                )
+            } else {
+                AppLogger.d(
+                    "ReaderViewModel",
+                    "goToWindow: notifying conveyor onWindowEntered($windowIndex) (prev=$previousWindow) [CONVEYOR_WINDOW_ENTERED]"
+                )
+                conveyor.onWindowEntered(windowIndex)
+            }
+        }
         
         if (isContinuousMode) {
             viewModelScope.launch {
                 val paginator = continuousPaginator
                 if (paginator == null) {
-                    AppLogger.e("ReaderViewModel", 
-                        "goToWindow ERROR: continuousPaginator is null in CONTINUOUS mode [PAGINATOR_NULL]")
+                    if (isConveyorPrimary) {
+                        AppLogger.w(
+                            "ReaderViewModel",
+                            "goToWindow: continuousPaginator is null; persisting window-based progress (window=$windowIndex) [PAGINATOR_NULL_FALLBACK]"
+                        )
+                        persistWindowBasedProgress()
+                        return@launch
+                    }
+                    AppLogger.e(
+                        "ReaderViewModel",
+                        "goToWindow ERROR: continuousPaginator is null in CONTINUOUS mode [PAGINATOR_NULL]"
+                    )
                     return@launch
                 }
                 
@@ -1324,16 +1522,22 @@ class ReaderViewModel(
                 val firstChapter = slidingWindowManager.firstChapterInWindow(windowIndex)
                     .coerceIn(0, totalChapters - 1)
                 
+                // TASK 1 FIX: Navigate to the midpoint chapter of the window instead of the first chapter
+                // This aligns paginator loading with UI window ranges
+                // For a 5-chapter window: midpoint is at index 2 (offset by (5-1)/2 = 2 from start)
+                val midpointOffset = (chaptersPerWindow - 1) / 2
+                val midpointChapter = (firstChapter + midpointOffset).coerceIn(0, totalChapters - 1)
+                
                 AppLogger.d("ReaderViewModel", 
-                    "goToWindow: navigating to firstChapter=$firstChapter in window=$windowIndex " +
+                    "goToWindow: navigating to midpointChapter=$midpointChapter (offset=$midpointOffset from firstChapter=$firstChapter) in window=$windowIndex " +
                     "(totalChapters=$totalChapters, chaptersPerWindow=$chaptersPerWindow) [CHAPTER_NAV]")
                 
-                // Navigate to the first chapter in this window
-                val globalPage = paginator.navigateToChapter(firstChapter, 0)
+                // Navigate to the midpoint chapter in this window
+                val globalPage = paginator.navigateToChapter(midpointChapter, 0)
                 updateForGlobalPage(globalPage)
                 
                 AppLogger.d("ReaderViewModel", 
-                    "goToWindow SUCCESS: windowIndex=$windowIndex -> firstChapter=$firstChapter, " +
+                    "goToWindow SUCCESS: windowIndex=$windowIndex -> midpointChapter=$midpointChapter (firstChapter=$firstChapter), " +
                     "globalPage=$globalPage [WINDOW_NAV_SUCCESS]")
             }
         } else {

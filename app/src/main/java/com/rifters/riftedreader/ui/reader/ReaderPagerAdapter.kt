@@ -1,5 +1,6 @@
 package com.rifters.riftedreader.ui.reader
 
+import android.view.View
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
@@ -7,34 +8,39 @@ import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentManager
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.rifters.riftedreader.R
+import com.rifters.riftedreader.ui.reader.conveyor.ConveyorPhase
 import com.rifters.riftedreader.util.AppLogger
 
 /**
- * Adapter for the RecyclerView in the reader screen.
+ * Adapter for the RecyclerView in the reader screen using ListAdapter with DiffUtil.
  * 
  * In continuous mode, each page represents a window containing multiple chapters.
  * In chapter-based mode, each page represents a single chapter.
  * 
- * **Sliding Window Pagination:**
+ * **Sliding Window Pagination with Buffer Management:**
  * - Each window contains exactly 5 chapters (DEFAULT_CHAPTERS_PER_WINDOW)
- * - The adapter's itemCount equals the total window count
- * - Window index = adapter position
+ * - The adapter manages a sliding 5-window buffer (BUFFER_SIZE = 5)
+ * - Adapter uses windowId (Int) from buffer as stable IDs
+ * - ConveyorBeltSystemViewModel manages the actual buffer and window shifting
+ * - submitList(bufferIds) drives all UI updates via DiffUtil
  * 
  * Uses FragmentManager to manage fragment lifecycle within RecyclerView items.
- * Fragment tag format: "f{position}" (e.g., "f0", "f1", "f2")
+ * Fragment tag format: "w{windowId}" (e.g., "w0", "w1", "w2") - tagged by windowId not position
  * 
  * Debug logging is included at key lifecycle points for pagination debugging:
- * - getItemCount: logs window count
+ * - getItemCount: logs buffer size
  * - onBindViewHolder: logs HTML binding to WebView
- * - notifyDataSetChanged: logs adapter state after update
+ * - submitList: logs adapter state after update
  * - All logs are written to session_log_*.txt
  */
 class ReaderPagerAdapter(
     private val activity: FragmentActivity,
     private val viewModel: ReaderViewModel
-) : RecyclerView.Adapter<ReaderPagerAdapter.PageViewHolder>() {
+) : ListAdapter<Int, ReaderPagerAdapter.PageViewHolder>(WindowIdDiffCallback()) {
 
     private val fragmentManager: FragmentManager = activity.supportFragmentManager
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -45,50 +51,53 @@ class ReaderPagerAdapter(
     // Track active fragments for debugging
     private val activeFragments = mutableSetOf<Int>()
     
-    // Flag to track if window count mismatch warning has been logged (emit only once per session)
-    private var windowMismatchWarningLogged: Boolean = false
-
-    override fun getItemCount(): Int {
-        // ISSUE 1 FIX: Derive window count from SlidingWindowPaginator's window count, NOT from TOC length
-        // This ensures adapter/VM use the same source of truth for chapter count
-        val count = viewModel.slidingWindowPaginator.getWindowCount()
-        
-        // [PAGINATION_DEBUG] Log window count changes with detailed context
-        if (count != lastKnownItemCount) {
-            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] getItemCount CHANGED: " +
-                "$lastKnownItemCount -> $count windows, " +
-                "paginationMode=${viewModel.paginationMode}, " +
-                "chaptersPerWindow=${viewModel.chaptersPerWindow}")
-            lastKnownItemCount = count
+    // DiffUtil callback for comparing windowIds
+    private class WindowIdDiffCallback : DiffUtil.ItemCallback<Int>() {
+        override fun areItemsTheSame(oldItem: Int, newItem: Int): Boolean {
+            // Items are the same if they have the same windowId
+            return oldItem == newItem
         }
         
-        // [PAGINATION_DEBUG] Warn if zero windows (pagination may have failed)
-        if (count == 0) {
-            AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] WARNING: getItemCount=0 " +
-                "- book content may not have loaded or pagination failed")
+        override fun areContentsTheSame(oldItem: Int, newItem: Int): Boolean {
+            // Content is always considered the same for a given windowId
+            // (HTML content doesn't change for a windowId, only the mapping changes)
+            return true
         }
-        
-        // [PAGINATION_DEBUG] Validate window count matches expected calculation (emit warning only once per session)
-        // Use visible chapter count (accounts for hidden chapters like cover, NAV, non-linear)
-        val visibleChapterCount = viewModel.visibleChapterCount
-        val spineCount = viewModel.chapterIndexProvider.spineCount
-        if (visibleChapterCount > 0 && viewModel.isContinuousMode && !windowMismatchWarningLogged) {
-            val expectedWindows = kotlin.math.ceil(visibleChapterCount.toDouble() / viewModel.chaptersPerWindow).toInt()
-            if (count != expectedWindows && count > 0) {
-                // Log both actual and expected counts in a single diagnostic message
-                AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] WINDOW_COUNT_MISMATCH (one-time): " +
-                    "actual=$count, expected=$expectedWindows based on visible chapters " +
-                    "(visibleChapters=$visibleChapterCount, spineAll=$spineCount, perWindow=${viewModel.chaptersPerWindow})")
-                windowMismatchWarningLogged = true
-            }
+    }
+    
+    /**
+     * Get windowId at a specific adapter position.
+     * @return windowId or -1 if position is out of bounds
+     */
+    fun getWindowIdAtPosition(position: Int): Int {
+        return if (position in 0 until itemCount) {
+            getItem(position)
+        } else {
+            -1
         }
-        
-        return count
+    }
+    
+    /**
+     * Get adapter position for a given windowId.
+     * @return position or -1 if windowId not found in current list
+     */
+    fun getPositionForWindowId(windowId: Int): Int {
+        return currentList.indexOf(windowId)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_reader_page, parent, false)
+
+        // CRITICAL: RecyclerView items all inflate the same layout ID. For FragmentManager transactions,
+        // the container view ID must be unique per holder instance, otherwise fragments may attach
+        // to the wrong page and render blank.
+        if (view.id == View.NO_ID) {
+            view.id = View.generateViewId()
+        } else {
+            // Even if an ID exists in XML, it will be duplicated across holders. Replace with unique.
+            view.id = View.generateViewId()
+        }
         
         AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onCreateViewHolder: " +
             "parentWidth=${parent.width}, parentHeight=${parent.height}")
@@ -97,98 +106,191 @@ class ReaderPagerAdapter(
     }
 
     override fun onBindViewHolder(holder: PageViewHolder, position: Int) {
+        // Get the windowId for this position from the list
+        val windowId = getItem(position)
+        holder.boundWindowId = windowId
+        holder.boundAdapterPosition = position
         val totalWindows = viewModel.windowCount.value
-        val currentWindowIndex = viewModel.currentWindowIndex.value
         
-        // [PAGINATION_DEBUG] Enhanced binding logging
-        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onBindViewHolder: " +
-            "position=$position (windowIndex), " +
+        // [BIND_BUFFER_SNAPSHOT] Enhanced binding logging with conveyor state
+        AppLogger.d("ReaderPagerAdapter", "[BIND_BUFFER_SNAPSHOT] onBindViewHolder: "
+ +
+            "position=$position, windowId=$windowId, " +
             "totalWindows=$totalWindows, " +
-            "currentWindowIndex=$currentWindowIndex, " +
+            "activeWindow=${viewModel.conveyorBeltSystem?.activeWindow?.value}, " +
+            "phase=${viewModel.conveyorBeltSystem?.phase?.value}, " +
+            "buffer=${viewModel.conveyorBeltSystem?.buffer?.value}, " +
             "containerWidth=${holder.containerView.width}, " +
             "containerHeight=${holder.containerView.height}")
         
-        val fragmentTag = "f$position"
-        
-        // Check if fragment already exists for this position
-        val existingFragment = fragmentManager.findFragmentByTag(fragmentTag)
-        
-        if (existingFragment != null && existingFragment.isAdded) {
-            // Fragment already exists and is added, no need to recreate
-            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment REUSED: " +
-                "position=$position, fragmentTag=$fragmentTag, isAdded=${existingFragment.isAdded}, " +
-                "isVisible=${existingFragment.isVisible}")
-            return
+        // IMPORTANT: RecyclerView may bind (and prefetch) holders that are not attached to window yet.
+        // Committing a fragment transaction to a container that isn't in the view hierarchy will crash:
+        // "No view found for id ... for fragment ...".
+        // Only attach/replace fragments once the holder is attached to window.
+        if (holder.itemView.isAttachedToWindow) {
+            scheduleAttachFragment(holder, position, windowId)
+        } else {
+            AppLogger.d(
+                "ReaderPagerAdapter",
+                "[BIND_BUFFER_SNAPSHOT] Deferring fragment attach (holder not attached): position=$position, windowId=$windowId, containerId=${holder.containerView.id}"
+            )
         }
-        
-        // Create new fragment for this position
-        val fragment = ReaderPageFragment.newInstance(position)
-        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment CREATING: " +
-            "position=$position (windowIndex=$position), fragmentTag=$fragmentTag, " +
-            "activeFragments=${activeFragments.size}")
-        
-        // Capture holder position for validation in the posted transaction
-        val holderPosition = position
-        
-        // Post the transaction to ensure we're not in a layout pass
-        mainHandler.post {
-            if (!activity.isFinishing && !activity.isDestroyed) {
-                // Verify holder still represents the same position
-                if (holder.adapterPosition == holderPosition) {
-                    fragmentManager.beginTransaction().apply {
-                        // Remove any existing fragment if present but not properly cleaned up
-                        fragmentManager.findFragmentByTag(fragmentTag)?.let { 
-                            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Removing stale fragment: " +
-                                "fragmentTag=$fragmentTag")
-                            remove(it) 
-                        }
-                        add(holder.containerView.id, fragment, fragmentTag)
-                    }.commitAllowingStateLoss()
-                    
-                    // Track active fragment
-                    activeFragments.add(position)
-                    
-                    AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment COMMITTED: " +
-                        "position=$position, containerId=${holder.containerView.id}, " +
-                        "activeFragments=${activeFragments.size}, fragmentTag=$fragmentTag [FRAGMENT_ADDED]")
-                } else {
-                    AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment SKIPPED (position changed): " +
-                        "original=$holderPosition, current=${holder.adapterPosition} [POSITION_CHANGED]")
-                }
-            } else {
-                AppLogger.w("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment SKIPPED (activity finishing): " +
-                    "position=$holderPosition [ACTIVITY_FINISHING]")
+    }
+
+    override fun onViewAttachedToWindow(holder: PageViewHolder) {
+        super.onViewAttachedToWindow(holder)
+        val position = holder.adapterPosition
+        if (position == RecyclerView.NO_POSITION) return
+        val windowId = getItem(position)
+        holder.boundWindowId = windowId
+        holder.boundAdapterPosition = position
+        scheduleAttachFragment(holder, position, windowId)
+    }
+
+    private fun scheduleAttachFragment(
+        holder: PageViewHolder,
+        position: Int,
+        windowId: Int
+    ) {
+        scheduleAttachFragmentInternal(
+            holder = holder,
+            initialExpectedPosition = position,
+            initialExpectedWindowId = windowId,
+            attempt = 0
+        )
+    }
+
+    private fun scheduleAttachFragmentInternal(
+        holder: PageViewHolder,
+        initialExpectedPosition: Int,
+        initialExpectedWindowId: Int,
+        attempt: Int
+    ) {
+        val maxAttempts = 8
+
+        holder.itemView.post {
+            if (activity.isFinishing || activity.isDestroyed) {
+                AppLogger.w(
+                    "ReaderPagerAdapter",
+                    "[BIND_BUFFER_SNAPSHOT] Fragment SKIPPED (activity finishing): position=$initialExpectedPosition windowId=$initialExpectedWindowId"
+                )
+                return@post
             }
+
+            if (!holder.itemView.isAttachedToWindow) {
+                AppLogger.w(
+                    "ReaderPagerAdapter",
+                    "[BIND_BUFFER_SNAPSHOT] Fragment SKIPPED (still not attached): expectedPos=$initialExpectedPosition expectedWindowId=$initialExpectedWindowId attempt=$attempt"
+                )
+                return@post
+            }
+
+            // Holder positions can churn during DiffUtil submitList / animations.
+            // If we bail out here, we can end up with an attached holder whose container has no fragment,
+            // resulting in a blank window until the next rebind.
+            val currentPos = holder.adapterPosition
+            if (currentPos == RecyclerView.NO_POSITION) {
+                if (attempt >= maxAttempts) {
+                    AppLogger.w(
+                        "ReaderPagerAdapter",
+                        "[BIND_BUFFER_SNAPSHOT] Fragment ABORT (no position after retries): expectedPos=$initialExpectedPosition expectedWindowId=$initialExpectedWindowId"
+                    )
+                    return@post
+                }
+                AppLogger.w(
+                    "ReaderPagerAdapter",
+                    "[BIND_BUFFER_SNAPSHOT] Deferring fragment attach (no position yet): expectedPos=$initialExpectedPosition expectedWindowId=$initialExpectedWindowId attempt=$attempt/$maxAttempts"
+                )
+                scheduleAttachFragmentInternal(holder, initialExpectedPosition, initialExpectedWindowId, attempt + 1)
+                return@post
+            }
+
+            if (currentPos !in 0 until itemCount) {
+                AppLogger.w(
+                    "ReaderPagerAdapter",
+                    "[BIND_BUFFER_SNAPSHOT] Fragment SKIPPED (position OOB): currentPos=$currentPos itemCount=$itemCount expectedPos=$initialExpectedPosition expectedWindowId=$initialExpectedWindowId"
+                )
+                return@post
+            }
+
+            val resolvedWindowId = getItem(currentPos)
+            val fragmentTag = "w$resolvedWindowId"
+
+            holder.boundWindowId = resolvedWindowId
+            holder.boundAdapterPosition = currentPos
+
+            // Ensure the holder's container is not already hosting a different fragment.
+            fragmentManager.findFragmentById(holder.containerView.id)?.let { existingInContainer ->
+                if (existingInContainer.tag != fragmentTag) {
+                    AppLogger.d(
+                        "ReaderPagerAdapter",
+                        "[BIND_BUFFER_SNAPSHOT] Removing fragment from recycled container: containerId=${holder.containerView.id}, existingTag=${existingInContainer.tag}, newTag=$fragmentTag"
+                    )
+                    fragmentManager.beginTransaction()
+                        .remove(existingInContainer)
+                        .commitAllowingStateLoss()
+                }
+            }
+
+            // Cache hit if the correct fragment is already attached to this container.
+            val existingFragment = fragmentManager.findFragmentByTag(fragmentTag)
+            if (existingFragment != null && existingFragment.isAdded && existingFragment.view?.parent === holder.containerView) {
+                AppLogger.d(
+                    "ReaderPagerAdapter",
+                    "[BIND_BUFFER_SNAPSHOT] Fragment CACHE_HIT (in correct container): position=$currentPos, windowId=$resolvedWindowId, fragmentTag=$fragmentTag, containerId=${holder.containerView.id}"
+                )
+                return@post
+            }
+
+            // If a stale fragment exists for this tag but is attached elsewhere, remove it.
+            if (existingFragment != null && existingFragment.isAdded && existingFragment.view?.parent !== holder.containerView) {
+                AppLogger.w(
+                    "ReaderPagerAdapter",
+                    "[BIND_BUFFER_SNAPSHOT] Fragment tag exists in different container; removing stale instance: windowId=$resolvedWindowId, fragmentTag=$fragmentTag"
+                )
+                fragmentManager.beginTransaction()
+                    .remove(existingFragment)
+                    .commitAllowingStateLoss()
+            }
+
+            val fragment = ReaderPageFragment.newInstance(resolvedWindowId)
+            AppLogger.d(
+                "ReaderPagerAdapter",
+                "[BIND_BUFFER_SNAPSHOT] Fragment ATTACH: position=$currentPos, windowId=$resolvedWindowId, fragmentTag=$fragmentTag, containerId=${holder.containerView.id}"
+            )
+
+            fragmentManager.beginTransaction()
+                .replace(holder.containerView.id, fragment, fragmentTag)
+                .commitAllowingStateLoss()
+
+            activeFragments.add(resolvedWindowId)
+
+            AppLogger.d(
+                "ReaderPagerAdapter",
+                "[BIND_BUFFER_SNAPSHOT] Fragment COMMITTED: position=$currentPos, windowId=$resolvedWindowId, containerId=${holder.containerView.id}, activeFragments=${activeFragments.size}, fragmentTag=$fragmentTag"
+            )
         }
     }
 
     override fun onViewRecycled(holder: PageViewHolder) {
         super.onViewRecycled(holder)
-        val position = holder.adapterPosition
-        
-        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onViewRecycled: position=$position")
-        
-        // Only remove fragment if position is valid
-        if (position != RecyclerView.NO_POSITION) {
-            val fragmentTag = "f$position"
-            val fragment = fragmentManager.findFragmentByTag(fragmentTag)
-            if (fragment != null && fragment.isAdded) {
-                // Post to ensure we're not in a layout pass
-                mainHandler.post {
-                    if (!activity.isFinishing && !activity.isDestroyed) {
-                        // Re-check fragment state after post
-                        val currentFragment = fragmentManager.findFragmentByTag(fragmentTag)
-                        if (currentFragment != null && currentFragment.isAdded) {
-                            fragmentManager.beginTransaction()
-                                .remove(currentFragment)
-                                .commitAllowingStateLoss()
-                            
-                            // Track removal
-                            activeFragments.remove(position)
-                            
-                            AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] Fragment REMOVED: " +
-                                "position=$position, activeFragments=${activeFragments.size}")
-                        }
+        AppLogger.d("ReaderPagerAdapter", "[PAGINATION_DEBUG] onViewRecycled: containerId=${holder.containerView.id}")
+
+        // Remove whatever fragment is currently attached to this recycled container.
+        val fragmentInContainer = fragmentManager.findFragmentById(holder.containerView.id)
+        if (fragmentInContainer != null && fragmentInContainer.isAdded) {
+            val tag = fragmentInContainer.tag
+            mainHandler.post {
+                if (!activity.isFinishing && !activity.isDestroyed) {
+                    fragmentManager.findFragmentById(holder.containerView.id)?.let { current ->
+                        fragmentManager.beginTransaction()
+                            .remove(current)
+                            .commitAllowingStateLoss()
+                        tag?.removePrefix("w")?.toIntOrNull()?.let { activeFragments.remove(it) }
+                        AppLogger.d(
+                            "ReaderPagerAdapter",
+                            "[PAGINATION_DEBUG] Fragment REMOVED from recycled container: containerId=${holder.containerView.id}, tag=${current.tag}"
+                        )
                     }
                 }
             }
@@ -196,8 +298,9 @@ class ReaderPagerAdapter(
     }
 
     override fun getItemId(position: Int): Long {
-        // Each window has a unique ID based on position
-        return position.toLong()
+        // Use windowId as stable ID (not position)
+        val windowId = getItem(position)
+        return windowId.toLong()
     }
     
     /**
@@ -205,48 +308,16 @@ class ReaderPagerAdapter(
      * Queries FragmentManager directly to ensure accurate state.
      */
     fun getFragmentAtPosition(position: Int): Fragment? {
-        return fragmentManager.findFragmentByTag("f$position")
+        if (position < 0 || position >= itemCount) return null
+        val windowId = getItem(position)
+        return fragmentManager.findFragmentByTag("w$windowId")
     }
     
     /**
-     * Log adapter state after data set change for debugging.
-     * Call this method after notifyDataSetChanged to track pagination updates.
+     * Get the fragment for a given windowId if it exists.
      */
-    fun logAdapterStateAfterUpdate(caller: String) {
-        val itemCount = itemCount
-        val windowCount = viewModel.windowCount.value
-        val paginationMode = viewModel.paginationMode
-        val chaptersPerWindow = viewModel.chaptersPerWindow
-        
-        AppLogger.d("ReaderPagerAdapter", 
-            "[PAGINATION_DEBUG] Adapter state after update (caller=$caller): " +
-            "itemCount=$itemCount, " +
-            "windowCount=$windowCount, " +
-            "paginationMode=$paginationMode, " +
-            "chaptersPerWindow=$chaptersPerWindow, " +
-            "activeFragments=${activeFragments.size}"
-        )
-        
-        // [PAGINATION_DEBUG] Log mismatch warning
-        if (itemCount != windowCount) {
-            AppLogger.e("ReaderPagerAdapter", 
-                "[PAGINATION_DEBUG] ERROR: itemCount/windowCount MISMATCH: " +
-                "itemCount=$itemCount, windowCount=$windowCount")
-        }
-        
-        // [PAGINATION_DEBUG] Log zero items warning
-        if (itemCount == 0 && windowCount > 0) {
-            AppLogger.e("ReaderPagerAdapter", 
-                "[PAGINATION_DEBUG] ERROR: itemCount=0 but windowCount=$windowCount - " +
-                "adapter/viewModel mismatch!")
-        }
-        
-        // Log success case
-        if (itemCount > 0) {
-            AppLogger.d("ReaderPagerAdapter", 
-                "[PAGINATION_DEBUG] Adapter has $itemCount windows ready for display " +
-                "(each with $chaptersPerWindow chapters)")
-        }
+    fun getFragmentForWindowId(windowId: Int): Fragment? {
+        return fragmentManager.findFragmentByTag("w$windowId")
     }
     
     /**
@@ -255,7 +326,7 @@ class ReaderPagerAdapter(
      * @return Debug info string
      */
     fun getActiveFragmentsDebugInfo(): String {
-        return "ActiveFragments[count=${activeFragments.size}, positions=$activeFragments]"
+        return "ActiveFragments[count=${activeFragments.size}, windowIds=$activeFragments]"
     }
     
     /**
@@ -271,12 +342,9 @@ class ReaderPagerAdapter(
         val transaction = fragmentManager.beginTransaction()
         var hasFragmentsToRemove = false
         
-        // Iterate through all fragments that match our tag pattern
-        // Use a safe iteration approach by checking each position
-        val count = try { itemCount } catch (e: Exception) { 0 }
-        
-        for (position in 0 until count) {
-            val fragmentTag = "f$position"
+        // Iterate through all windowIds in the current list
+        currentList.forEach { windowId ->
+            val fragmentTag = "w$windowId"
             fragmentManager.findFragmentByTag(fragmentTag)?.let { 
                 transaction.remove(it)
                 hasFragmentsToRemove = true
@@ -300,5 +368,8 @@ class ReaderPagerAdapter(
             "chaptersPerWindow=${viewModel.chaptersPerWindow}")
     }
 
-    class PageViewHolder(val containerView: ViewGroup) : RecyclerView.ViewHolder(containerView)
+    class PageViewHolder(val containerView: ViewGroup) : RecyclerView.ViewHolder(containerView) {
+        var boundWindowId: Int = -1
+        var boundAdapterPosition: Int = RecyclerView.NO_POSITION
+    }
 }

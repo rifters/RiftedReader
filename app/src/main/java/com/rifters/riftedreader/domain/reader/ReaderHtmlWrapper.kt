@@ -10,6 +10,7 @@ data class ReaderHtmlConfig(
     val textSizePx: Float,
     val lineHeightMultiplier: Float,
     val palette: ReaderThemePalette,
+    val webViewWidthPx: Int,
     val enableDiagnostics: Boolean = false,
     /**
      * Debug window rendering configuration.
@@ -162,6 +163,9 @@ object ReaderHtmlWrapper {
                     html, body {
                         margin: 0;
                         padding: 0;
+                        width: 100%;
+                        height: 100%;
+                        overflow: hidden;
                         background-color: $backgroundColor;
                         color: $textColor;
                         font-size: ${config.textSizePx}px;
@@ -189,6 +193,9 @@ object ReaderHtmlWrapper {
                     /* Section styling for window-based chapters */
                     section[data-chapter-index] {
                         margin-bottom: 2em;
+                        break-before: column;
+                        -webkit-column-break-before: always;
+                        page-break-before: always;
                     }
                     h1, h2, h3, h4, h5, h6 {
                         margin: 1em 0 0.5em 0;

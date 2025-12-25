@@ -39,10 +39,15 @@ import com.rifters.riftedreader.domain.tts.TTSService
 import com.rifters.riftedreader.domain.tts.TTSStatusNotifier
 import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
 import com.rifters.riftedreader.ui.reader.ReaderThemePaletteResolver
+import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorDebugActivity
+import com.rifters.riftedreader.ui.reader.conveyor.ConveyorPhase
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import com.rifters.riftedreader.util.AppLogger
+import com.rifters.riftedreader.util.BufferLogger
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -53,6 +58,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     
     private lateinit var binding: ActivityReaderBinding
     private lateinit var viewModel: ReaderViewModel
+    private lateinit var conveyorBeltSystem: ConveyorBeltSystemViewModel
     private lateinit var gestureDetector: GestureDetector
     private lateinit var controlsManager: ReaderControlsManager
     override lateinit var readerPreferences: ReaderPreferences
@@ -76,6 +82,97 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var programmaticScrollInProgress: Boolean = false
     // Flag to track if initial buffer-to-UI sync has been performed
     private var initialBufferSyncCompleted: Boolean = false
+
+    // Prevent duplicate end-of-book completion handling from repeated boundary events.
+    private var endOfBookCloseInProgress: Boolean = false
+
+    // Prevent window-skips when a key/tap arrives before the WebView paginator has initialized.
+    // We queue a single navigation attempt and execute it once the paginator is ready.
+    private var pendingPagedNavJob: Job? = null
+    private var pendingPagedNavToken: Long = 0L
+
+    private fun queuePagedNavigationUntilReady(windowId: Int, isNext: Boolean, source: String): Boolean {
+        if (viewModel.paginationMode != PaginationMode.CONTINUOUS) return false
+        if (readerMode != ReaderMode.PAGE) return false
+
+        val fragTag = "w$windowId"
+        val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
+
+        // If the fragment is already ready, don't queue.
+        if (frag != null && frag.isWebViewReady() && frag.isPaginatorInitialized()) return false
+
+        pendingPagedNavJob?.cancel()
+        pendingPagedNavToken += 1
+        val token = pendingPagedNavToken
+
+        AppLogger.d(
+            "ReaderActivity",
+            "[$source] Queueing navigation until paginator ready: windowId=$windowId isNext=$isNext token=$token [NAV_QUEUE]"
+        )
+
+        pendingPagedNavJob = lifecycleScope.launch {
+            val deadlineMs = 1200L
+            val pollMs = 50L
+            val startMs = System.currentTimeMillis()
+
+            while (System.currentTimeMillis() - startMs < deadlineMs) {
+                // If a newer request came in, abandon this one.
+                if (token != pendingPagedNavToken) return@launch
+
+                // Only execute if we're still on the same active window.
+                if (viewModel.currentWindowIndex.value != windowId) {
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "[$source] Aborting queued nav: activeWindow changed (expected=$windowId actual=${viewModel.currentWindowIndex.value}) token=$token [NAV_QUEUE]"
+                    )
+                    return@launch
+                }
+
+                val currentFrag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
+                if (currentFrag != null && currentFrag.isWebViewReady() && currentFrag.isPaginatorInitialized()) {
+                    val handled = currentFrag.handleHardwarePageKey(isNext = isNext)
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "[$source] Executed queued nav: handled=$handled windowId=$windowId isNext=$isNext token=$token [NAV_QUEUE]"
+                    )
+                    return@launch
+                }
+
+                delay(pollMs)
+            }
+
+            AppLogger.w(
+                "ReaderActivity",
+                "[$source] Dropping queued nav: paginator not ready after timeout windowId=$windowId isNext=$isNext token=$token [NAV_QUEUE_TIMEOUT]"
+            )
+        }
+
+        // Consume the event so we don't fall back to window navigation.
+        return true
+    }
+
+    private fun syncRecyclerViewToWindowId(windowId: Int, reason: String) {
+        if (readerMode != ReaderMode.PAGE || viewModel.paginationMode != PaginationMode.CONTINUOUS) return
+
+        val position = pagerAdapter.getPositionForWindowId(windowId)
+        if (position >= 0) {
+            if (currentPagerPosition != position) {
+                AppLogger.d(
+                    "ReaderActivity",
+                    "Window=$windowId mapped to position=$position, syncing RecyclerView ($reason) [WINDOW_NAVIGATION]"
+                )
+                programmaticScrollInProgress = true
+                setCurrentItem(position, false)
+            }
+        } else {
+            // IMPORTANT: Do NOT fallback to slot 2/center here.
+            // Buffer updates are async; a fallback can land on the wrong windowId (e.g., win1 request -> snaps to win2).
+            AppLogger.w(
+                "ReaderActivity",
+                "Window=$windowId not found in adapter list; will retry after buffer update ($reason) [WINDOW_NOT_FOUND]"
+            )
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppLogger.event("ReaderActivity", "onCreate started", "ui/ReaderActivity/lifecycle")
@@ -121,6 +218,17 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         val factory = ReaderViewModel.Factory(bookId, bookFile, parser, repository, readerPreferences)
         viewModel = ViewModelProvider(this, factory)[ReaderViewModel::class.java]
         
+        // Instantiate and wire ConveyorBeltSystemViewModel for minimal paginator integration
+        conveyorBeltSystem = ConveyorBeltSystemViewModel()
+        viewModel.setConveyorBeltSystem(conveyorBeltSystem)
+        
+        // DIAGNOSTICS: Log ConveyorPrimary status at startup
+        // Conveyor is now always enabled - minimal paginator is the only system
+        AppLogger.d(
+            "ReaderActivity",
+            "[CONVEYOR_ACTIVE] CONVEYOR_PRIMARY=true - Conveyor is authoritative window manager (minimal paginator always enabled)"
+        )
+        
         // Debug log: assert initial pagination mode and window count
         AppLogger.d(
             "ReaderActivity",
@@ -156,6 +264,57 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     height
                 )
                 handleTapZone(tapZone)
+                return true
+            }
+
+            override fun onFling(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float
+            ): Boolean {
+                // In continuous PAGE mode, swipes should behave like hardware page keys:
+                // advance within the current window; only at edges should windows change.
+                if (readerMode != ReaderMode.PAGE || viewModel.paginationMode != PaginationMode.CONTINUOUS) {
+                    return false
+                }
+
+                val start = e1 ?: return false
+                val dx = e2.x - start.x
+                val dy = e2.y - start.y
+
+                val absDx = kotlin.math.abs(dx)
+                val absDy = kotlin.math.abs(dy)
+
+                // Basic horizontal fling thresholds
+                val minDistancePx = 64f
+                val minVelocityPxPerSec = 800f
+                if (absDx < minDistancePx || absDx < absDy || kotlin.math.abs(velocityX) < minVelocityPxPerSec) {
+                    return false
+                }
+
+                // Fling left = next, fling right = previous
+                val isNext = dx < 0
+
+                val windowId = viewModel.currentWindowIndex.value
+                val fragTag = "w$windowId"
+                val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
+
+                AppLogger.d(
+                    "ReaderActivity",
+                    "SWIPE_FLING: isNext=$isNext, windowId=$windowId, fragTag=$fragTag, fragFound=${frag != null} [SWIPE_AS_PAGE]"
+                )
+
+                val handled = frag?.handleHardwarePageKey(isNext = isNext) == true
+                if (!handled) {
+                    AppLogger.w(
+                        "ReaderActivity",
+                        "SWIPE_FLING not handled (paginator not ready or fragment missing). Blocking window scroll per spec. [SWIPE_AS_PAGE]"
+                    )
+                } else {
+                    controlsManager.onUserInteraction()
+                }
+
                 return true
             }
         })
@@ -218,8 +377,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 "ReaderActivity",
                 "RecyclerView.onTouch RETURNED=$result for action=$actionName"
             )
-            // Don't consume the event - let RecyclerView handle paging
-            false
+
+            // In continuous PAGE mode, consume touch so RecyclerView cannot scroll windows directly.
+            // Navigation is driven by WebView paginator; edges trigger window changes.
+            if (readerMode == ReaderMode.PAGE && viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                true
+            } else {
+                // Don't consume the event - let RecyclerView handle paging
+                false
+            }
         }
         
         binding.contentScrollView.setOnTouchListener(scrollTouchListener)
@@ -260,6 +426,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
         pagerAdapter = ReaderPagerAdapter(this, viewModel)
         
+        // NO LONGER register adapter with conveyor - we don't need invalidatePositionDueToBufferShift anymore
+        // ListAdapter + DiffUtil handles all UI updates via submitList()
+        
+        // NOTE: Buffer changes are now observed in observeViewModel() and trigger submitList()
+        
         // Set up RecyclerView with horizontal LinearLayoutManager and PagerSnapHelper
         layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         snapHelper = PagerSnapHelper()
@@ -297,6 +468,47 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             
             // Set up scroll listener to detect page changes
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    super.onScrolled(recyclerView, dx, dy)
+                    
+                    // Conveyor-belt buffer shift logic
+                    // Detect visible center position and trigger shifts
+                    val lm = this@ReaderActivity.layoutManager
+                    // Only shift the buffer on genuine user drags.
+                    // Programmatic scrolls (edge navigation, TOC jumps) must not cause buffer shifts.
+                    if (
+                        viewModel.isConveyorPrimary &&
+                        conveyorBeltSystem.phase.value == ConveyorPhase.STEADY &&
+                        isUserScrolling &&
+                        !programmaticScrollInProgress
+                    ) {
+                        val first = lm.findFirstVisibleItemPosition()
+                        val last = lm.findLastVisibleItemPosition()
+                        
+                        if (first == RecyclerView.NO_POSITION) return
+                        
+                        // Calculate center position
+                        val center = (first + last) / 2
+                        
+                        AppLogger.d(
+                            "ReaderActivity",
+                            "[BUFFER_SHIFT] Scroll detected: first=$first, last=$last, center=$center, " +
+                            "offset=${conveyorBeltSystem.getOffset()}, buffer=${conveyorBeltSystem.buffer.value}"
+                        )
+                        
+                        // Shift forward if center is at slots[3] or slots[4]
+                        if (center >= 3) {
+                            AppLogger.d("ReaderActivity", "[BUFFER_SHIFT] Triggering forward shift (center=$center)")
+                            conveyorBeltSystem.shiftForward(1)
+                        }
+                        // Shift backward if center is at slots[1] or slots[0]
+                        else if (center <= 1) {
+                            AppLogger.d("ReaderActivity", "[BUFFER_SHIFT] Triggering backward shift (center=$center)")
+                            conveyorBeltSystem.shiftBackward(1)
+                        }
+                    }
+                }
+                
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                     super.onScrollStateChanged(recyclerView, newState)
                     val stateName = when (newState) {
@@ -332,6 +544,16 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             "RecyclerView settled: position=$position, currentPagerPosition=$currentPagerPosition, " +
                             "wasProgrammatic=$wasProgrammatic, vmWindow=${viewModel.currentWindowIndex.value} [SCROLL_SETTLE]"
                         )
+
+                        // In continuous mode, adapter positions are ephemeral (buffer shifts).
+                        // Always map position -> windowId before updating the ViewModel.
+                        val settledWindowId = pagerAdapter.getWindowIdAtPosition(position)
+                        if (position >= 0 && settledWindowId == -1) {
+                            AppLogger.w(
+                                "ReaderActivity",
+                                "[SCROLL_SETTLE] No windowId for settled position=$position; itemCount=${pagerAdapter.itemCount}"
+                            )
+                        }
                         
                         // Debug: Log window navigation coherence (if debug window rendering is enabled)
                         val debugSettings = viewModel.readerSettings.value
@@ -349,25 +571,33 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         if (position >= 0 && position != currentPagerPosition) {
                             val previousWindow = currentPagerPosition
                             currentPagerPosition = position
+
+                            val previousWindowId = pagerAdapter.getWindowIdAtPosition(previousWindow)
+                            val currentWindowId = pagerAdapter.getWindowIdAtPosition(position)
                             
                             // Determine navigation direction for logging
                             val direction = if (position > previousWindow) "NEXT" else "PREV"
                             
                             AppLogger.d(
                                 "ReaderActivity",
-                                "WINDOW_ENTER: windowIndex=$position, previousWindow=$previousWindow, direction=$direction, " +
+                                "WINDOW_ENTER: adapterPos=$position, windowId=$currentWindowId, previousAdapterPos=$previousWindow, previousWindowId=$previousWindowId, direction=$direction, " +
                                         "mode=${if (wasProgrammatic) "PROGRAMMATIC" else "USER_GESTURE"}, " +
                                         "paginationMode=${viewModel.paginationMode} [WINDOW_CHANGE]"
                             )
                             
                             // Only update ViewModel if position changed AND not during programmatic scroll
                             // (programmatic scrolls already updated ViewModel before scrolling)
-                            if (readerMode == ReaderMode.PAGE && viewModel.currentWindowIndex.value != position && !wasProgrammatic) {
+                            if (
+                                readerMode == ReaderMode.PAGE &&
+                                currentWindowId != -1 &&
+                                viewModel.currentWindowIndex.value != currentWindowId &&
+                                !wasProgrammatic
+                            ) {
                                 AppLogger.d(
                                     "ReaderActivity",
-                                    "Updating ViewModel window: $previousWindow -> $position (triggered by user gesture) [WINDOW_SWITCH_REASON]"
+                                    "Updating ViewModel window: $previousWindowId -> $currentWindowId (triggered by user gesture) [WINDOW_SWITCH_REASON]"
                                 )
-                                viewModel.goToWindow(position)
+                                viewModel.goToWindow(currentWindowId)
                             } else if (wasProgrammatic) {
                                 AppLogger.d(
                                     "ReaderActivity",
@@ -377,15 +607,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             controlsManager.onUserInteraction()
                         }
                         
-                        // Notify WindowBufferManager that this window became visible
-                        // This triggers phase transition checks and potential buffer shifts
-                        if (position >= 0) {
-                            AppLogger.d(
-                                "ReaderActivity",
-                                "[CONVEYOR] Window $position became visible - checking buffer state"
-                            )
-                            viewModel.onWindowBecameVisible(position)
-                        }
+                        // Note: Window visibility tracking is now handled internally by ConveyorBeltSystemViewModel
+                        // No need to manually notify via onWindowBecameVisible() as it has been removed
                     }
                 }
             })
@@ -478,12 +701,30 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         // Use first { } with timeout to properly terminate collection after finding valid window count
         lifecycleScope.launch {
             try {
-                // Timeout after 10 seconds to avoid hanging indefinitely
-                // Book parsing typically completes within seconds, 10s is generous for edge cases
-                withTimeout(10_000L) {
-                    viewModel.windowCount.first { windowCount ->
-                        // Wait for window count to be available
-                        windowCount > 0
+                // TASK 2: CONVEYOR AUTHORITATIVE TAKEOVER - Deferred initial sync
+                // When conveyor is primary, wait for conveyor readiness before syncing
+                if (viewModel.isConveyorPrimary && viewModel.conveyorBeltSystem != null) {
+                    AppLogger.d("ReaderActivity", "[CONVEYOR_ACTIVE] Waiting for conveyor readiness before initial sync")
+                    
+                    // Timeout after 10 seconds to avoid hanging indefinitely
+                    withTimeout(10_000L) {
+                        // Wait for both windowCount > 0 AND isInitialized to be true
+                        viewModel.conveyorBeltSystem!!.windowCount.first { it > 0 }
+                        viewModel.conveyorBeltSystem!!.isInitialized.first { it }
+                    }
+                    
+                    AppLogger.d("ReaderActivity", "[CONVEYOR_ACTIVE] Conveyor ready: windowCount=${viewModel.conveyorBeltSystem!!.windowCount.value}")
+                } else {
+                    // LEGACY PATH: Wait for windowCount from ViewModel
+                    AppLogger.d("ReaderActivity", "[LEGACY_ACTIVE] Waiting for window count before initial sync")
+                    
+                    // Timeout after 10 seconds to avoid hanging indefinitely
+                    // Book parsing typically completes within seconds, 10s is generous for edge cases
+                    withTimeout(10_000L) {
+                        viewModel.windowCount.first { windowCount ->
+                            // Wait for window count to be available
+                            windowCount > 0
+                        }
                     }
                 }
                 
@@ -530,6 +771,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         val adapterItemCount = pagerAdapter.itemCount
         AppLogger.d("ReaderActivity", "[BUFFER_SYNC] Sync parameters: currentWindowIndex=$initialWindow, adapterItemCount=$adapterItemCount")
         
+        // TASK 2: CONVEYOR AUTHORITATIVE TAKEOVER - Log when using conveyor
+        if (viewModel.isConveyorPrimary && viewModel.conveyorBeltSystem != null) {
+            AppLogger.d("ReaderActivity", "[CONVEYOR_ACTIVE] Scrolling to initialWindow=$initialWindow (conveyor buffer=${viewModel.conveyorBeltSystem!!.buffer.value})")
+        }
+        
         // Validate adapter has items
         if (adapterItemCount <= 0) {
             AppLogger.w(
@@ -567,16 +813,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         AppLogger.d("ReaderActivity", "[BUFFER_SYNC] Scrolling to initial window: $initialWindow")
         setCurrentItem(initialWindow, false)
         
-        // Notify WindowBufferManager that this window became visible.
-        // This is intentionally called during initialization to trigger phase transition
-        // from STARTUP to STEADY. Unlike user-driven navigation (which triggers this via
-        // scroll listener), we need to explicitly call it here because:
-        // 1. The scroll is instant (no scroll animation = no scroll listener callback)
-        // 2. We need phase transition to occur for the buffer lifecycle to work correctly
-        // Note: This call is idempotent - calling it multiple times for the same window
-        // doesn't cause problems since WindowBufferManager tracks state internally.
-        AppLogger.d("ReaderActivity", "[BUFFER_SYNC] Notifying ViewModel: onWindowBecameVisible($initialWindow)")
-        viewModel.onWindowBecameVisible(initialWindow)
+        // Note: ConveyorBeltSystemViewModel handles window visibility tracking internally
+        // No manual notification needed - the conveyor system manages phase transitions automatically
         
         // Log buffer state for debugging
         logBufferSyncDiagnostics(initialWindow)
@@ -590,46 +828,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     /**
      * Log diagnostics after initial buffer sync for debugging phase transitions.
      * 
-     * This includes a defensive warning if the visible window doesn't match
-     * the buffer band, which would indicate a misalignment issue.
+     * WindowBufferManager has been removed - ConveyorBeltSystemViewModel now handles
+     * all buffer management internally.
      */
     private fun logBufferSyncDiagnostics(syncedWindow: Int) {
-        val bufferManager = viewModel.windowBufferManager
-        if (bufferManager == null) {
-            AppLogger.w(
-                "ReaderActivity",
-                "[BUFFER_SYNC] WindowBufferManager not initialized - cannot validate buffer state"
-            )
-            return
-        }
-        
-        val bufferedWindows = bufferManager.getBufferedWindows()
-        val centerWindow = bufferManager.getCenterWindowIndex()
-        val currentPhase = bufferManager.phase.value
-        
         AppLogger.d(
             "ReaderActivity",
-            "[BUFFER_SYNC] Diagnostics after sync: syncedWindow=$syncedWindow, " +
-            "bufferedWindows=$bufferedWindows, centerWindow=$centerWindow, phase=$currentPhase"
+            "[BUFFER_SYNC] Sync completed for window $syncedWindow. " +
+            "ConveyorBeltSystemViewModel handles buffer management internally."
         )
-        
-        // Check if synced window is in buffer
-        val isInBuffer = bufferedWindows.contains(syncedWindow)
-        
-        if (!isInBuffer) {
-            AppLogger.w(
-                "ReaderActivity",
-                "[BUFFER_SYNC] WARNING: Visible window $syncedWindow is NOT in buffer band " +
-                "$bufferedWindows. This may cause phase transition issues. " +
-                "(centerWindow=$centerWindow, phase=$currentPhase)"
-            )
-        } else {
-            AppLogger.d(
-                "ReaderActivity",
-                "[BUFFER_SYNC] Initial sync complete: visibleWindow=$syncedWindow, " +
-                "buffer=$bufferedWindows, centerWindow=$centerWindow, phase=$currentPhase"
-            )
-        }
     }
     
     private fun observeViewModel() {
@@ -653,7 +860,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         // Only process when: (1) text is non-empty AND
                         // (2) paginator is fully initialized AND  
                         // (3) WebView is ready
-                        val fragmentRef = supportFragmentManager.findFragmentByTag("page_${viewModel.currentPage.value}")
+                        // CRITICAL: Look up fragment by windowId (w0-wN), not by position!
+                        // The RecyclerView now uses windowId-based tags
+                        // We need to find the fragment for the active window
+                        val activeWindowId = viewModel.currentWindowIndex.value
+                        val fragmentTag = "w$activeWindowId"
+                        val fragmentRef = supportFragmentManager.findFragmentByTag(fragmentTag)
                         val fragment = (fragmentRef as? ReaderPageFragment)
                         val isWebViewReady = fragment?.isWebViewReady() ?: false
                         val isPaginatorInitialized = fragment?.isPaginatorInitialized() ?: false
@@ -688,6 +900,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             "[CONTENT_LOADED] EMITTED - page=${viewModel.currentPage.value} textLength=${pageContent.text.length} " +
                                     "hasHtml=${!pageContent.html.isNullOrBlank()} All gates passed."
                         )
+                        
+                        // Buffer shift is now applied immediately in ConveyorBeltSystem,
+                        // not deferred until CONTENT_LOADED. No need to apply pending shift here.
                         
                         currentPageText = pageContent.text
                         currentPageHtml = pageContent.html
@@ -727,10 +942,29 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 
                 launch {
                     viewModel.currentWindowIndex.collect { windowIndex ->
-                        // Update RecyclerView position when window index changes
-                        if (readerMode == ReaderMode.PAGE && currentPagerPosition != windowIndex) {
-                            AppLogger.d("ReaderActivity", "Syncing RecyclerView to window index: $windowIndex")
-                            setCurrentItem(windowIndex, false)
+                        syncRecyclerViewToWindowId(windowIndex, reason = "currentWindowIndex.collect")
+                    }
+                }
+                
+                // NEW: Observe conveyor buffer changes and submit to adapter
+                launch {
+                    viewModel.conveyorBeltSystem?.buffer?.collect { bufferWindowIds ->
+                        AppLogger.d(
+                            "ReaderActivity",
+                            "[BUFFER_UPDATE] Submitting buffer to adapter: $bufferWindowIds"
+                        )
+                        pagerAdapter.submitList(bufferWindowIds) {
+                            // Callback after list update completes
+                            AppLogger.d(
+                                "ReaderActivity",
+                                "[BUFFER_UPDATE] Adapter list updated: itemCount=${pagerAdapter.itemCount}"
+                            )
+
+                            // Retry syncing to the currently requested window after the list updates.
+                            syncRecyclerViewToWindowId(
+                                viewModel.currentWindowIndex.value,
+                                reason = "buffer.submitList.callback"
+                            )
                         }
                     }
                 }
@@ -788,23 +1022,22 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             }
                         }
                         
-                        // [FALLBACK] If zero windows, log warning but still notify adapter
+                        // [FALLBACK] If zero windows, log warning
                         if (windowCount == 0 && visibleChapterCount > 0) {
                             AppLogger.e("ReaderActivity", 
                                 "[PAGINATION_DEBUG] ERROR: windowCount=0 but visibleChapters=$visibleChapterCount - " +
                                 "book may have failed to load or pagination failed")
                         }
                         
-                        pagerAdapter.notifyDataSetChanged()
+                        // NOTE: No need to call notifyDataSetChanged() anymore
+                        // Buffer updates are handled via submitList() in the buffer observer
                         
-                        // [PAGINATION_DEBUG] Log adapter state after notifyDataSetChanged
+                        // [PAGINATION_DEBUG] Log final state
                         val adapterItemCountAfter = pagerAdapter.itemCount
                         AppLogger.d("ReaderActivity", 
-                            "[PAGINATION_DEBUG] Adapter updated: " +
-                            "itemCount=$adapterItemCountBefore->$adapterItemCountAfter, " +
-                            "windowCount=$windowCount")
-                        
-                        pagerAdapter.logAdapterStateAfterUpdate("windowCount.collect")
+                            "[PAGINATION_DEBUG] Window count updated: " +
+                            "windowCount=$windowCount, " +
+                            "adapterItemCount=$adapterItemCountAfter")
                     }
                 }
                 
@@ -908,23 +1141,37 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         if (enableVolumeKeys) {
             when (keyCode) {
                 android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                    // In CONTINUOUS mode, the RecyclerView is indexed by window index (not global page).
-                    // In CHAPTER_BASED mode, window index equals page index.
-                    val index = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                    // Look up fragment by windowId (not position)
+                    val windowId = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
                         viewModel.currentWindowIndex.value
                     } else {
                         viewModel.currentPage.value
                     }
-                    val fragTag = "f$index"
+                    val fragTag = "w$windowId"
                     val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
                     
                     AppLogger.d(
                         "ReaderActivity",
-                        "VOLUME_DOWN pressed: paginationMode=${viewModel.paginationMode}, index=$index, fragTag=$fragTag, fragFound=${frag != null} [HARDWARE_KEY_NAV]"
+                        "VOLUME_DOWN pressed: paginationMode=${viewModel.paginationMode}, windowId=$windowId, fragTag=$fragTag, fragFound=${frag != null} [HARDWARE_KEY_NAV]"
                     )
-                    
-                    if (frag?.handleHardwarePageKey(isNext = true) == true) {
-                        // Fragment will handle (consumed)
+
+                    // Only delegate to the fragment in PAGE mode. In SCROLL mode we want window-based
+                    // navigation and should not trigger in-window horizontal paging.
+                    if (readerMode == ReaderMode.PAGE) {
+                        if (frag?.handleHardwarePageKey(isNext = true) == true) {
+                            return true
+                        }
+
+                        // In PAGE+CONTINUOUS, never fall back to window jumps when the paginator is not ready.
+                        // Queue briefly and consume the key.
+                        if (queuePagedNavigationUntilReady(windowId = windowId, isNext = true, source = "HARDWARE_KEY_NAV")) {
+                            return true
+                        }
+
+                        AppLogger.w(
+                            "ReaderActivity",
+                            "VOLUME_DOWN ignored: fragment/paginator not ready; blocking fallback window jump (mode=PAGE) [HARDWARE_KEY_NAV]"
+                        )
                         return true
                     }
 
@@ -938,22 +1185,33 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     return true
                 }
                 android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
-                    // In CONTINUOUS mode, the RecyclerView is indexed by window index (not global page).
-                    // In CHAPTER_BASED mode, window index equals page index.
-                    val index = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                    // Look up fragment by windowId (not position)
+                    val windowId = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
                         viewModel.currentWindowIndex.value
                     } else {
                         viewModel.currentPage.value
                     }
-                    val fragTag = "f$index"
+                    val fragTag = "w$windowId"
                     val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
                     
                     AppLogger.d(
                         "ReaderActivity",
-                        "VOLUME_UP pressed: paginationMode=${viewModel.paginationMode}, index=$index, fragTag=$fragTag, fragFound=${frag != null} [HARDWARE_KEY_NAV]"
+                        "VOLUME_UP pressed: paginationMode=${viewModel.paginationMode}, windowId=$windowId, fragTag=$fragTag, fragFound=${frag != null} [HARDWARE_KEY_NAV]"
                     )
-                    
-                    if (frag?.handleHardwarePageKey(isNext = false) == true) {
+
+                    if (readerMode == ReaderMode.PAGE) {
+                        if (frag?.handleHardwarePageKey(isNext = false) == true) {
+                            return true
+                        }
+
+                        if (queuePagedNavigationUntilReady(windowId = windowId, isNext = false, source = "HARDWARE_KEY_NAV")) {
+                            return true
+                        }
+
+                        AppLogger.w(
+                            "ReaderActivity",
+                            "VOLUME_UP ignored: fragment/paginator not ready; blocking fallback window jump (mode=PAGE) [HARDWARE_KEY_NAV]"
+                        )
                         return true
                     }
 
@@ -1042,21 +1300,26 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             ReaderTapAction.NEXT_PAGE -> {
                 // In PAGE mode with CONTINUOUS pagination, delegate to fragment for edge-aware navigation
                 if (readerMode == ReaderMode.PAGE) {
-                    val index = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                    val windowId = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
                         viewModel.currentWindowIndex.value
                     } else {
                         viewModel.currentPage.value
                     }
-                    val fragTag = "f$index"
+                    val fragTag = "w$windowId"
                     val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
                     
                     AppLogger.d(
                         "ReaderActivity",
-                        "TAP_ZONE NEXT_PAGE: paginationMode=${viewModel.paginationMode}, index=$index, fragTag=$fragTag, fragFound=${frag != null} [TAP_ZONE_NAV]"
+                        "TAP_ZONE NEXT_PAGE: paginationMode=${viewModel.paginationMode}, windowId=$windowId, fragTag=$fragTag, fragFound=${frag != null} [TAP_ZONE_NAV]"
                     )
                     
                     if (frag?.handleHardwarePageKey(isNext = true) == true) {
                         // Fragment will handle edge-aware navigation
+                        controlsManager.onUserInteraction()
+                        return
+                    }
+
+                    if (queuePagedNavigationUntilReady(windowId = windowId, isNext = true, source = "TAP_ZONE_NAV")) {
                         controlsManager.onUserInteraction()
                         return
                     }
@@ -1073,21 +1336,26 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             ReaderTapAction.PREVIOUS_PAGE -> {
                 // In PAGE mode with CONTINUOUS pagination, delegate to fragment for edge-aware navigation
                 if (readerMode == ReaderMode.PAGE) {
-                    val index = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                    val windowId = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
                         viewModel.currentWindowIndex.value
                     } else {
                         viewModel.currentPage.value
                     }
-                    val fragTag = "f$index"
+                    val fragTag = "w$windowId"
                     val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
                     
                     AppLogger.d(
                         "ReaderActivity",
-                        "TAP_ZONE PREVIOUS_PAGE: paginationMode=${viewModel.paginationMode}, index=$index, fragTag=$fragTag, fragFound=${frag != null} [TAP_ZONE_NAV]"
+                        "TAP_ZONE PREVIOUS_PAGE: paginationMode=${viewModel.paginationMode}, windowId=$windowId, fragTag=$fragTag, fragFound=${frag != null} [TAP_ZONE_NAV]"
                     )
                     
                     if (frag?.handleHardwarePageKey(isNext = false) == true) {
                         // Fragment will handle edge-aware navigation
+                        controlsManager.onUserInteraction()
+                        return
+                    }
+
+                    if (queuePagedNavigationUntilReady(windowId = windowId, isNext = false, source = "TAP_ZONE_NAV")) {
                         controlsManager.onUserInteraction()
                         return
                     }
@@ -1118,6 +1386,20 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             val nextWindow = currentWindow + 1
             val totalWindows = viewModel.windowCount.value
             val adapterItemCount = pagerAdapter.itemCount
+
+            BufferLogger.log(
+                event = "NAV_NEXT",
+                message = "navigateToNextPage window mode",
+                details = mapOf(
+                    "paginationMode" to viewModel.paginationMode.name,
+                    "readerMode" to readerMode.name,
+                    "currentWindow" to currentWindow.toString(),
+                    "nextWindow" to nextWindow.toString(),
+                    "totalWindows" to totalWindows.toString(),
+                    "adapterItemCount" to adapterItemCount.toString(),
+                    "pid" to android.os.Process.myPid().toString()
+                )
+            )
             
             AppLogger.d(
                 "ReaderActivity",
@@ -1127,27 +1409,45 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             )
             
             // Validate target window is within bounds before attempting navigation
-            if (nextWindow >= totalWindows || nextWindow >= adapterItemCount) {
-                AppLogger.w(
-                    "ReaderActivity",
-                    "Cannot navigate to next window: nextWindow=$nextWindow exceeds bounds " +
-                    "(totalWindows=$totalWindows, adapterItemCount=$adapterItemCount) [NAV_BLOCKED]"
-                )
+            if (nextWindow >= totalWindows) {
+                // End-of-book: persist completion and close.
+                if (!endOfBookCloseInProgress) {
+                    endOfBookCloseInProgress = true
+                    AppLogger.i(
+                        "ReaderActivity",
+                        "End of book reached: window=$currentWindow totalWindows=$totalWindows. Marking complete and closing. [BOOK_COMPLETE]"
+                    )
+                    BufferLogger.log(
+                        level = "END",
+                        event = "BOOK_COMPLETE",
+                        message = "End of book reached; persisting completion and closing",
+                        details = mapOf(
+                            "currentWindow" to currentWindow.toString(),
+                            "totalWindows" to totalWindows.toString(),
+                            "pid" to android.os.Process.myPid().toString()
+                        )
+                    )
+                    lifecycleScope.launch {
+                        try {
+                            viewModel.persistBookCompleted()
+                        } catch (e: Exception) {
+                            AppLogger.e("ReaderActivity", "Failed to persist completion at end-of-book", e)
+                        } finally {
+                            finish()
+                        }
+                    }
+                } else {
+                    AppLogger.d(
+                        "ReaderActivity",
+                        "End-of-book close already in progress; ignoring duplicate NEXT boundary. [BOOK_COMPLETE_DUP]"
+                    )
+                }
                 return
             }
             
             val moved = viewModel.nextWindow()
             if (moved) {
-                // In CONTINUOUS mode, always update RecyclerView position regardless of readerMode
-                // PAGE mode: RecyclerView shows one window at a time
-                // SCROLL mode: RecyclerView still manages windows, just scrolls vertically within them
-                AppLogger.d(
-                    "ReaderActivity",
-                    "Programmatically scrolling RecyclerView to window $nextWindow (user navigation), readerMode=$readerMode [PROGRAMMATIC_WINDOW_CHANGE]"
-                )
-                // Set flag before scrolling to prevent circular update from OnScrollListener
-                //programmaticScrollInProgress = true
-                //setCurrentItem(nextWindow, animated)
+                // RecyclerView syncing is handled centrally by currentWindowIndex collector + buffer submitList callback.
             } else if (!moved) {
                 AppLogger.w(
                     "ReaderActivity",
@@ -1157,6 +1457,19 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         } else {
             val currentIndex = viewModel.currentPage.value
             val nextIndex = currentIndex + 1
+
+            BufferLogger.log(
+                event = "NAV_NEXT",
+                message = "navigateToNextPage page mode",
+                details = mapOf(
+                    "paginationMode" to viewModel.paginationMode.name,
+                    "readerMode" to readerMode.name,
+                    "currentPage" to currentIndex.toString(),
+                    "nextPage" to nextIndex.toString(),
+                    "pid" to android.os.Process.myPid().toString()
+                )
+            )
+
             AppLogger.d(
                 "ReaderActivity",
                 "navigateToNextPage called: currentPage=$currentIndex -> nextPage=$nextIndex mode=$readerMode " +
@@ -1180,6 +1493,20 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             val previousWindow = currentWindow - 1
             val totalWindows = viewModel.windowCount.value
             val adapterItemCount = pagerAdapter.itemCount
+
+            BufferLogger.log(
+                event = "NAV_PREV",
+                message = "navigateToPreviousPage window mode",
+                details = mapOf(
+                    "paginationMode" to viewModel.paginationMode.name,
+                    "readerMode" to readerMode.name,
+                    "currentWindow" to currentWindow.toString(),
+                    "previousWindow" to previousWindow.toString(),
+                    "totalWindows" to totalWindows.toString(),
+                    "adapterItemCount" to adapterItemCount.toString(),
+                    "pid" to android.os.Process.myPid().toString()
+                )
+            )
             
             AppLogger.d(
                 "ReaderActivity",
@@ -1199,14 +1526,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             
             val moved = viewModel.previousWindow()
             if (moved) {
-                // In CONTINUOUS mode, always update RecyclerView position regardless of readerMode
-                AppLogger.d(
-                    "ReaderActivity",
-                    "Programmatically scrolling RecyclerView to window $previousWindow (user navigation), readerMode=$readerMode [PROGRAMMATIC_WINDOW_CHANGE]"
-                )
-                // Set flag before scrolling to prevent circular update from OnScrollListener
-                //programmaticScrollInProgress = true
-                //setCurrentItem(previousWindow, animated)
+                // RecyclerView syncing is handled centrally by currentWindowIndex collector + buffer submitList callback.
             } else if (!moved) {
                 AppLogger.w(
                     "ReaderActivity",
@@ -1216,6 +1536,19 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         } else {
             val currentIndex = viewModel.currentPage.value
             val previousIndex = currentIndex - 1
+
+            BufferLogger.log(
+                event = "NAV_PREV",
+                message = "navigateToPreviousPage page mode",
+                details = mapOf(
+                    "paginationMode" to viewModel.paginationMode.name,
+                    "readerMode" to readerMode.name,
+                    "currentPage" to currentIndex.toString(),
+                    "previousPage" to previousIndex.toString(),
+                    "pid" to android.os.Process.myPid().toString()
+                )
+            )
+
             AppLogger.d(
                 "ReaderActivity",
                 "navigateToPreviousPage called: currentPage=$currentIndex -> previousPage=$previousIndex mode=$readerMode " +
@@ -1264,13 +1597,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 // In CONTINUOUS mode, always update RecyclerView position regardless of readerMode
                 // Set flag only after navigation succeeds to avoid race condition
                 viewModel.setJumpToLastPageFlag()
-                AppLogger.d(
-                    "ReaderActivity",
-                    "Programmatically scrolling RecyclerView to window $previousWindow with jump-to-last-page flag, readerMode=$readerMode [PROGRAMMATIC_WINDOW_CHANGE]"
-                )
-                // Set flag before scrolling to prevent circular update from OnScrollListener
-                programmaticScrollInProgress = true
-                setCurrentItem(previousWindow, animated)
+                // RecyclerView syncing is handled centrally by currentWindowIndex collector + buffer submitList callback.
             } else if (!moved) {
                 AppLogger.w(
                     "ReaderActivity",
@@ -1655,12 +1982,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             // Get the WebView from the fragment and navigate
             lifecycleScope.launch {
                 try {
-                    // Use the bridge to navigate to the target page
+                    // Use direct JavaScript to navigate to the target page
                     val webView = frag.view?.findViewById<android.webkit.WebView>(
                         R.id.pageWebView
                     )
                     if (webView != null) {
-                        WebViewPaginatorBridge.goToPage(webView, pageIndex, smooth = true)
+                        webView.evaluateJavascript(
+                            "if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage($pageIndex, true); }",
+                            null
+                        )
                     }
                 } catch (e: Exception) {
                     AppLogger.e(

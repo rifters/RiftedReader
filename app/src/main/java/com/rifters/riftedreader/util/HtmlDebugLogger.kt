@@ -56,7 +56,7 @@ object HtmlDebugLogger {
      * @param bookId Unique book identifier (from path or database ID)
      * @param chapterIndex Index of the chapter
      * @param html The HTML content
-     * @param metadata Optional metadata to include in the log header
+     * @param metadata Optional metadata to include in the log header (should include windowIndex if applicable)
      */
     fun logChapterHtml(
         bookId: String,
@@ -75,7 +75,10 @@ object HtmlDebugLogger {
         try {
             val timestamp = getTimestamp()
             val sanitizedBookId = sanitizeFileName(bookId)
-            val fileName = "book-${sanitizedBookId}-chapter-${chapterIndex}-${timestamp}.html"
+            
+            // TASK 4 FIX: Include windowIndex in filename (from metadata if available)
+            val windowIndexSuffix = metadata["windowIndex"]?.let { "-window-$it" } ?: ""
+            val fileName = "book-${sanitizedBookId}-chapter-${chapterIndex}${windowIndexSuffix}-${timestamp}.html"
             val file = File(dir, fileName)
             
             val header = buildString {
@@ -197,7 +200,7 @@ object HtmlDebugLogger {
      * @param bookId Unique book identifier
      * @param chapterIndex Chapter index
      * @param wrappedHtml The complete HTML with styling
-     * @param metadata Optional metadata to include in the log header
+     * @param metadata Optional metadata to include in the log header (should include windowIndex)
      */
     fun logWrappedHtml(
         bookId: String,
@@ -216,7 +219,10 @@ object HtmlDebugLogger {
         try {
             val timestamp = getTimestamp()
             val sanitizedBookId = sanitizeFileName(bookId)
-            val fileName = "book-${sanitizedBookId}-chapter-${chapterIndex}-wrapped-${timestamp}.html"
+            
+            // TASK 4 FIX: Include windowIndex in filename (from metadata if available)
+            val windowIndexSuffix = metadata["windowIndex"]?.let { "-window-$it" } ?: ""
+            val fileName = "book-${sanitizedBookId}-chapter-${chapterIndex}${windowIndexSuffix}-wrapped-${timestamp}.html"
             val file = File(dir, fileName)
             
             val header = buildString {

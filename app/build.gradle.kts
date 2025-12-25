@@ -44,6 +44,15 @@ android {
                 cppFlags += "-D__ANDROID_16KB_PAGE_SIZE__"
             }
         }
+
+        // Debug/testing flag: enable experimental paginator width sync.
+        // Default false to avoid changing pagination behavior.
+        // Enable for a build via: ./gradlew :app:assembleDebug -PenableWidthSync=true
+        val enableWidthSync = (project.findProperty("enableWidthSync") as String?)
+            ?.trim()
+            ?.equals("true", ignoreCase = true)
+            ?: false
+        buildConfigField("boolean", "MIN_PAGINATOR_ENABLE_WIDTH_SYNC", enableWidthSync.toString())
     }
 
     buildTypes {
@@ -87,24 +96,24 @@ android {
 
 dependencies {
     // Core Android
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("com.google.android.material:material:1.11.0")
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.preference:preference-ktx:1.2.1")
     
     // WebView support for WebViewAssetLoader (serves local files via virtual https domain)
-    implementation("androidx.webkit:webkit:1.10.0")
+    implementation("androidx.webkit:webkit:1.12.1")
     
     // Architecture Components
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation("androidx.media:media:1.6.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.media:media:1.7.0")
     
     // Navigation
-    implementation("androidx.navigation:navigation-fragment-ktx:2.7.6")
-    implementation("androidx.navigation:navigation-ui-ktx:2.7.6")
+    implementation("androidx.navigation:navigation-fragment-ktx:2.8.5")
+    implementation("androidx.navigation:navigation-ui-ktx:2.8.5")
     
     // Room Database
     implementation("androidx.room:room-runtime:2.6.1")
@@ -112,11 +121,11 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
     
     // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     
     // Image Loading
-    implementation("io.coil-kt:coil:2.5.0")
+    implementation("io.coil-kt:coil:2.7.0")
 
     // RecyclerView selection support for bulk actions in the library
     implementation("androidx.recyclerview:recyclerview-selection:1.1.0")
@@ -126,7 +135,7 @@ dependencies {
     implementation("com.github.mhiew:android-pdf-viewer:3.2.0-beta.1")
     
     // EPUB support (will use custom implementation with JSoup)
-    implementation("org.jsoup:jsoup:1.17.2")
+    implementation("org.jsoup:jsoup:1.18.3")
     
     // ZIP handling for EPUB and CBZ
     implementation("net.lingala.zip4j:zip4j:2.11.5")
@@ -136,8 +145,8 @@ dependencies {
     
     // Testing
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
-    androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.room:room-testing:2.6.1")
 }

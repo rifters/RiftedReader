@@ -17,7 +17,7 @@ import com.rifters.riftedreader.util.AppLogger
  * - Window range calculations
  * 
  * For runtime window management (which windows exist, caching, etc.), use
- * `WindowBufferManager` as the authoritative source.
+ * `ConveyorBeltSystemViewModel` as the authoritative source (WindowBufferManager has been deprecated).
  * 
  * **Usage:**
  * Provides stable, predictable mapping between chapters and windows to prevent
@@ -38,7 +38,7 @@ import com.rifters.riftedreader.util.AppLogger
  * 
  * @param chaptersPerWindow Number of chapters per window (default: 5)
  * 
- * @see WindowBufferManager For runtime window management (authoritative owner)
+ * @see com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel For runtime window management (authoritative owner)
  * @see com.rifters.riftedreader.domain.pagination.SlidingWindowManager Similar helper in domain package
  */
 class SlidingWindowPaginator(
