@@ -4,6 +4,10 @@
 
 This checklist breaks down the FlexPaginator integration into 5 implementation phases. Each phase can be completed and tested independently before moving to the next.
 
+## How to Use This Checklist
+
+Use `docs/planning/FLEX_PAGINATOR_INTEGRATION_ROADMAP.md` as the **phase guide** (what to do next + entry/exit criteria), and use this file as the **checkbox tracker** for each phase.
+
 ## Status Legend
 
 - [ ] Not Started
