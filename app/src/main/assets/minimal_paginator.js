@@ -150,7 +150,6 @@
                 height: 100%;
                 overflow-x: auto;
                 overflow-y: hidden;
-                scroll-snap-type: x mandatory;
                 -webkit-overflow-scrolling: touch;
             `;
             
@@ -756,7 +755,6 @@
             column-fill: auto;
             -webkit-column-fill: auto;
             height: 100%;
-            scroll-snap-align: start;
         `;
         
         // Restore the preserved font size if it existed
