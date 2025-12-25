@@ -487,6 +487,10 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         log("STATE", "onWindowEntered($windowIndex)")
         log("STATE", "Current: offset=$offset, buffer=${getValidBuffer()}, activeWindow=${_activeWindow.value}, phase=${_phase.value}")
         log("STATE", "shiftsUnlocked=$shiftsUnlocked")
+
+        // Always enforce 5-slot cache discipline on entry.
+        // This makes cache removals deterministic and resilient to future paginator/buffer refactors.
+        evictHtmlCacheToBuffer(allowedWindows = getValidBuffer().toSet(), reason = "onWindowEntered")
         
         // Trigger background HTML loading for the window user just entered
         // This is opportunistic preloading - if HTML isn't cached yet, load it now
