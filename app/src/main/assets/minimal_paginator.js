@@ -56,6 +56,7 @@
         currentPage: 0,
         viewportWidth: 0,
         appliedColumnWidth: 0,
+        lastStableViewportWidth: 0,
         pageCount: -1,
         lastKnownPageCount: -1,  // ISSUE 4 FIX: Track last known page count for returning during reflow when isPaginationReady=false
         columnContainer: null,
@@ -169,11 +170,11 @@
             // This is required for column layout to work correctly
             wrapExistingContentAsSegment();
             
-            // Use window.innerWidth as viewport width (container will be full width)
-            state.viewportWidth = window.innerWidth;
-            state.appliedColumnWidth = state.viewportWidth;
+            // Use the actual container width as the source of truth.
+            // window.innerWidth can be transiently wrong in Android WebView during UI/layout churn.
+            updateViewportWidth('INIT');
             
-            log('INIT', `Using measured content width: ${state.viewportWidth}px (clientWidth=${state.contentWrapper.clientWidth}, boundingWidth=${state.contentWrapper.getBoundingClientRect().width})`);
+            log('INIT', `Using measured content width: ${state.viewportWidth}px (containerClientWidth=${state.columnContainer.clientWidth}, contentClientWidth=${state.contentWrapper.clientWidth}, boundingWidth=${state.contentWrapper.getBoundingClientRect().width})`);
             
             // Apply CSS columns
             applyColumnLayout();
@@ -267,7 +268,7 @@
         }
         
         const scrollWidth = state.contentWrapper.scrollWidth;
-        const pageWidth = state.viewportWidth || window.innerWidth;  // ← CRITICAL FIX: Use viewportWidth, not clientWidth
+        const pageWidth = (state.appliedColumnWidth > 0 ? state.appliedColumnWidth : (state.viewportWidth || window.innerWidth));
         
         if (pageWidth === 0) {
             return state.lastKnownPageCount > 0 ? state.lastKnownPageCount : 1;
@@ -359,6 +360,21 @@
             top: 0,
             behavior: smooth ? 'smooth' : 'auto'
         });
+
+        // High-signal drift check: if something (reflow/layout clamp) forces scrollLeft away
+        // from the requested page after navigation, log it. This is the exact symptom you're seeing.
+        setTimeout(function() {
+            try {
+                if (!state.columnContainer || state.appliedColumnWidth <= 0) return;
+                const actualScrollLeft = state.columnContainer.scrollLeft;
+                const actualPage = Math.round(actualScrollLeft / state.appliedColumnWidth);
+                if (actualPage !== validIndex) {
+                    log('NAV_DRIFT', `Requested page=${validIndex} but actualPage=${actualPage} (scrollLeft=${actualScrollLeft.toFixed(1)}px, appliedColumnWidth=${state.appliedColumnWidth}px, isNavigating=${state.isNavigating})`);
+                }
+            } catch (e) {
+                // ignore
+            }
+        }, smooth ? 1200 : 200);
         
         // REMOVED: checkBoundary() call - let scroll listener handle boundary detection
         // after scroll animation completes and state is properly updated
@@ -643,6 +659,7 @@
             state.columnContainer.style.display = oldDisplay || '';
             
             // Reapply column layout (this will update state.appliedColumnWidth)
+            updateViewportWidth('REFLOW');
             applyColumnLayout();
             
             // DIAGNOSTIC: Log appliedColumnWidth after reapplying layout
@@ -761,6 +778,8 @@
      * Apply CSS column layout
      */
     function applyColumnLayout() {
+        // Keep width in sync with the real container size.
+        updateViewportWidth('APPLY_LAYOUT');
         applyColumnStylesWithWidth(state.contentWrapper, state.appliedColumnWidth);
     }
     
@@ -789,9 +808,9 @@
                 return;
             }
             
-            // Page count = how many column widths fit in scroll width
-            // CRITICAL FIX: Use viewportWidth (matches inpage_paginator.js line 1166)
-            const pageWidth = state.viewportWidth || window.innerWidth;
+            // Page count = how many page widths fit in scroll width.
+            // Use appliedColumnWidth as the single source of truth.
+            const pageWidth = (state.appliedColumnWidth > 0 ? state.appliedColumnWidth : (state.viewportWidth || window.innerWidth));
             const pageCount = Math.ceil(scrollWidth / pageWidth);
             state.pageCount = Math.max(1, pageCount);
             
@@ -1087,6 +1106,9 @@
      */
     function recomputeIfNeeded() {
         if (!state.isPaginationReady) return;
+
+        // Keep widths fresh before recomputing page counts.
+        updateViewportWidth('RECOMPUTE');
         
         const oldPageCount = state.pageCount;
         const oldCurrentPage = state.currentPage;
@@ -1122,6 +1144,39 @@
         
         // Track recompute time for debouncing
         state.lastRecomputeTime = Date.now();
+    }
+
+    /**
+     * Keep viewportWidth/appliedColumnWidth synced to the real container clientWidth.
+     * This avoids transient window.innerWidth glitches that can cause scroll clamping/jumps.
+     */
+    function updateViewportWidth(reason) {
+        try {
+            let measured = 0;
+            if (state.columnContainer) {
+                measured = state.columnContainer.clientWidth;
+            }
+            if (!measured || measured < MIN_CLIENT_WIDTH) {
+                measured = document.documentElement ? document.documentElement.clientWidth : 0;
+            }
+            if (!measured || measured < MIN_CLIENT_WIDTH) {
+                measured = window.innerWidth;
+            }
+            if (!measured || measured < MIN_CLIENT_WIDTH) {
+                measured = state.lastStableViewportWidth || FALLBACK_WIDTH;
+            }
+
+            const prev = state.lastStableViewportWidth || state.viewportWidth || 0;
+            state.viewportWidth = measured;
+            state.appliedColumnWidth = measured;
+            state.lastStableViewportWidth = measured;
+
+            if (prev && Math.abs(prev - measured) >= 2) {
+                log('WIDTH_CHANGE', `${reason}: ${prev}px → ${measured}px`);
+            }
+        } catch (e) {
+            // ignore
+        }
     }
     
     /**
