@@ -2,6 +2,7 @@ package com.rifters.riftedreader
 
 import android.app.Application
 import com.rifters.riftedreader.util.AppLogger
+import com.rifters.riftedreader.util.BufferLogger
 import com.rifters.riftedreader.util.HtmlDebugLogger
 
 /**
@@ -21,6 +22,10 @@ class RiftedReaderApplication : Application() {
         AppLogger.init(this)
         AppLogger.startSession(this)
         AppLogger.event("Application", "RiftedReader application started", "app/lifecycle")
+
+        // Dedicated conveyor buffer log (separate from AppLogger session log)
+        BufferLogger.init(this)
+        BufferLogger.startSession(this)
         
         // Initialize HTML debug logger for pagination debugging
         HtmlDebugLogger.init(this)
@@ -50,6 +55,8 @@ class RiftedReaderApplication : Application() {
     override fun onTerminate() {
         AppLogger.event("Application", "RiftedReader application terminated", "app/lifecycle")
         AppLogger.endSession()
+
+        BufferLogger.endSession()
         
         // Clean up old HTML debug logs
         HtmlDebugLogger.cleanupOldLogs(maxFiles = 50)

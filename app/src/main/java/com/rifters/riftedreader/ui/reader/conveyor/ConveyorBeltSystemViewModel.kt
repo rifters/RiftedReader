@@ -6,6 +6,7 @@ import com.rifters.riftedreader.domain.pagination.ContinuousPaginator
 import com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider
 import com.rifters.riftedreader.domain.pagination.SlidingWindowManager
 import com.rifters.riftedreader.util.AppLogger
+import com.rifters.riftedreader.util.BufferLogger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,6 +72,10 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
     
     private var shiftsUnlocked = false
+
+    private fun bufferSnapshot(): String {
+        return "offset=$offset buffer=${getValidBuffer()} activeWindow=${_activeWindow.value} phase=${_phase.value} shiftsUnlocked=$shiftsUnlocked cacheKeys=${htmlCache.keys.sorted()}"
+    }
     
     /**
      * Map a RecyclerView position (0-4) to the actual window index using slot mapping.
@@ -135,6 +140,12 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         // Set this window as active
         _activeWindow.value = windowIndex
+
+        BufferLogger.log(
+            event = "WIN_CHANGE",
+            message = "activeWindow=$windowIndex",
+            details = mapOf("snapshot" to bufferSnapshot())
+        )
         
         // Get position of this window in the buffer
         val position = getPositionForWindow(windowIndex)
@@ -178,6 +189,19 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         // Prefetch new windows that appeared in buffer
         val newWindows = newBuffer.filter { it !in oldBuffer }
+        val removedWindows = oldBuffer.filter { it !in newBuffer }
+
+        if (newWindows.isNotEmpty() || removedWindows.isNotEmpty()) {
+            BufferLogger.log(
+                event = "BUFFER_MUTATION",
+                message = "shift=FORWARD count=$count",
+                details = mapOf(
+                    "added" to newWindows.toString(),
+                    "removed" to removedWindows.toString(),
+                    "snapshot" to bufferSnapshot()
+                )
+            )
+        }
         if (newWindows.isNotEmpty()) {
             log("PREFETCH", "Prefetching new windows after forward shift: $newWindows")
             preloadWindowsAsync(newWindows)
@@ -217,6 +241,19 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         // Prefetch new windows that appeared in buffer
         val newWindows = newBuffer.filter { it !in oldBuffer }
+        val removedWindows = oldBuffer.filter { it !in newBuffer }
+
+        if (newWindows.isNotEmpty() || removedWindows.isNotEmpty()) {
+            BufferLogger.log(
+                event = "BUFFER_MUTATION",
+                message = "shift=BACKWARD count=$count",
+                details = mapOf(
+                    "added" to newWindows.toString(),
+                    "removed" to removedWindows.toString(),
+                    "snapshot" to bufferSnapshot()
+                )
+            )
+        }
         if (newWindows.isNotEmpty()) {
             log("PREFETCH", "Prefetching new windows after backward shift: $newWindows")
             preloadWindowsAsync(newWindows)
