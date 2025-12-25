@@ -296,7 +296,7 @@ class ReaderPageFragment : Fragment() {
                             window.minimalPaginator.configure({
                                 mode: '$mode',
                                 windowIndex: $windowIndex,
-                                enableWidthSync: false,
+                                enableWidthSync: ${com.rifters.riftedreader.BuildConfig.MIN_PAGINATOR_ENABLE_WIDTH_SYNC},
                                 enableNavDriftLog: ${com.rifters.riftedreader.BuildConfig.DEBUG}
                             });
                         }

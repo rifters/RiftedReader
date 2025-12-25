@@ -44,6 +44,15 @@ android {
                 cppFlags += "-D__ANDROID_16KB_PAGE_SIZE__"
             }
         }
+
+        // Debug/testing flag: enable experimental paginator width sync.
+        // Default false to avoid changing pagination behavior.
+        // Enable for a build via: ./gradlew :app:assembleDebug -PenableWidthSync=true
+        val enableWidthSync = (project.findProperty("enableWidthSync") as String?)
+            ?.trim()
+            ?.equals("true", ignoreCase = true)
+            ?: false
+        buildConfigField("boolean", "MIN_PAGINATOR_ENABLE_WIDTH_SYNC", enableWidthSync.toString())
     }
 
     buildTypes {
