@@ -67,6 +67,7 @@ Planning documents, roadmaps, and future implementation plans.
 - `IMPLEMENTATION_ROADMAP.md` - 20-week development roadmap
 - `STAGE_6_8_TODO.md` - TODO items for stages 6-8
 - `FLEX_PAGINATOR_ARCHITECTURE.md` - Flex paginator architecture plan
+- `FLEX_PAGINATOR_INTEGRATION_ROADMAP.md` - Master execution roadmap for Flex paginator integration
 - `WEBVIEW_PAGINATOR_ENHANCEMENTS.md` - WebView paginator enhancements
 - `EPUB_IMPROVEMENTS.md` - EPUB format improvements
 
