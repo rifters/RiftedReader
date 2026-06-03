@@ -97,8 +97,7 @@ class ContinuousPaginatorTest {
         
         // Current conveyor behavior keeps previously loaded protected chapters
         // and loads the target chapter's window: 5, 6, 7, 8, 9
-        assertTrue(windowInfo.loadedChapterIndices.containsAll(listOf(5, 6, 7, 8, 9)))
-        assertTrue(windowInfo.loadedChapterIndices.contains(0))
+        assertEquals((0..9).toSet(), windowInfo.loadedChapterIndices.toSet())
     }
     
     @Test
@@ -113,8 +112,7 @@ class ContinuousPaginatorTest {
         
         // Current conveyor behavior keeps previously loaded protected chapters
         // and loads the target chapter's window: 4, 5, 6, 7, 8
-        assertTrue(windowInfo.loadedChapterIndices.containsAll(listOf(4, 5, 6, 7, 8)))
-        assertTrue(windowInfo.loadedChapterIndices.contains(0))
+        assertEquals((0..8).toSet(), windowInfo.loadedChapterIndices.toSet())
     }
     
     @Test
@@ -170,7 +168,7 @@ class ContinuousPaginatorTest {
         val newWindowInfo = paginator.getWindowInfo()
         // Current conveyor behavior loads the target range without eagerly
         // unloading protected chapters from the previous range.
-        assertTrue(newWindowInfo.loadedChapterIndices.containsAll(listOf(5, 6, 7, 8, 9)))
+        assertEquals((0..9).toSet(), newWindowInfo.loadedChapterIndices.toSet())
         
         // Chapters 0-4 remain loaded until explicit streaming eviction or
         // the safety threshold for automatic eviction is exceeded.
