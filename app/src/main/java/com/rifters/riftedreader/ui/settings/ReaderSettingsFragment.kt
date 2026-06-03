@@ -154,7 +154,11 @@ class ReaderSettingsFragment : PreferenceFragmentCompat() {
             true
         }
         preferredFormat?.setOnPreferenceChangeListener { _, newValue ->
-            val format = runCatching { BookFormat.valueOf((newValue as? String).orEmpty()) }.getOrDefault(BookFormat.ANY)
+            val rawValue = (newValue as? String).orEmpty()
+            val format = runCatching { BookFormat.valueOf(rawValue) }.getOrElse {
+                AppLogger.event("ReaderSettingsFragment", "Invalid Calibre preferred format: $rawValue", "ui/settings/calibre")
+                BookFormat.ANY
+            }
             updateCalibreConfig { it.copy(preferredFormat = format) }
             true
         }

@@ -20,7 +20,7 @@ private val Context.calibreConnectionDataStore by preferencesDataStore(name = "c
 class DefaultCalibreConnectionRepository(
     context: Context,
     private val credentialStore: CalibreCredentialStore = CalibreCredentialStore(context),
-    private val client: OkHttpClient = OkHttpClient()
+    private val client: OkHttpClient = DEFAULT_CLIENT
 ) : CalibreConnectionRepository {
 
     private val appContext = context.applicationContext
@@ -66,7 +66,7 @@ class DefaultCalibreConnectionRepository(
         }
 
         val requestBuilder = Request.Builder()
-            .url("${config.contentServerUrl}/cdb/cmd/list/0")
+            .url("${config.contentServerUrl}$CONTENT_SERVER_HEALTH_PATH")
             .get()
 
         if (config.contentServerUsername.isNotBlank() || config.contentServerPassword.isNotEmpty()) {
@@ -103,6 +103,8 @@ class DefaultCalibreConnectionRepository(
 
     companion object {
         private const val HTTP_UNAUTHORIZED = 401
+        private const val CONTENT_SERVER_HEALTH_PATH = "/cdb/cmd/list/0"
+        private val DEFAULT_CLIENT = OkHttpClient()
 
         private val KEY_CONTENT_SERVER_URL = stringPreferencesKey("content_server_url")
         private val KEY_CONTENT_SERVER_USERNAME = stringPreferencesKey("content_server_username")

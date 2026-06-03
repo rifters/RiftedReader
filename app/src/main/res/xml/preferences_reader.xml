@@ -6,11 +6,12 @@
         android:key="calibre_library_category"
         android:title="@string/settings_calibre_library_category">
 
-        <PreferenceCategory
+        <Preference
             android:key="calibre_content_server_category"
-            android:title="@string/settings_calibre_content_server_category">
+            android:title="@string/settings_calibre_content_server_category"
+            android:selectable="false" />
 
-            <androidx.preference.SwitchPreferenceCompat
+        <androidx.preference.SwitchPreferenceCompat
                 android:key="calibre_content_server_enabled"
                 android:title="@string/settings_calibre_content_server_enabled"
                 android:defaultValue="false" />
@@ -36,13 +37,13 @@
                 android:key="calibre_test_connection"
                 android:title="@string/settings_calibre_test_connection" />
 
-        </PreferenceCategory>
 
-        <PreferenceCategory
+        <Preference
             android:key="calibre_web_category"
-            android:title="@string/settings_calibre_web_category">
+            android:title="@string/settings_calibre_web_category"
+            android:selectable="false" />
 
-            <androidx.preference.SwitchPreferenceCompat
+        <androidx.preference.SwitchPreferenceCompat
                 android:key="calibre_web_enabled"
                 android:title="@string/settings_calibre_web_enabled"
                 android:defaultValue="false" />
@@ -52,8 +53,6 @@
                 android:title="@string/settings_calibre_web_url"
                 android:dialogTitle="@string/settings_calibre_web_url"
                 app:useSimpleSummaryProvider="true" />
-
-        </PreferenceCategory>
 
         <Preference
             android:key="calibre_download_directory"

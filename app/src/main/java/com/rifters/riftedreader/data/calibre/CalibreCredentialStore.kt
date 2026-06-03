@@ -25,9 +25,9 @@ class CalibreCredentialStore(context: Context) {
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: GeneralSecurityException) {
-            throw IllegalStateException("Calibre credential storage is unavailable", e)
+            throw IllegalStateException("Calibre credential storage is unavailable. Check device lock screen and Android Keystore state.", e)
         } catch (e: IOException) {
-            throw IllegalStateException("Calibre credential storage is unavailable", e)
+            throw IllegalStateException("Calibre credential storage is unavailable. Check device lock screen and Android Keystore state.", e)
         }
     }
 
