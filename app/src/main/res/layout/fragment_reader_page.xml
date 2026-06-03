@@ -10,6 +10,17 @@
         android:layout_height="match_parent"
         android:visibility="gone" />
 
+    <ProgressBar
+        android:id="@+id/readerReslicingProgressBar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:layout_gravity="top"
+        android:clickable="false"
+        android:focusable="false"
+        android:indeterminate="true"
+        android:visibility="gone" />
+
     <!-- TextView fallback for plain text formats (TXT) -->
     <TextView
         android:id="@+id/pageTextView"

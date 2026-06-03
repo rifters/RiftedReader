@@ -652,6 +652,14 @@ class ReaderPageFragment : Fragment() {
             }
         }
 
+        launchIfViewAlive("reslicing_progress_observer") {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                readerViewModel.isReslicing.collect { isReslicing ->
+                    updateReslicingProgressBar(isReslicing)
+                }
+            }
+        }
+
         launchIfViewAlive("reader_settings_observer") {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 readerViewModel.readerSettings.collect { settings ->
@@ -752,6 +760,29 @@ class ReaderPageFragment : Fragment() {
                     previousSettings = settings
                 }
             }
+        }
+    }
+
+    private fun updateReslicingProgressBar(isReslicing: Boolean) {
+        val progressBar = _binding?.readerReslicingProgressBar ?: return
+        progressBar.animate().cancel()
+
+        if (isReslicing) {
+            if (progressBar.visibility != View.VISIBLE) {
+                progressBar.alpha = 0f
+                progressBar.visibility = View.VISIBLE
+            }
+            progressBar.animate().alpha(1f).setDuration(150L).start()
+        } else {
+            if (progressBar.visibility != View.VISIBLE) return
+            progressBar.animate()
+                .alpha(0f)
+                .setDuration(150L)
+                .withEndAction {
+                    progressBar.visibility = View.GONE
+                    progressBar.alpha = 1f
+                }
+                .start()
         }
     }
 
