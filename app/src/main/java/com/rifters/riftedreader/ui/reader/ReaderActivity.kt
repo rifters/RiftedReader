@@ -11,6 +11,7 @@ import android.view.GestureDetector
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import android.content.pm.ApplicationInfo
 import androidx.core.content.ContextCompat
@@ -1356,7 +1357,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
             .create()
 
         dialog.setOnShowListener {
-            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val label = editText.text?.toString()
                 lifecycleScope.launch {
                     val bookmark = viewModel.saveCurrentNamedBookmark(label)

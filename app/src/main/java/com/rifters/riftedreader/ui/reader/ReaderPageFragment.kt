@@ -2655,11 +2655,11 @@ class ReaderPageFragment : Fragment() {
         )
     }
 
-    fun jumpToBookmark(pageIndex: Int, anchorId: String, scrollMode: Boolean) {
+    fun jumpToBookmark(pageIndex: Int, anchorId: String, isScrollMode: Boolean) {
         if (_binding == null) return
         val safePageIndex = pageIndex.coerceAtLeast(0)
         val anchorIdJson = JSONObject.quote(anchorId)
-        val script = if (scrollMode && anchorId.isNotBlank()) {
+        val script = if (isScrollMode && anchorId.isNotBlank()) {
             """
             (function() {
                 var anchor = document.getElementById($anchorIdJson);

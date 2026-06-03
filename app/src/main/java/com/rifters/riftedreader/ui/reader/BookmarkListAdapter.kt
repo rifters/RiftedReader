@@ -35,7 +35,7 @@ class BookmarkListAdapter(
         fun bind(bookmark: Bookmark, onBookmarkClick: (Bookmark) -> Unit) {
             val context = binding.root.context
             binding.bookmarkTitle.text = bookmark.nearestAnchorText.ifBlank {
-                context.getString(R.string.reader_bookmark_fallback_title, bookmark.chapterIndex + 1)
+                context.getString(R.string.reader_bookmark_fallback_title, displayChapterNumber(bookmark))
             }
             binding.bookmarkNote.text = bookmark.label.orEmpty()
             binding.bookmarkNote.isVisible = !bookmark.label.isNullOrBlank()
@@ -45,6 +45,10 @@ class BookmarkListAdapter(
                 DateUtils.MINUTE_IN_MILLIS
             )
             binding.root.setOnClickListener { onBookmarkClick(bookmark) }
+        }
+
+        private fun displayChapterNumber(bookmark: Bookmark): Int {
+            return bookmark.chapterIndex + 1
         }
     }
 

@@ -1388,9 +1388,10 @@ class ReaderViewModel(
         )
         latestScrollPositionEvent.value = pending
         scrollPositionEvents.value = pending
+        val anchor = resolveScrollBookmarkAnchor(pending)
         currentBookmarkPosition.value = BookmarkPosition(
-            chapterIndex = resolveScrollBookmarkChapter(pending),
-            charOffset = resolveScrollBookmarkCharOffset(pending)
+            chapterIndex = anchor?.chapterIndex ?: pending.activeChapterIndex,
+            charOffset = anchor?.charOffset ?: 0
         )
         updateHasBookmarkAtCurrentPosition()
     }
@@ -1421,14 +1422,14 @@ class ReaderViewModel(
                     label = normalizedLabel
                 )
             }
-            val bookmark = if (readerPreferences.settings.value.mode == ReaderMode.SCROLL) {
+            val resolvedBookmark = if (readerPreferences.settings.value.mode == ReaderMode.SCROLL) {
                 latestScrollPositionEvent.value?.let { pending ->
                     createScrollBookmark(pending).copy(label = normalizedLabel)
                 } ?: fromPage
             } else {
                 fromPage
             }
-            bookmark?.also { bookmarkRepository.saveNamedBookmark(it) }
+            resolvedBookmark?.also { bookmarkRepository.saveNamedBookmark(it) }
         }
         refreshNamedBookmarks()
         return bookmark
@@ -1540,16 +1541,6 @@ class ReaderViewModel(
             bookmark.chapterIndex == position.chapterIndex &&
                 kotlin.math.abs(bookmark.charOffset - position.charOffset) <= BOOKMARK_MATCH_CHAR_RADIUS
         }
-    }
-
-    private fun resolveScrollBookmarkChapter(pending: PendingScrollBookmarkSave): Int {
-        val anchor = resolveScrollBookmarkAnchor(pending)
-        return anchor?.chapterIndex ?: pending.activeChapterIndex
-    }
-
-    private fun resolveScrollBookmarkCharOffset(pending: PendingScrollBookmarkSave): Int {
-        val anchor = resolveScrollBookmarkAnchor(pending)
-        return anchor?.charOffset ?: 0
     }
 
     private fun resolveScrollBookmarkAnchor(pending: PendingScrollBookmarkSave): AnchorEntry? {
