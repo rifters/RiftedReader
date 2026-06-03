@@ -77,4 +77,18 @@
         <item>1.0</item>
         <item>1.2</item>
     </string-array>
+
+    <string-array name="calibre_preferred_format_entries">
+        <item>@string/calibre_format_epub</item>
+        <item>@string/calibre_format_mobi</item>
+        <item>@string/calibre_format_pdf</item>
+        <item>@string/calibre_format_any</item>
+    </string-array>
+    <string-array name="calibre_preferred_format_values">
+        <item>EPUB</item>
+        <item>MOBI</item>
+        <item>PDF</item>
+        <item>ANY</item>
+    </string-array>
+
 </resources>
