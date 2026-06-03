@@ -79,9 +79,9 @@
         try {
             log('INIT', 'Starting flex paginator initialization');
 
-            const missingGlobals = getMissingRequiredGlobals();
-            if (missingGlobals.length > 0) {
-                const error = `Missing FLEX_PAGINATOR globals: ${missingGlobals.join(', ')}`;
+            const invalidGlobals = getInvalidRequiredGlobals();
+            if (invalidGlobals.length > 0) {
+                const error = `Missing or invalid FLEX_PAGINATOR globals: ${invalidGlobals.join(', ')}`;
                 log('ERROR', error);
                 callAndroidBridge('onSlicingError', error);
                 return;
@@ -636,17 +636,17 @@
         }
     }
 
-    function getMissingRequiredGlobals() {
-        const requiredGlobals = [
-            'FLEX_WINDOW_INDEX',
-            'FLEX_VIEWPORT_WIDTH',
-            'FLEX_VIEWPORT_HEIGHT',
-            'FLEX_FONT_SIZE_PX',
-            'FLEX_LINE_HEIGHT',
-            'FLEX_PAGE_PADDING_PX'
-        ];
+    function getInvalidRequiredGlobals() {
+        const validators = {
+            FLEX_WINDOW_INDEX: value => Number.isInteger(value) && value >= 0,
+            FLEX_VIEWPORT_WIDTH: value => typeof value === 'number' && value >= MIN_VIEWPORT_WIDTH,
+            FLEX_VIEWPORT_HEIGHT: value => typeof value === 'number' && value > 0,
+            FLEX_FONT_SIZE_PX: value => typeof value === 'number' && value > 0,
+            FLEX_LINE_HEIGHT: value => typeof value === 'number' && value > 0,
+            FLEX_PAGE_PADDING_PX: value => typeof value === 'number' && value >= 0
+        };
 
-        return requiredGlobals.filter(name => typeof window[name] !== 'number');
+        return Object.keys(validators).filter(name => !validators[name](window[name]));
     }
     
     /**

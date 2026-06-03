@@ -111,7 +111,7 @@ function createMockAndroidBridge() {
 /**
  * Helper to create wrapped chapter HTML
  */
-function createWindowRoot(sections, dataWindowIndex = 3) {
+function createWindowRoot(sections, dataWindowIndex = 0) {
   return `<div id="window-root" data-window-index="${dataWindowIndex}">${sections}</div>`;
 }
 
@@ -140,7 +140,7 @@ describe('flex_paginator.js', () => {
         <section data-chapter="0">
           <div style="height:48px">${content}</div>
         </section>
-      `));
+      `, 3));
       setupFlexGlobals({ windowIndex: 3, width: 320, height: 48 });
       const mockBridge = createMockAndroidBridge();
 
@@ -173,7 +173,7 @@ describe('flex_paginator.js', () => {
       const paginator = loadPaginator();
 
       expect(mockBridge.onSlicingError).toHaveBeenCalled();
-      expect(mockBridge.calls.onSlicingError[0].error).toContain('Missing FLEX_PAGINATOR globals');
+      expect(mockBridge.calls.onSlicingError[0].error).toContain('FLEX_PAGINATOR globals');
       expect(paginator.isReady()).toBe(false);
     });
 
@@ -260,6 +260,7 @@ describe('flex_paginator.js', () => {
       const firstSlice = mockBridge.calls.onSlicingComplete[0].slices[0];
 
       expect(paginator.getCharacterOffsetForPage(0)).toBe(firstSlice.startChar);
+      expect(paginator.getCharacterOffsetForPage(-1)).toBe(0);
       expect(paginator.getCharacterOffsetForPage(99)).toBe(0);
     });
 
