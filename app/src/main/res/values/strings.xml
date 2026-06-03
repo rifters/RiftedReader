@@ -128,6 +128,7 @@
     <string name="reader_page_indicator">Page %1$d / %2$d</string>
     <string name="reader_page_indicator_with_chapter">Chapter %1$d • Page %2$d/%3$d
 Page %4$d/%5$d (%6$d%%)</string>
+    <string name="reader_updating_indicator">Updating…</string>
     <string name="reader_text_settings">Reading settings</string>
     <string name="reader_title_placeholder">RiftedReader</string>
     <string name="reader_tts">Listen</string>

@@ -76,6 +76,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var autoContinueTts: Boolean = false
     private var pendingTtsResume: Boolean = false
     private var usingWebViewSlider: Boolean = false
+    private var isReslicingIndicatorVisible: Boolean = false
     private lateinit var layoutManager: LinearLayoutManager
     private lateinit var snapHelper: PagerSnapHelper
     private var currentPagerPosition: Int = 0
@@ -1069,6 +1070,22 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 }
 
                 launch {
+                    viewModel.isReslicing.collect { isReslicing ->
+                        isReslicingIndicatorVisible = isReslicing
+                        if (isReslicing) {
+                            binding.pageIndicator.text = getString(R.string.reader_updating_indicator)
+                        } else if (usingWebViewSlider) {
+                            updatePageIndicatorForWebView(
+                                viewModel.currentWebViewPage.value,
+                                viewModel.totalWebViewPages.value
+                            )
+                        } else {
+                            updatePageIndicator(viewModel.currentPage.value)
+                        }
+                    }
+                }
+
+                launch {
                     viewModel.readerSettings.collect { settings ->
                         applyReaderSettings(settings)
                     }
@@ -1097,6 +1114,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     }
     
     private fun updatePageIndicator(page: Int) {
+        if (isReslicingIndicatorVisible) {
+            binding.pageIndicator.text = getString(R.string.reader_updating_indicator)
+            return
+        }
+
         val total = viewModel.totalPages.value
         val safeTotal = total.coerceAtLeast(0)
         val displayPage = if (safeTotal == 0) 0 else (page + 1).coerceAtMost(safeTotal)
@@ -1104,6 +1126,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         if (viewModel.paginationMode == PaginationMode.CONTINUOUS && safeTotal > 0) {
             lifecycleScope.launch {
                 val location = viewModel.getPageLocation(page)
+                if (isReslicingIndicatorVisible) {
+                    binding.pageIndicator.text = getString(R.string.reader_updating_indicator)
+                    return@launch
+                }
                 val chapterNumber = (location?.chapterIndex ?: page) + 1
                 val inPageNumber = (location?.inPageIndex ?: 0) + 1
                 val chapterPageCount = if (location != null) {
@@ -1965,6 +1991,11 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
      * Update page indicator to show WebView page within current chapter.
      */
     private fun updatePageIndicatorForWebView(currentPage: Int, totalPages: Int) {
+        if (isReslicingIndicatorVisible) {
+            binding.pageIndicator.text = getString(R.string.reader_updating_indicator)
+            return
+        }
+
         val displayPage = (currentPage + 1).coerceAtMost(totalPages.coerceAtLeast(1))
         val safeTotal = totalPages.coerceAtLeast(1)
         binding.pageIndicator.text = getString(R.string.reader_page_indicator, displayPage, safeTotal)
