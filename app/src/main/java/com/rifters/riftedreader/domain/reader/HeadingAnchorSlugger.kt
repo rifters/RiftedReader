@@ -6,6 +6,12 @@ data class AnchorEntry(val id: String, val text: String, val level: Int)
 
 object HeadingAnchorSlugger {
 
+    /*
+     * TOC anchor punctuation removal:
+     * `, ;, parentheses, periods, and slashes are stripped as punctuation.
+     * \u2014 and \u2013 are em/en dashes, which are removed before whitespace
+     * normalization so surrounding spaces collapse into a single hyphen.
+     */
     private val punctuationToRemove = Regex("[`;\\u2014\\u2013()./]")
 
     fun slugify(text: String): String {
@@ -21,22 +27,30 @@ object HeadingAnchorSlugger {
 
     fun injectHeadingIds(html: String): String {
         val document = Jsoup.parseBodyFragment(html)
+        val idCounts = mutableMapOf<String, Int>()
         document.body().select("h1, h2, h3, h4, h5, h6").forEach { heading ->
             // Rendered TOC ids must be deterministic, so source ids are intentionally replaced.
-            heading.attr("id", slugify(heading.text()))
+            heading.attr("id", uniqueId(slugify(heading.text()), idCounts))
         }
         return document.body().html()
     }
 
     fun buildAnchorMap(html: String): List<AnchorEntry> {
         val document = Jsoup.parse(html)
+        val idCounts = mutableMapOf<String, Int>()
         return document.select("h1, h2, h3, h4, h5, h6").map { heading ->
             val text = heading.text()
             AnchorEntry(
-                id = heading.id().ifBlank { slugify(text) },
+                id = uniqueId(heading.id().ifBlank { slugify(text) }, idCounts),
                 text = text,
                 level = heading.tagName().removePrefix("h").toInt()
             )
         }
+    }
+
+    private fun uniqueId(baseId: String, idCounts: MutableMap<String, Int>): String {
+        val count = (idCounts[baseId] ?: 0) + 1
+        idCounts[baseId] = count
+        return if (count == 1) baseId else "$baseId-$count"
     }
 }

@@ -17,8 +17,9 @@ class HeadingAnchorSluggerTest {
     @Test
     fun `injectHeadingIds sets ids on all heading levels`() {
         val html = """
-            <h1>Phase 0 — Viewport parity</h1>
+            <h1 id="existing">Phase 0 — Viewport parity</h1>
             <p>Body</p>
+            <h6>Known bugs/limitations</h6>
             <h6>Known bugs/limitations</h6>
         """.trimIndent()
 
@@ -26,6 +27,7 @@ class HeadingAnchorSluggerTest {
 
         assertTrue(anchoredHtml.contains("""<h1 id="phase-0-viewport-parity">Phase 0 — Viewport parity</h1>"""))
         assertTrue(anchoredHtml.contains("""<h6 id="known-bugslimitations">Known bugs/limitations</h6>"""))
+        assertTrue(anchoredHtml.contains("""<h6 id="known-bugslimitations-2">Known bugs/limitations</h6>"""))
     }
 
     @Test

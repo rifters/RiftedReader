@@ -1651,9 +1651,13 @@ class ReaderPageFragment : Fragment() {
     private fun String.sanitizeForJs(): String =
         replace("\\", "\\\\")
             .replace("'", "\\'")
+            .replace("\"", "\\\"")
             .replace("\n", "\\n")
             .replace("\r", "\\r")
             .replace("\t", "\\t")
+            .replace("<", "\\u003C")
+            .replace(">", "\\u003E")
+            .replace("&", "\\u0026")
             .replace("\u2028", "\\u2028")
             .replace("\u2029", "\\u2029")
 

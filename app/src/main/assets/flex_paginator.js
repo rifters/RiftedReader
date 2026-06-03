@@ -338,7 +338,9 @@
         }
 
         if (document.body.classList.contains('mode-scroll')) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const prefersReducedMotion = window.matchMedia &&
+                window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            target.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'start' });
             return true;
         }
 
@@ -412,7 +414,12 @@
     }
 
     /**
-     * Count text characters from root up to, but not including, target.
+     * Count text characters from root up to, but not including, target for anchor jumps.
+     *
+     * @param {Node} root The page container that owns the target heading.
+     * @param {Node} target The heading element being navigated to.
+     * @returns {number} Character count before target within root, used to select
+     * the closest precomputed slice whose charOffset/startChar is before the anchor.
      */
     function getTextLengthBeforeTarget(root, target) {
         function walk(node) {
