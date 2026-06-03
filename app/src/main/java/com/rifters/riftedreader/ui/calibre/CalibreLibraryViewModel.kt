@@ -11,7 +11,6 @@ import com.rifters.riftedreader.data.calibre.CalibreConnectionRepository
 import com.rifters.riftedreader.data.calibre.CalibreContentServerRepository
 import com.rifters.riftedreader.data.calibre.CalibreException
 import com.rifters.riftedreader.util.AppLogger
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -85,7 +84,7 @@ class CalibreLibraryViewModel(
         }
     }
 
-    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+    @OptIn(FlowPreview::class)
     private fun observeSearch() {
         viewModelScope.launch {
             _searchQuery

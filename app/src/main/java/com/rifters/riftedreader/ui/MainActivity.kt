@@ -33,6 +33,7 @@ class MainActivity : AppCompatActivity() {
         
         setupActionBarWithNavController(navController)
         binding.bottomNavigation.setupWithNavController(navController)
+        binding.bottomNavigation.menu.findItem(R.id.calibreLibraryFragment)?.isVisible = false
         observeCalibreNavigation()
         
         AppLogger.event("MainActivity", "onCreate completed", "ui/MainActivity/lifecycle")
