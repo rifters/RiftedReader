@@ -764,8 +764,7 @@ class ReaderPageFragment : Fragment() {
     }
 
     private fun updateReslicingProgressBar(isReslicing: Boolean) {
-        val progressBar = binding.readerReslicingProgressBar
-        progressBar.animate().cancel()
+        val progressBar = _binding?.readerReslicingProgressBar ?: return
 
         if (isReslicing) {
             progressBar.post {
@@ -777,7 +776,9 @@ class ReaderPageFragment : Fragment() {
                 }
                 currentProgressBar.animate().alpha(1f).setDuration(150L).start()
             }
-        } else if (progressBar.visibility == View.VISIBLE) {
+        } else {
+            progressBar.animate().cancel()
+            if (progressBar.visibility != View.VISIBLE) return
             progressBar.animate()
                 .alpha(0f)
                 .setDuration(150L)

@@ -1073,7 +1073,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                     viewModel.isReslicing.collect { isReslicing ->
                         isReslicingIndicatorVisible = isReslicing
                         if (isReslicing) {
-                            binding.pageIndicator.text = getString(R.string.reader_updating_indicator)
+                            showUpdatingIndicatorIfNeeded()
                         } else if (usingWebViewSlider) {
                             updatePageIndicatorForWebView(
                                 viewModel.currentWebViewPage.value,
@@ -1114,10 +1114,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     }
     
     private fun updatePageIndicator(page: Int) {
-        if (isReslicingIndicatorVisible) {
-            binding.pageIndicator.text = getString(R.string.reader_updating_indicator)
-            return
-        }
+        if (showUpdatingIndicatorIfNeeded()) return
 
         val total = viewModel.totalPages.value
         val safeTotal = total.coerceAtLeast(0)
@@ -1126,10 +1123,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         if (viewModel.paginationMode == PaginationMode.CONTINUOUS && safeTotal > 0) {
             lifecycleScope.launch {
                 val location = viewModel.getPageLocation(page)
-                if (isReslicingIndicatorVisible) {
-                    binding.pageIndicator.text = getString(R.string.reader_updating_indicator)
-                    return@launch
-                }
+                // Reslicing may start while getPageLocation suspends; don't overwrite the updating state.
+                if (showUpdatingIndicatorIfNeeded()) return@launch
                 val chapterNumber = (location?.chapterIndex ?: page) + 1
                 val inPageNumber = (location?.inPageIndex ?: 0) + 1
                 val chapterPageCount = if (location != null) {
@@ -1991,14 +1986,17 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
      * Update page indicator to show WebView page within current chapter.
      */
     private fun updatePageIndicatorForWebView(currentPage: Int, totalPages: Int) {
-        if (isReslicingIndicatorVisible) {
-            binding.pageIndicator.text = getString(R.string.reader_updating_indicator)
-            return
-        }
+        if (showUpdatingIndicatorIfNeeded()) return
 
         val displayPage = (currentPage + 1).coerceAtMost(totalPages.coerceAtLeast(1))
         val safeTotal = totalPages.coerceAtLeast(1)
         binding.pageIndicator.text = getString(R.string.reader_page_indicator, displayPage, safeTotal)
+    }
+
+    private fun showUpdatingIndicatorIfNeeded(): Boolean {
+        if (!isReslicingIndicatorVisible) return false
+        binding.pageIndicator.text = getString(R.string.reader_updating_indicator)
+        return true
     }
     
     /**
