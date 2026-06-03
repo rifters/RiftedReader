@@ -351,6 +351,11 @@
         const targetChapter = targetPage ? parseInt(targetPage.getAttribute('data-chapter'), 10) : NaN;
         const targetPageIndex = targetPage ? parseInt(targetPage.getAttribute('data-page'), 10) : NaN;
         const containingSlice = Number.isInteger(targetPageIndex) ? state.slices[targetPageIndex] : null;
+        if (!containingSlice) {
+            log('WARN', `jumpToAnchor: no slice found for anchor ${anchorId}`);
+            return false;
+        }
+
         const startChar = getSliceStartChar(containingSlice);
         const relativeCharOffset = targetPage ? getTextLengthBeforeTarget(targetPage, target) : 0;
         const targetCharOffset = startChar + relativeCharOffset;
@@ -363,6 +368,7 @@
             if (Number.isInteger(targetChapter) && slice.chapter !== targetChapter) continue;
 
             const sliceStartChar = getSliceStartChar(slice);
+            // Find the closest slice that starts before or exactly at the target character offset.
             if (sliceStartChar <= targetCharOffset && sliceStartChar >= nearestStartChar) {
                 nearestPageIndex = i;
                 nearestStartChar = sliceStartChar;
@@ -400,6 +406,9 @@
         return 0;
     }
 
+    /**
+     * Count text characters from root up to, but not including, target.
+     */
     function getTextLengthBeforeTarget(root, target) {
         function walk(node) {
             if (node === target) {

@@ -9,6 +9,7 @@ object HeadingAnchorSlugger {
     fun slugify(text: String): String {
         return text
             .lowercase()
+            // Remove punctuation that should not appear in generated URL anchors.
             .replace(Regex("[`;\\u2014\\u2013()./]"), "")
             .replace(Regex("\\s+"), "-")
             .replace(Regex("-+"), "-")
