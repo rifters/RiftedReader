@@ -613,7 +613,7 @@ class ConveyorBeltSystemViewModel(
                         else -> 2
                     }
                 }.thenBy { abs(it - active) }
-                    .thenBy { it }
+                .thenBy { it }
             )
     }
 

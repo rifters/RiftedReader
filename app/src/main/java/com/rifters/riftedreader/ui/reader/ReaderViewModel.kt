@@ -1,7 +1,9 @@
 package com.rifters.riftedreader.ui.reader
 
+import android.content.res.Resources
 import android.os.SystemClock
 import android.text.TextUtils
+import android.util.TypedValue
 import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -34,7 +36,6 @@ import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -249,8 +250,11 @@ class ReaderViewModel(
             typographyFlow = readerPreferences.settings
                 .map { settings ->
                     FlexSlicingConfig(
-                        fontSizePx = settings.textSizeSp.roundToInt()
-                            .coerceAtLeast(FlexSlicingConfig.MIN_FONT_SIZE_PX),
+                        fontSizePx = TypedValue.applyDimension(
+                            TypedValue.COMPLEX_UNIT_SP,
+                            settings.textSizeSp,
+                            Resources.getSystem().displayMetrics
+                        ).roundToInt().coerceAtLeast(FlexSlicingConfig.MIN_FONT_SIZE_PX),
                         lineHeight = settings.lineHeightMultiplier,
                         fontFamily = FlexSlicingConfig.READER_FONT_FAMILY_SERIF,
                         pagePaddingPx = FlexSlicingConfig.DEFAULT_PAGE_PADDING_PX
@@ -1365,8 +1369,9 @@ class ReaderViewModel(
     ) {
         val conveyor = conveyorBeltSystem ?: return
         val previousJob = sliceRestoreCorrectionJob
+        previousJob?.cancel()
         sliceRestoreCorrectionJob = viewModelScope.launch {
-            previousJob?.cancelAndJoin()
+            previousJob?.join()
             conveyor.sliceInvalidatedEvents
                 .filter { event -> event.windowIndex == windowIndex && !event.isSliceStale }
                 .first()

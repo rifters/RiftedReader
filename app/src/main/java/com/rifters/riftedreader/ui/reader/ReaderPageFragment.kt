@@ -949,13 +949,24 @@ class ReaderPageFragment : Fragment() {
 
                     val pageIndex = correction.pageIndex.coerceAtLeast(0)
                     binding.pageWebView.evaluateJavascript(
-                        "if (window.flexPaginator && window.flexPaginator.isReady()) { window.flexPaginator.navigateToPage($pageIndex); } else if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage($pageIndex, false); }",
+                        buildNavigateToPageScript(pageIndex),
                         null
                     )
                     currentInPageIndex = pageIndex
                 }
             }
         }
+    }
+
+    private fun buildNavigateToPageScript(pageIndex: Int): String {
+        val target = pageIndex.coerceAtLeast(0)
+        return """
+            if (window.flexPaginator && window.flexPaginator.isReady()) {
+                window.flexPaginator.navigateToPage($target);
+            } else if (window.minimalPaginator && window.minimalPaginator.isReady()) {
+                window.minimalPaginator.goToPage($target, false);
+            }
+        """.trimIndent()
     }
 
     /**
