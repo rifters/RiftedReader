@@ -57,6 +57,8 @@ class ReaderViewModel(
     // Expose reader settings as StateFlow for UI consumption
     val readerSettings: StateFlow<ReaderSettings>
         get() = readerPreferences.settings
+    val flexPaginatorEnabled
+        get() = readerPreferences.flexPaginatorEnabled
     
     // Table of Contents - list of chapter entries
     private val _tableOfContents = MutableStateFlow<List<TocEntry>>(emptyList())
@@ -164,7 +166,8 @@ class ReaderViewModel(
         val totalWindows: Int,
         val paginator: com.rifters.riftedreader.domain.pagination.ContinuousPaginator,
         val windowManager: com.rifters.riftedreader.domain.pagination.SlidingWindowManager,
-        val bookId: String
+        val bookId: String,
+        val flexPaginatorEnabledProvider: () -> Boolean
     )
 
     private var pendingConveyorInit: PendingConveyorInit? = null
@@ -208,7 +211,10 @@ class ReaderViewModel(
         conveyorSystem.setHtmlLoadingDependencies(
             paginator = pending.paginator,
             windowManager = pending.windowManager,
-            bookId = pending.bookId
+            bookId = pending.bookId,
+            parser = parser,
+            bookFile = bookFile,
+            flexPaginatorEnabledProvider = pending.flexPaginatorEnabledProvider
         )
 
         // Then initialize the buffer
@@ -576,7 +582,8 @@ class ReaderViewModel(
                     totalWindows = computedWindowCount,
                     paginator = paginator,
                     windowManager = slidingWindowManager,
-                    bookId = bookId
+                    bookId = bookId,
+                    flexPaginatorEnabledProvider = { readerPreferences.settings.value.flexPaginatorEnabled }
                 )
 
                 val conveyorSystem = _conveyorBeltSystem
@@ -730,7 +737,7 @@ class ReaderViewModel(
      * @return Always null (WindowBufferManager is deprecated)
      */
     fun getCachedWindowData(windowIndex: Int): WindowData? {
-        return null
+        return _conveyorBeltSystem?.getCachedWindowData(windowIndex)
     }
 
     private suspend fun generatePages(): List<PageContent> {

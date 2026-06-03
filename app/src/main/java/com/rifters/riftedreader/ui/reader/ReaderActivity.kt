@@ -219,7 +219,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         viewModel = ViewModelProvider(this, factory)[ReaderViewModel::class.java]
         
         // Instantiate and wire ConveyorBeltSystemViewModel for minimal paginator integration
-        conveyorBeltSystem = ConveyorBeltSystemViewModel()
+        conveyorBeltSystem = ConveyorBeltSystemViewModel(applicationContext)
         viewModel.setConveyorBeltSystem(conveyorBeltSystem)
         
         // DIAGNOSTICS: Log ConveyorPrimary status at startup
@@ -2108,4 +2108,3 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 }
 
 private val SENTENCE_REGEX = Regex("(?<=[.!?])\\s+")
-
