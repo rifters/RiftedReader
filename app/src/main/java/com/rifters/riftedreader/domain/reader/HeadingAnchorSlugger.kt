@@ -1,8 +1,17 @@
 package com.rifters.riftedreader.domain.reader
 
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.Node
+import org.jsoup.nodes.TextNode
 
-data class AnchorEntry(val id: String, val text: String, val level: Int)
+data class AnchorEntry(
+    val id: String,
+    val text: String,
+    val level: Int,
+    val charOffset: Int = 0,
+    val chapterIndex: Int? = null
+)
 
 object HeadingAnchorSlugger {
 
@@ -44,12 +53,40 @@ object HeadingAnchorSlugger {
             .forEach { id -> idCounts[id] = (idCounts[id] ?: 0) + 1 }
         return document.select("h1, h2, h3, h4, h5, h6").map { heading ->
             val text = heading.text()
+            val chapterSection = heading.parents().firstOrNull { it.hasAttr("data-chapter") }
+            val offsetRoot = chapterSection ?: document.body()
             AnchorEntry(
                 id = heading.id().ifBlank { uniqueId(slugify(text), idCounts) },
                 text = text,
-                level = heading.tagName().removePrefix("h").toInt()
+                level = heading.tagName().removePrefix("h").toInt(),
+                charOffset = textOffsetBefore(offsetRoot, heading),
+                chapterIndex = chapterSection?.attr("data-chapter")?.toIntOrNull()
             )
         }
+    }
+
+    /**
+     * Counts raw text-node characters before [target] within [root].
+     * This intentionally mirrors DOM textContent length rather than normalized Jsoup text.
+     */
+    private fun textOffsetBefore(root: Element, target: Element): Int {
+        var offset = 0
+
+        fun visit(node: Node): Boolean {
+            if (node === target) {
+                return true
+            }
+            if (node is TextNode) {
+                offset += node.wholeText.length
+            }
+            for (child in node.childNodes()) {
+                if (visit(child)) return true
+            }
+            return false
+        }
+
+        visit(root)
+        return offset
     }
 
     private fun uniqueId(baseId: String, idCounts: MutableMap<String, Int>): String {

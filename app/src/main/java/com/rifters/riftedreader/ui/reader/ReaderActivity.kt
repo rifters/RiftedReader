@@ -30,6 +30,7 @@ import com.rifters.riftedreader.data.preferences.ReaderSettings
 import com.rifters.riftedreader.data.preferences.ReaderTheme
 import com.rifters.riftedreader.data.preferences.TTSPreferences
 import com.rifters.riftedreader.data.repository.BookRepository
+import com.rifters.riftedreader.data.repository.RoomBookmarkRepository
 import com.rifters.riftedreader.databinding.ActivityReaderBinding
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.ParserFactory
@@ -197,6 +198,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         // Initialize ViewModel
         val database = BookDatabase.getDatabase(this)
         val repository = BookRepository(database.bookMetaDao())
+        val bookmarkRepository = RoomBookmarkRepository(database.bookmarkDao())
         readerPreferences = ReaderPreferences(this)
         ttsPreferences = TTSPreferences(this)
         tapActions = readerPreferences.tapActions.value
@@ -216,7 +218,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
         AppLogger.d("ReaderActivity", "Parser loaded: ${parser::class.simpleName}")
         
-        val factory = ReaderViewModel.Factory(bookId, bookFile, parser, repository, readerPreferences)
+        val factory = ReaderViewModel.Factory(bookId, bookFile, parser, repository, bookmarkRepository, readerPreferences)
         viewModel = ViewModelProvider(this, factory)[ReaderViewModel::class.java]
         
         // Instantiate and wire ConveyorBeltSystemViewModel for minimal paginator integration

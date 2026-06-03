@@ -44,13 +44,10 @@ class HeadingAnchorSluggerTest {
 
         val anchors = HeadingAnchorSlugger.buildAnchorMap(html)
 
-        assertEquals(
-            listOf(
-                AnchorEntry(id = "phase-0-viewport-parity", text = "Phase 0 — Viewport parity", level = 2),
-                AnchorEntry(id = "1-what-is-fully-implemented", text = "1. What Is Fully Implemented", level = 3)
-            ),
-            anchors
-        )
+        assertEquals(listOf("phase-0-viewport-parity", "1-what-is-fully-implemented"), anchors.map { it.id })
+        assertEquals(listOf("Phase 0 — Viewport parity", "1. What Is Fully Implemented"), anchors.map { it.text })
+        assertEquals(listOf(2, 3), anchors.map { it.level })
+        assertTrue(anchors[0].charOffset <= anchors[1].charOffset)
     }
 
     @Test
@@ -63,12 +60,9 @@ class HeadingAnchorSluggerTest {
 
         val anchors = HeadingAnchorSlugger.buildAnchorMap(html)
 
-        assertEquals(
-            listOf(
-                AnchorEntry(id = "rendered-id", text = headingText, level = 2),
-                AnchorEntry(id = "rendered-id-2", text = "Rendered ID", level = 3)
-            ),
-            anchors
-        )
+        assertEquals(listOf("rendered-id", "rendered-id-2"), anchors.map { it.id })
+        assertEquals(listOf(headingText, "Rendered ID"), anchors.map { it.text })
+        assertEquals(listOf(2, 3), anchors.map { it.level })
+        assertTrue(anchors[0].charOffset <= anchors[1].charOffset)
     }
 }

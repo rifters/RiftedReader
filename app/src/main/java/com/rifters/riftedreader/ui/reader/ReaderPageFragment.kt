@@ -32,6 +32,7 @@ import com.rifters.riftedreader.pagination.OffscreenSlicingWebView
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.databinding.FragmentReaderPageBinding
 import com.rifters.riftedreader.domain.reader.HeadingAnchorSlugger
+import com.rifters.riftedreader.domain.reader.AnchorEntry
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.util.AppLoggerBridge
@@ -94,6 +95,7 @@ class ReaderPageFragment : Fragment() {
     
     // Track current in-page position to preserve during reloads
     private var currentInPageIndex: Int = 0
+    private var latestAnchorEntries: List<AnchorEntry> = emptyList()
     
     // Track window transitions to prevent inappropriate buffer shifts
     // When entering a new window at page 0 via forward navigation, we should NOT shift backward
@@ -285,6 +287,7 @@ class ReaderPageFragment : Fragment() {
                     onPageChanged = { wIdx, event ->
                         currentInPageIndex = event.pageIndex
                         resolvedChapterIndex = event.chapterIndex
+                        readerViewModel.onPageChanged(event, latestAnchorEntries)
                         com.rifters.riftedreader.util.AppLogger.d(
                             "FlexPaginator",
                             "[PAGE_CHANGED] windowIndex=$wIdx pageIndex=${event.pageIndex} chapterIndex=${event.chapterIndex} charOffset=${event.charOffset}"
@@ -1332,7 +1335,9 @@ class ReaderPageFragment : Fragment() {
                         )
                         html
                     }
-                    
+
+                    latestAnchorEntries = HeadingAnchorSlugger.buildAnchorMap(contentHtml)
+                     
                     // Prepare debug window info if enabled (for HTML debug banner)
                     // REUSE cachedWindowPayload instead of calling getWindowHtml() again
                     val debugWindowInfo = if (settings.debugWindowRenderingEnabled) {
