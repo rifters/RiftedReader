@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
 import com.rifters.riftedreader.data.preferences.ReaderTheme
+import com.rifters.riftedreader.domain.pagination.PaginationMode
 import kotlinx.coroutines.flow.StateFlow
 
 class ReaderSettingsViewModel(
