@@ -62,6 +62,7 @@
         viewportWidth: 0,
         viewportHeight: DEFAULT_VIEWPORT_HEIGHT_PX,
         slices: [],  // Array of PageSlice objects
+        currentPage: 0,
         isInitialized: false
     };
     
@@ -290,6 +291,103 @@
         }
         
         log('SLICING', `Complete: ${state.slices.length} pages from ${sections.length} chapters`);
+        setupNavigationHandlers(flexContainer);
+    }
+
+    // ========================================================================
+    // NAVIGATION
+    // ========================================================================
+
+    /**
+     * Navigate to a specific pre-sliced page.
+     *
+     * @param {number} pageIndex Page index within this window
+     * @returns {boolean} true if navigation was handled
+     */
+    function navigateToPage(pageIndex) {
+        if (!state.isInitialized && state.slices.length === 0) {
+            log('WARN', 'navigateToPage: paginator not ready');
+            return false;
+        }
+
+        if (state.slices.length === 0) {
+            log('WARN', 'navigateToPage: no slices available');
+            return false;
+        }
+
+        const validIndex = Math.max(0, Math.min(pageIndex, state.slices.length - 1));
+        const flexContainer = document.getElementById('flex-container');
+        if (!flexContainer) {
+            log('ERROR', 'navigateToPage: flex-container not found');
+            return false;
+        }
+
+        const scrollLeft = validIndex * state.viewportWidth;
+        if (typeof flexContainer.scrollTo === 'function') {
+            flexContainer.scrollTo({ left: scrollLeft, top: 0, behavior: 'auto' });
+        } else {
+            flexContainer.scrollLeft = scrollLeft;
+        }
+
+        state.currentPage = validIndex;
+        notifyPageChanged(validIndex);
+        notifyBoundaryIfNeeded(validIndex);
+        log('NAV', `navigateToPage(${pageIndex}) -> ${validIndex}`);
+        return true;
+    }
+
+    function nextPage() {
+        return navigateToPage(state.currentPage + 1);
+    }
+
+    function prevPage() {
+        return navigateToPage(state.currentPage - 1);
+    }
+
+    function getCurrentPage() {
+        return state.currentPage;
+    }
+
+    function getPageCount() {
+        return state.slices.length;
+    }
+
+    function isReady() {
+        return state.isInitialized && state.slices.length > 0;
+    }
+
+    function notifyPageChanged(pageIndex) {
+        const slice = state.slices[pageIndex];
+        if (!slice) return;
+
+        callAndroidBridge('onPageChanged', slice.page, slice.chapter, slice.startChar);
+    }
+
+    function notifyBoundaryIfNeeded(pageIndex) {
+        if (pageIndex === 0) {
+            callAndroidBridge('onBoundaryReached', 'backward');
+        }
+        if (pageIndex === state.slices.length - 1) {
+            callAndroidBridge('onBoundaryReached', 'forward');
+        }
+    }
+
+    function setupNavigationHandlers(flexContainer) {
+        let scrollTimer = null;
+
+        flexContainer.addEventListener('scroll', function() {
+            if (scrollTimer !== null) {
+                clearTimeout(scrollTimer);
+            }
+
+            scrollTimer = setTimeout(function() {
+                const pageIndex = Math.round(flexContainer.scrollLeft / Math.max(1, state.viewportWidth));
+                const validIndex = Math.max(0, Math.min(pageIndex, state.slices.length - 1));
+                if (validIndex !== state.currentPage) {
+                    navigateToPage(validIndex);
+                }
+            }, 100);
+        });
     }
     
     /**
@@ -397,8 +495,8 @@
             const json = JSON.stringify(metadata);
             log('METADATA', `Sending to Android: ${json.length} chars, ${metadata.totalPages} pages`);
             
-            if (window.AndroidBridge && typeof window.AndroidBridge.onSlicingComplete === 'function') {
-                window.AndroidBridge.onSlicingComplete(json);
+            if (typeof AndroidBridge !== 'undefined' && AndroidBridge !== null && typeof AndroidBridge.onSlicingComplete === 'function') {
+                AndroidBridge.onSlicingComplete(json);
             } else {
                 log('WARN', 'AndroidBridge.onSlicingComplete not available');
             }
@@ -416,16 +514,12 @@
      * Call Android bridge method.
      * 
      * @param {string} method Method name
-     * @param {*} arg Argument (string or object)
+     * @param {...*} args Arguments for the bridge method
      */
-    function callAndroidBridge(method, arg) {
+    function callAndroidBridge(method, ...args) {
         try {
-            if (window.AndroidBridge && typeof window.AndroidBridge[method] === 'function') {
-                if (typeof arg === 'string') {
-                    window.AndroidBridge[method](arg);
-                } else {
-                    window.AndroidBridge[method](JSON.stringify(arg));
-                }
+            if (typeof AndroidBridge !== 'undefined' && AndroidBridge !== null && typeof AndroidBridge[method] === 'function') {
+                AndroidBridge[method](...args);
             }
         } catch (e) {
             console.error(`[FLEX] Bridge call failed: ${e.message}`);
@@ -441,6 +535,20 @@
     function log(tag, message) {
         console.log(`[FLEX:${tag}] ${message}`);
     }
+
+    // ========================================================================
+    // EXPORT PUBLIC API
+    // ========================================================================
+
+    window.flexPaginator = {
+        navigateToPage,
+        goToPage: navigateToPage,
+        nextPage,
+        prevPage,
+        getCurrentPage,
+        getPageCount,
+        isReady
+    };
     
     // ========================================================================
     // AUTO-INITIALIZE
