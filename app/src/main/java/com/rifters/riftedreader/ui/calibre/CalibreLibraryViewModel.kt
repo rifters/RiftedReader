@@ -110,17 +110,17 @@ class CalibreLibraryViewModel(
                             _downloadEvents.emit(CalibreDownloadEvent.DownloadFailed)
                         }
                     }
-
-                    private fun buildDownloadRequest(book: CalibreBook, format: BookFormat): Result<DownloadRequest> {
-                        return runCatching {
-                            DownloadRequest(
-                                url = contentServerRepository.getDownloadUrl(book, format),
-                                filename = contentServerRepository.getDownloadFilename(book, format),
-                                headers = contentServerRepository.getDownloadHeaders(),
-                            )
-                        }
-                    }
                 }
+            )
+        }
+    }
+
+    private fun buildDownloadRequest(book: CalibreBook, format: BookFormat): Result<DownloadRequest> {
+        return runCatching {
+            DownloadRequest(
+                url = contentServerRepository.getDownloadUrl(book, format),
+                filename = contentServerRepository.getDownloadFilename(book, format),
+                headers = contentServerRepository.getDownloadHeaders(),
             )
         }
     }
