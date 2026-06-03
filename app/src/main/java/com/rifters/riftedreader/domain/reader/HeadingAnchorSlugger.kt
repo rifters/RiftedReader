@@ -65,6 +65,10 @@ object HeadingAnchorSlugger {
         }
     }
 
+    /**
+     * Counts raw text-node characters before [target] within [root].
+     * This intentionally mirrors DOM textContent length rather than normalized Jsoup text.
+     */
     private fun textOffsetBefore(root: Element, target: Element): Int {
         var offset = 0
 

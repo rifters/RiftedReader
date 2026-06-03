@@ -70,6 +70,8 @@ abstract class BookDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_bookmarks_bookId ON bookmarks(bookId)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_bookmarks_bookId_isLastRead ON bookmarks(bookId, isLastRead)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_bookmarks_savedAt ON bookmarks(savedAt)")
+                // Legacy rows did not store heading anchors; preserve the best available
+                // human-readable label while leaving nearestAnchorId empty.
                 db.execSQL(
                     """
                     INSERT INTO bookmarks (

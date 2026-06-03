@@ -47,7 +47,7 @@ class BookmarkManager(
     ) {
         navigateToChapter(bookmark.chapterIndex)
         delay(300)
-        if (bookmark.charOffset > 0) {
+        if (bookmark.charOffset >= 0) {
             scrollToCharacterOffset(bookmark.charOffset)
         } else {
             navigateToInPagePosition(bookmark.pageIndexHint)

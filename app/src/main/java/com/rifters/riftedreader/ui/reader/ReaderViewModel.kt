@@ -274,6 +274,7 @@ class ReaderViewModel(
 
     private val pageChangedEvents = MutableSharedFlow<PendingBookmarkSave>(
         replay = 0,
+        // Debounced last-read persistence only needs the newest observed position.
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
@@ -1241,6 +1242,8 @@ class ReaderViewModel(
     ): Bookmark {
         val nearestAnchor = anchorEntries
             .asSequence()
+            // Window HTML anchors include chapterIndex; single-chapter/legacy callers may
+            // pass anchors without chapter metadata, which are already scoped to this event.
             .filter { it.chapterIndex == null || it.chapterIndex == event.chapterIndex }
             .filter { it.charOffset <= event.charOffset }
             .maxByOrNull { it.charOffset }
@@ -1250,6 +1253,7 @@ class ReaderViewModel(
             chapterIndex = event.chapterIndex,
             charOffset = event.charOffset,
             pageIndexHint = event.pageIndex,
+            // Bookmark requires non-null display fields; empty means no heading anchor exists.
             nearestAnchorId = nearestAnchor?.id.orEmpty(),
             nearestAnchorText = nearestAnchor?.text.orEmpty(),
             savedAt = System.currentTimeMillis(),
