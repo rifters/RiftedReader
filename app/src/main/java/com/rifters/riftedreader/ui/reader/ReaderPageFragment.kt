@@ -149,6 +149,7 @@ class ReaderPageFragment : Fragment() {
     private var hasCapturedSlicingViewport: Boolean = false
     private var viewportLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private val readerFontFamily: String = FlexSlicingConfig.READER_FONT_FAMILY_SERIF
+    private var flexPaginatorBridge: FlexPaginatorBridge? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -264,7 +265,7 @@ class ReaderPageFragment : Fragment() {
 
             val flexPaginatorEnabled = readerViewModel.readerSettings.value.flexPaginatorEnabled
             if (flexPaginatorEnabled) {
-                val flexPaginatorBridge = FlexPaginatorBridge(
+                val bridge = FlexPaginatorBridge(
                     windowIndex = windowIndex,
                     onSlicingComplete = { wIdx, metadata ->
                         isPaginatorInitialized = true
@@ -297,12 +298,14 @@ class ReaderPageFragment : Fragment() {
                         handleMinimalPaginatorBoundary(wIdx, minimalDirection)
                     }
                 )
-                addJavascriptInterface(flexPaginatorBridge, "AndroidBridge")
+                flexPaginatorBridge = bridge
+                addJavascriptInterface(bridge, "AndroidBridge")
                 com.rifters.riftedreader.util.AppLogger.d(
                     "FlexPaginator",
                     "[BRIDGE] Registered FlexPaginatorBridge for windowIndex=$windowIndex"
                 )
             } else {
+                flexPaginatorBridge = null
                 removeJavascriptInterface("AndroidBridge")
             }
             
@@ -780,6 +783,7 @@ class ReaderPageFragment : Fragment() {
                 removeJavascriptInterface("AndroidTtsBridge")
                 removeJavascriptInterface("PaginatorBridge")
                 removeJavascriptInterface("AndroidBridge")
+                flexPaginatorBridge = null
                 // Call paginatorStop to cleanup JS state
                 evaluateJavascript("if (window.paginatorStop) { window.paginatorStop(); }", null)
                 // Load blank page to clear memory
