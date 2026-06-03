@@ -39,7 +39,7 @@ class FlexPaginatorBridge(
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val _scrollPositionEvents = MutableSharedFlow<ScrollPositionEvent>(
-        extraBufferCapacity = 16
+        extraBufferCapacity = SCROLL_EVENT_BUFFER_CAPACITY
     )
     val scrollPositionEvents: SharedFlow<ScrollPositionEvent> = _scrollPositionEvents.asSharedFlow()
 
@@ -172,5 +172,6 @@ class FlexPaginatorBridge(
 
     companion object {
         private const val TAG = "FlexPaginator"
+        private const val SCROLL_EVENT_BUFFER_CAPACITY = 16
     }
 }

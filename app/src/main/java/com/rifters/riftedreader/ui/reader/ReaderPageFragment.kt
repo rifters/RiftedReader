@@ -913,7 +913,7 @@ class ReaderPageFragment : Fragment() {
         launchIfViewAlive("scroll_position_observer") {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 bridge.scrollPositionEvents
-                    .debounce(500L)
+                    .debounce(ReaderViewModel.SCROLL_POSITION_DEBOUNCE_MS)
                     .collect { event ->
                         if (readerViewModel.readerSettings.value.mode != ReaderMode.SCROLL) return@collect
                         val chapterIndex = resolvedChapterIndex ?: windowIndex

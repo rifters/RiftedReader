@@ -216,7 +216,11 @@ object ReaderHtmlWrapper {
                         }
                         var anchor = nearestAbove || firstVisible;
                         var anchorId = anchor && anchor.id ? anchor.id : '';
-                        window.AndroidBridge.onScrollPositionChanged(anchorId, Math.round(window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0));
+                        var scrollY = window.scrollY ||
+                            document.documentElement.scrollTop ||
+                            document.body.scrollTop ||
+                            0;
+                        window.AndroidBridge.onScrollPositionChanged(anchorId, Math.round(scrollY));
                     }
                     refreshHeadings();
                     window.addEventListener('scroll', notifyScrollPosition, { passive: true });

@@ -62,8 +62,8 @@ class ReaderViewModel(
     private val bookmarkRepository: BookmarkRepository,
     private val readerPreferences: ReaderPreferences
 ) : ViewModel() {
-    private companion object {
-        const val LAST_READ_DEBOUNCE_MS = 2_000L
+    companion object {
+        private const val LAST_READ_DEBOUNCE_MS = 2_000L
         const val SCROLL_POSITION_DEBOUNCE_MS = 500L
     }
 
@@ -283,10 +283,8 @@ class ReaderViewModel(
 
     private val pageChangedEvents = MutableStateFlow<PendingBookmarkSave?>(null)
     private val scrollPositionEvents = MutableStateFlow<PendingScrollBookmarkSave?>(null)
-    @Volatile
-    private var latestPageChangedEvent: PendingBookmarkSave? = null
-    @Volatile
-    private var modeSwitchRestorePending: Boolean = false
+    private val latestPageChangedEvent = MutableStateFlow<PendingBookmarkSave?>(null)
+    private val modeSwitchRestorePending = MutableStateFlow(false)
     
     /**
      * Get the count of visible chapters based on current visibility settings.
@@ -1217,7 +1215,7 @@ class ReaderViewModel(
             characterOffset = event.charOffset
         )
         val pending = PendingBookmarkSave(event, anchorEntries)
-        latestPageChangedEvent = pending
+        latestPageChangedEvent.value = pending
         pageChangedEvents.value = pending
     }
 
@@ -1252,7 +1250,7 @@ class ReaderViewModel(
     fun toggleReaderMode() {
         viewModelScope.launch(Dispatchers.IO) {
             val currentMode = readerPreferences.settings.value.mode
-            latestPageChangedEvent?.let { pending ->
+            latestPageChangedEvent.value?.let { pending ->
                 bookmarkRepository.saveNamedBookmark(
                     createBookmark(
                         event = pending.event,
@@ -1266,15 +1264,15 @@ class ReaderViewModel(
                 ReaderMode.PAGINATED -> ReaderMode.SCROLL
                 ReaderMode.SCROLL -> ReaderMode.PAGINATED
             }
-            modeSwitchRestorePending = true
+            modeSwitchRestorePending.value = true
             readerPreferences.updateSettings { current -> current.copy(mode = nextMode) }
             invalidateActiveSlot()
         }
     }
 
     fun consumeModeSwitchRestorePending(): Boolean {
-        if (!modeSwitchRestorePending) return false
-        modeSwitchRestorePending = false
+        if (!modeSwitchRestorePending.value) return false
+        modeSwitchRestorePending.value = false
         return true
     }
 
@@ -1345,7 +1343,7 @@ class ReaderViewModel(
         val windowIndex = getWindowIndexForChapterSafe(chapterIndex)
         updateReadingPosition(
             windowIndex = windowIndex,
-            pageInWindow = pending.event.scrollY,
+            pageInWindow = 0,
             characterOffset = charOffset
         )
         return Bookmark(
