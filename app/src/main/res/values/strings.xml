@@ -146,6 +146,7 @@ Page %4$d/%5$d (%6$d%%)</string>
     <string name="reader_theme_black">Black</string>
     <string name="reader_tap_zones">Tap zones</string>
     <string name="reader_chapters">Chapters</string>
+    <string name="reader_toc">Table of contents</string>
     <string name="reader_tap_zones_title">Tap zones</string>
     <string name="reader_tap_zones_description">Choose what each tap area does while reading.</string>
     <string name="reader_zone_top_left">Top left</string>

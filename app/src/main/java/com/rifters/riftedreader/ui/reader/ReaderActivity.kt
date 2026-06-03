@@ -1,6 +1,7 @@
 package com.rifters.riftedreader.ui.reader
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.text.SpannableString
 import android.text.Spanned
@@ -34,6 +35,7 @@ import com.rifters.riftedreader.data.repository.RoomBookmarkRepository
 import com.rifters.riftedreader.databinding.ActivityReaderBinding
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.ParserFactory
+import com.rifters.riftedreader.domain.reader.AnchorEntry
 import com.rifters.riftedreader.pagination.OffscreenSlicingWebView
 import com.rifters.riftedreader.domain.tts.TTSConfiguration
 import com.rifters.riftedreader.domain.tts.TTSPlaybackState
@@ -57,6 +59,12 @@ import java.io.File
 import com.rifters.riftedreader.BuildConfig
 
 class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
+
+    private companion object {
+        // 40 attempts × 50ms gives WebView up to 2 seconds to finish loading after TOC navigation.
+        const val TOC_JUMP_MAX_READY_ATTEMPTS = 40
+        const val TOC_JUMP_READY_CHECK_DELAY_MS = 50L
+    }
     
     private lateinit var binding: ActivityReaderBinding
     private lateinit var viewModel: ReaderViewModel
@@ -1294,6 +1302,26 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     
     private fun openChapters() {
         controlsManager.showControls()
+        val tocEntries = viewModel.tocEntries.value
+        if (tocEntries.isNotEmpty()) {
+            supportFragmentManager.setFragmentResultListener(
+                ReaderTocBottomSheet.REQUEST_KEY,
+                this
+            ) { _, bundle ->
+                val entry = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    bundle.getParcelable(ReaderTocBottomSheet.RESULT_ENTRY, AnchorEntry::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    bundle.getParcelable(ReaderTocBottomSheet.RESULT_ENTRY)
+                }
+                if (entry != null) {
+                    navigateToTocEntry(entry)
+                }
+            }
+            ReaderTocBottomSheet.show(supportFragmentManager, tocEntries)
+            return
+        }
+
         // Use visibleTableOfContents to filter out hidden chapters based on visibility settings
         val chapters = viewModel.visibleTableOfContents
         if (chapters.isEmpty()) {
@@ -1320,6 +1348,65 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             }
         }
     }
+
+    private fun navigateToTocEntry(entry: AnchorEntry) {
+        val chapterIndex = entry.chapterIndex ?: run {
+            AppLogger.w(
+                "ReaderActivity",
+                "Skipping TOC anchor without chapter index: anchorId=${entry.id}"
+            )
+            return
+        }
+        val targetWindow = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            viewModel.getWindowIndexForChapter(chapterIndex)
+        } else {
+            chapterIndex
+        }
+
+        if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            viewModel.goToWindow(targetWindow)
+            val adapterPosition = pagerAdapter.getPositionForWindowId(targetWindow)
+            if (adapterPosition >= 0) {
+                setCurrentItem(adapterPosition, true)
+            }
+        } else {
+            viewModel.goToPage(chapterIndex)
+            setCurrentItem(chapterIndex, true)
+        }
+        jumpToAnchorWhenReady(targetWindow, entry.id)
+    }
+
+    private fun jumpToAnchorWhenReady(windowIndex: Int, anchorId: String) {
+        lifecycleScope.launch {
+            repeat(TOC_JUMP_MAX_READY_ATTEMPTS) {
+                val fragment = findReaderFragment(windowIndex)
+                if (fragment != null && fragment.isWebViewReady()) {
+                    fragment.jumpToAnchor(anchorId)
+                    return@launch
+                }
+                delay(TOC_JUMP_READY_CHECK_DELAY_MS)
+            }
+            AppLogger.w(
+                "ReaderActivity",
+                "TOC anchor jump timed out waiting for WebView readiness; attempting fallback jump: windowIndex=$windowIndex anchorId=$anchorId"
+            )
+            val fallbackFragment = findReaderFragment(windowIndex)
+            if (fallbackFragment == null) {
+                AppLogger.w(
+                    "ReaderActivity",
+                    "TOC anchor fallback failed: fragment not found for windowIndex=$windowIndex anchorId=$anchorId"
+                )
+            } else {
+                fallbackFragment.jumpToAnchor(anchorId)
+            }
+        }
+    }
+
+    private fun findReaderFragment(windowIndex: Int): ReaderPageFragment? {
+        return supportFragmentManager.findFragmentByTag(readerFragmentTag(windowIndex)) as? ReaderPageFragment
+    }
+
+    private fun readerFragmentTag(windowIndex: Int): String = "w$windowIndex"
 
     private fun isDebugBuild(): Boolean {
         return (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
