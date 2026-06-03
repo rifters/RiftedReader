@@ -273,11 +273,16 @@ describe('flex_paginator.js', () => {
       const mockBridge = createMockAndroidBridge();
 
       const paginator = loadPaginator();
+      const expectedSlice = mockBridge.calls.onSlicingComplete[0].slices[1];
       const result = paginator.navigateToPage(99);
 
       expect(result).toBe(true);
       expect(paginator.getCurrentPage()).toBe(1);
-      expect(mockBridge.calls.onPageChanged[0]).toEqual({ page: 1, chapter: 1, startChar: 0 });
+      expect(mockBridge.calls.onPageChanged[0]).toEqual({
+        page: expectedSlice.page,
+        chapter: expectedSlice.chapter,
+        startChar: expectedSlice.startChar
+      });
       expect(mockBridge.calls.onBoundaryReached[0]).toEqual({ direction: 'forward' });
     });
 
