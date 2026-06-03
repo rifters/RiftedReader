@@ -48,7 +48,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             app:chipSpacingHorizontal="4dp"
-            app:chipSpacingVertical="0dp"
+            app:chipSpacingVertical="4dp"
             app:singleLine="false" />
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

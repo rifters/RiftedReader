@@ -162,15 +162,15 @@ class CalibreLibraryViewModel(
 }
 
 sealed class CalibreLibraryState {
-    object Idle : CalibreLibraryState()
-    object Loading : CalibreLibraryState()
+    data object Idle : CalibreLibraryState()
+    data object Loading : CalibreLibraryState()
     data class Success(
         val books: List<CalibreBook>,
         val totalCount: Int,
         val hasMore: Boolean,
     ) : CalibreLibraryState()
     data class Error(val exception: CalibreException) : CalibreLibraryState()
-    object Disabled : CalibreLibraryState()
+    data object Disabled : CalibreLibraryState()
 }
 
 fun supportedFormats(book: CalibreBook): List<BookFormat> {

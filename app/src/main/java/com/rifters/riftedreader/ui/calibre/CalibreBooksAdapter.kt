@@ -97,7 +97,7 @@ class CalibreBooksAdapter(
 
 sealed class CalibreLibraryItem {
     data class BookItem(val book: CalibreBook) : CalibreLibraryItem()
-    object LoadingFooter : CalibreLibraryItem()
+    data object LoadingFooter : CalibreLibraryItem()
 }
 
 class CalibreLibraryDiffCallback : DiffUtil.ItemCallback<CalibreLibraryItem>() {

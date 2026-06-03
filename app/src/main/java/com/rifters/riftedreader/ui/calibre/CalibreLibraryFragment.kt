@@ -7,8 +7,8 @@ import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
@@ -34,15 +34,8 @@ class CalibreLibraryFragment : Fragment() {
     private var _binding: FragmentCalibreLibraryBinding? = null
     private val binding get() = _binding!!
 
-    private val connectionRepository by lazy { DefaultCalibreConnectionRepository(requireContext()) }
-    private val viewModel: CalibreLibraryViewModel by viewModels {
-        val credentialStore = CalibreCredentialStore(requireContext())
-        val contentServerRepository = CalibreContentServerRepository(
-            connectionRepository = connectionRepository,
-            credentialStore = credentialStore,
-        )
-        CalibreLibraryViewModelFactory(contentServerRepository, connectionRepository)
-    }
+    private lateinit var connectionRepository: DefaultCalibreConnectionRepository
+    private lateinit var viewModel: CalibreLibraryViewModel
     private lateinit var adapter: CalibreBooksAdapter
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -54,11 +47,25 @@ class CalibreLibraryFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         activity?.title = getString(R.string.calibre_library_title)
         AppLogger.event("CalibreLibraryFragment", "onViewCreated", "ui/calibre/lifecycle")
+        setupViewModel()
         setupRecyclerView()
         setupSearch()
         setupActions()
         observeViewModel()
         viewModel.loadLibrary()
+    }
+
+    private fun setupViewModel() {
+        connectionRepository = DefaultCalibreConnectionRepository(requireContext())
+        val credentialStore = CalibreCredentialStore(requireContext())
+        val contentServerRepository = CalibreContentServerRepository(
+            connectionRepository = connectionRepository,
+            credentialStore = credentialStore,
+        )
+        viewModel = ViewModelProvider(
+            this,
+            CalibreLibraryViewModelFactory(contentServerRepository, connectionRepository)
+        )[CalibreLibraryViewModel::class.java]
     }
 
     private fun setupRecyclerView() {
@@ -171,21 +178,21 @@ class CalibreLibraryFragment : Fragment() {
         sheetBinding.tagsChipGroup.removeAllViews()
         val tags = book.tags.take(MAX_VISIBLE_TAGS)
         tags.forEach { tag ->
-            sheetBinding.tagsChipGroup.addView(Chip(requireContext()).apply {
-                text = tag
-                isCheckable = false
-                isClickable = false
-            })
+            sheetBinding.tagsChipGroup.addView(createTagChip(tag))
         }
         val hiddenCount = book.tags.size - tags.size
         if (hiddenCount > 0) {
-            sheetBinding.tagsChipGroup.addView(Chip(requireContext()).apply {
-                text = getString(R.string.calibre_tags_more, hiddenCount)
-                isCheckable = false
-                isClickable = false
-            })
+            sheetBinding.tagsChipGroup.addView(createTagChip(getString(R.string.calibre_tags_more, hiddenCount)))
         }
         sheetBinding.tagsChipGroup.isVisible = sheetBinding.tagsChipGroup.childCount > 0
+    }
+
+    private fun createTagChip(label: String): Chip {
+        return Chip(requireContext()).apply {
+            text = label
+            isCheckable = false
+            isClickable = false
+        }
     }
 
     private fun bindFormatButtons(sheetBinding: DialogCalibreBookDetailBinding, book: CalibreBook, dialog: BottomSheetDialog) {
