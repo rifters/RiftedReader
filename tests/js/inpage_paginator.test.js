@@ -44,6 +44,7 @@ function loadPaginator() {
   
   // Clear any previous paginator instance
   delete window.inpagePaginator;
+  delete window.__riftedReaderPaginatorInitialized_v1__;
   
   // Execute the script in the current context
   const script = new Function(scriptContent);
@@ -134,6 +135,7 @@ describe('inpage_paginator.js', () => {
   afterEach(() => {
     jest.useRealTimers();
     delete window.inpagePaginator;
+    delete window.__riftedReaderPaginatorInitialized_v1__;
     delete window.AndroidBridge;
   });
   

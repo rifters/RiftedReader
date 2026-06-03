@@ -379,6 +379,14 @@
             behavior: smooth ? 'smooth' : 'auto'
         });
 
+        scheduleNavigationDriftCheck(validIndex, smooth);
+        
+        // REMOVED: checkBoundary() call - let scroll listener handle boundary detection
+        // after scroll animation completes and state is properly updated
+        log('NAV', `goToPage(${pageIndex}) -> ${validIndex}, smooth=${smooth}`);
+    }
+
+    function scheduleNavigationDriftCheck(validIndex, smooth) {
         // High-signal drift check: if something (reflow/layout clamp) forces scrollLeft away
         // from the requested page after navigation, log it. This is the exact symptom you're seeing.
         if (config.enableNavDriftLog) setTimeout(function() {
@@ -393,10 +401,6 @@
                 // ignore
             }
         }, smooth ? 1200 : 200);
-        
-        // REMOVED: checkBoundary() call - let scroll listener handle boundary detection
-        // after scroll animation completes and state is properly updated
-        log('NAV', `goToPage(${pageIndex}) -> ${validIndex}, smooth=${smooth}`);
     }
     
     /**
@@ -755,6 +759,7 @@
             column-fill: auto;
             -webkit-column-fill: auto;
             height: 100%;
+            scroll-snap-align: start;
         `;
         
         // Restore the preserved font size if it existed
@@ -798,9 +803,7 @@
      */
     function applyColumnLayout() {
         // Optional: keep width in sync with the real container size.
-        if (config.enableWidthSync) {
-            updateViewportWidth('APPLY_LAYOUT');
-        }
+        if (config.enableWidthSync) updateViewportWidth('APPLY_LAYOUT');
         applyColumnStylesWithWidth(state.contentWrapper, state.appliedColumnWidth);
     }
     
@@ -948,6 +951,7 @@
             const newPage = Math.round(currentScrollLeft / state.appliedColumnWidth);
             const prevPage = state.currentPage;  // ← TRACK PREVIOUS
             state.currentPage = Math.max(0, Math.min(newPage, state.pageCount - 1));
+            syncPaginationState();
             
             // DIAGNOSTIC: Log page calculation from scroll
             log('DIAGNOSTIC', `Scroll page calculation: round(${currentScrollLeft.toFixed(1)} / ${state.appliedColumnWidth}) = ${newPage}, clamped to ${state.currentPage}`);
@@ -1021,7 +1025,7 @@
         
         // Use columnContainer.scrollLeft instead of window scroll
         const currentScrollLeft = state.columnContainer.scrollLeft;
-        const targetPage = Math.round(currentScrollLeft / state.appliedColumnWidth);
+        const targetPage = Math.floor(currentScrollLeft / state.appliedColumnWidth);
         const clampedPage = Math.max(0, Math.min(targetPage, state.pageCount - 1));
         const targetScrollPos = clampedPage * state.appliedColumnWidth;
         
@@ -1135,6 +1139,13 @@
                     recomputeIfNeeded();
                 }, 100);
             }
+        }
+
+        function syncPaginationState() {
+            if (!state.columnContainer || state.appliedColumnWidth <= 0) return;
+            const currentScrollLeft = state.columnContainer.scrollLeft;
+            const computedPage = Math.round(currentScrollLeft / state.appliedColumnWidth);
+            state.currentPage = Math.max(0, Math.min(computedPage, state.pageCount - 1));
         }
     }
     

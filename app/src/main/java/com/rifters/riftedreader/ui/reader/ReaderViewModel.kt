@@ -1504,7 +1504,9 @@ class ReaderViewModel(
     }
 
     suspend fun restoreBookmark(bookmark: Bookmark): Int? {
-        val targetWindow = getWindowIndexForChapterSafe(bookmark.chapterIndex)
+        val preferredWindow = getWindowIndexForChapterSafe(bookmark.chapterIndex)
+        val cachedWindowData = findCachedWindowDataForChapter(preferredWindow, bookmark.chapterIndex)
+        val targetWindow = cachedWindowData?.windowIndex ?: preferredWindow
 
         if (isContinuousMode) {
             goToWindow(targetWindow)
@@ -1512,9 +1514,7 @@ class ReaderViewModel(
             _currentPage.value = bookmark.chapterIndex.coerceAtLeast(0)
         }
 
-        val sliceMetadata = conveyorBeltSystem
-            ?.getCachedWindowData(targetWindow)
-            ?.takeIf { it.containsChapter(bookmark.chapterIndex) }
+        val sliceMetadata = cachedWindowData
             ?.also { windowData ->
                 if (windowData.isSliceStale && readerPreferences.settings.value.mode == ReaderMode.PAGINATED) {
                     observePreciseRestoreAfterSlice(
@@ -1534,6 +1534,21 @@ class ReaderViewModel(
         return sliceMetadata
             ?.findPageByCharOffset(bookmark.chapterIndex, bookmark.charOffset)
             ?: bookmark.pageIndexHint
+    }
+
+    private fun findCachedWindowDataForChapter(preferredWindow: Int, chapterIndex: Int): WindowData? {
+        val conveyor = conveyorBeltSystem ?: return null
+        return sequence {
+            yield(preferredWindow)
+            for (distance in 1..2) {
+                yield(preferredWindow - distance)
+                yield(preferredWindow + distance)
+            }
+        }
+            .filter { it >= 0 }
+            .distinct()
+            .mapNotNull { conveyor.getCachedWindowData(it) }
+            .firstOrNull { it.containsChapter(chapterIndex) }
     }
 
     private fun updateHasBookmarkAtCurrentPosition() {
