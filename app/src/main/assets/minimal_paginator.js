@@ -387,8 +387,8 @@
     }
 
     function scheduleNavigationDriftCheck(validIndex, smooth) {
-        // High-signal drift check: if something (reflow/layout clamp) forces scrollLeft away
-        // from the requested page after navigation, log it. This is the exact symptom you're seeing.
+        // High-signal drift check: log if reflow/layout clamping forces scrollLeft
+        // away from the requested page after navigation.
         if (config.enableNavDriftLog) setTimeout(function() {
             try {
                 if (!state.columnContainer || state.appliedColumnWidth <= 0) return;
@@ -750,6 +750,7 @@
         var preservedFontSize = wrapper.style.fontSize;
         
         // Set up column CSS with explicit -webkit prefixes for better Android WebView support
+        // Native snap handles normal touch flings; JS snap corrects stale/resize edge cases.
         wrapper.style.cssText = `
             display: block;
             column-width: ${columnWidth}px;
@@ -759,7 +760,6 @@
             column-fill: auto;
             -webkit-column-fill: auto;
             height: 100%;
-            /* Native snap handles normal touch flings; JS snap corrects stale/resize edge cases. */
             scroll-snap-align: start;
         `;
         
@@ -1024,11 +1024,13 @@
         
         // Use columnContainer.scrollLeft instead of window scroll
         const currentScrollLeft = state.columnContainer.scrollLeft;
-        // This runs after manual scrolls and resize/layout correction. Snap alignment
-        // uses floor() to choose the page containing the current scroll offset. Live
-        // state sync uses round() because it tracks the nearest visible page while
-        // the user scrolls; snapping must not jump forward before the offset actually
-        // crosses into the next page.
+        /**
+         * This runs after manual scrolls and resize/layout correction. Snap alignment
+         * uses floor() to choose the page containing the current scroll offset. Live
+         * state sync uses round() because it tracks the nearest visible page while
+         * the user scrolls; snapping must not jump forward before the offset actually
+         * crosses into the next page.
+         */
         const targetPage = Math.floor(currentScrollLeft / state.appliedColumnWidth);
         const clampedPage = Math.max(0, Math.min(targetPage, state.pageCount - 1));
         const targetScrollPos = clampedPage * state.appliedColumnWidth;
