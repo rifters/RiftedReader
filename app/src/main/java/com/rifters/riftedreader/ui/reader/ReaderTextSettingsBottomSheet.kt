@@ -25,16 +25,16 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
 
     private var _binding: DialogReaderTextSettingsBinding? = null
     private val binding get() = _binding!!
+    private val preferencesOwner
+        get() = requireActivity() as? ReaderPreferencesOwner
+            ?: throw IllegalStateException("Parent activity must implement ReaderPreferencesOwner")
 
     private val settingsViewModel: ReaderSettingsViewModel by activityViewModels {
-        val owner = requireActivity() as? ReaderPreferencesOwner
-            ?: throw IllegalStateException("Parent activity must implement ReaderPreferencesOwner")
-        ReaderSettingsViewModel.Factory(owner.readerPreferences)
+        ReaderSettingsViewModel.Factory(preferencesOwner.readerPreferences)
     }
     private val readerViewModel: ReaderViewModel by activityViewModels()
     private val readerPreferences
-        get() = (requireActivity() as? ReaderPreferencesOwner)?.readerPreferences
-            ?: throw IllegalStateException("Parent activity must implement ReaderPreferencesOwner")
+        get() = preferencesOwner.readerPreferences
     private var syncingSettings = false
 
     override fun onCreateView(
