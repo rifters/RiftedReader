@@ -6,6 +6,7 @@ import com.google.gson.JsonSyntaxException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Credentials
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import retrofit2.HttpException
@@ -72,6 +73,25 @@ class CalibreContentServerRepository(
             .addPathSegment(downloadFilename(book, selectedFormat))
             .build()
             .toString()
+    }
+
+    fun getDownloadFilename(
+        book: CalibreBook,
+        format: BookFormat,
+    ): String {
+        val config = latestConfig()
+        val selectedFormat = selectFormat(book, format, config.preferredFormat)
+        return downloadFilename(book, selectedFormat)
+    }
+
+    fun getDownloadHeaders(): Map<String, String> {
+        val config = latestConfig()
+        if (config.contentServerUsername.isBlank() && config.contentServerPassword.isEmpty()) {
+            return emptyMap()
+        }
+        return mapOf(
+            "Authorization" to Credentials.basic(config.contentServerUsername, config.contentServerPassword)
+        )
     }
 
     fun getCoverUrl(bookId: Int): String {

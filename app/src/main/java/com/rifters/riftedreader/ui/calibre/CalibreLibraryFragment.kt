@@ -23,9 +23,13 @@ import com.rifters.riftedreader.data.calibre.CalibreBook
 import com.rifters.riftedreader.data.calibre.CalibreCredentialStore
 import com.rifters.riftedreader.data.calibre.CalibreContentServerRepository
 import com.rifters.riftedreader.data.calibre.DefaultCalibreConnectionRepository
+import com.rifters.riftedreader.data.database.BookDatabase
+import com.rifters.riftedreader.data.download.BookDownloadManager
+import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.databinding.DialogCalibreBookDetailBinding
 import com.rifters.riftedreader.databinding.FragmentCalibreLibraryBinding
 import com.rifters.riftedreader.util.AppLogger
+import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -62,9 +66,12 @@ class CalibreLibraryFragment : Fragment() {
             connectionRepository = connectionRepository,
             credentialStore = credentialStore,
         )
+        val database = BookDatabase.getDatabase(requireContext())
+        val bookRepository = BookRepository(database.bookMetaDao())
+        val bookDownloadManager = BookDownloadManager.getInstance(requireContext(), bookRepository)
         viewModel = ViewModelProvider(
             this,
-            CalibreLibraryViewModelFactory(contentServerRepository, connectionRepository)
+            CalibreLibraryViewModelFactory(contentServerRepository, connectionRepository, bookDownloadManager)
         )[CalibreLibraryViewModel::class.java]
     }
 
@@ -120,8 +127,21 @@ class CalibreLibraryFragment : Fragment() {
                         }
                     }
                 }
+                launch {
+                    viewModel.downloadEvents.collect { event -> handleDownloadEvent(event) }
+                }
             }
         }
+    }
+
+    private fun handleDownloadEvent(event: CalibreDownloadEvent) {
+        val message = when (event) {
+            is CalibreDownloadEvent.DownloadSuccess -> getString(R.string.library_import_success, event.title)
+            is CalibreDownloadEvent.DownloadUnsupported -> getString(R.string.library_import_unsupported, event.title)
+            is CalibreDownloadEvent.DownloadDuplicate -> getString(R.string.library_import_duplicate, event.title)
+            CalibreDownloadEvent.DownloadFailed -> getString(R.string.calibre_download_failed)
+        }
+        Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
     }
 
     private fun renderState(state: CalibreLibraryState) {
