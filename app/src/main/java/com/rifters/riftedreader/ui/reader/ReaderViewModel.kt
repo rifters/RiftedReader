@@ -25,6 +25,7 @@ import com.rifters.riftedreader.domain.parser.TocEntry
 import com.rifters.riftedreader.domain.parser.TxtParser
 import com.rifters.riftedreader.domain.reader.AnchorEntry
 import com.rifters.riftedreader.pagination.PaginationModeGuard
+import com.rifters.riftedreader.pagination.FlexSlicingConfig
 import com.rifters.riftedreader.pagination.SlidingWindowPaginator
 import com.rifters.riftedreader.pagination.WindowData
 import com.rifters.riftedreader.pagination.WindowSyncHelpers
@@ -32,17 +33,30 @@ import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.math.roundToInt
+
+data class SliceRestoreCorrection(
+    val windowIndex: Int,
+    val pageIndex: Int,
+    val fallbackPageIndex: Int
+)
 
 /**
  * ViewModel for the reader screen, managing book content, pagination, and reading state.
@@ -230,7 +244,18 @@ class ReaderViewModel(
             bookId = pending.bookId,
             parser = parser,
             bookFile = bookFile,
-            flexPaginatorEnabledProvider = pending.flexPaginatorEnabledProvider
+            flexPaginatorEnabledProvider = pending.flexPaginatorEnabledProvider,
+            typographyFlow = readerPreferences.settings
+                .map { settings ->
+                    FlexSlicingConfig(
+                        fontSizePx = settings.textSizeSp.roundToInt()
+                            .coerceAtLeast(FlexSlicingConfig.MIN_FONT_SIZE_PX),
+                        lineHeight = settings.lineHeightMultiplier,
+                        fontFamily = FlexSlicingConfig.READER_FONT_FAMILY_SERIF,
+                        pagePaddingPx = FlexSlicingConfig.DEFAULT_PAGE_PADDING_PX
+                    )
+                },
+            paginationModeGuard = paginationModeGuard
         )
 
         // Then initialize the buffer
@@ -270,6 +295,13 @@ class ReaderViewModel(
     val currentPage: StateFlow<Int> = _currentPage.asStateFlow()
     val currentWindowIndex: StateFlow<Int> = _currentWindowIndex.asStateFlow()
     val content: StateFlow<PageContent> = _content.asStateFlow()
+
+    private val _isReslicing = MutableStateFlow(false)
+    val isReslicing: StateFlow<Boolean> = _isReslicing.asStateFlow()
+
+    private val _sliceRestoreCorrections = MutableSharedFlow<SliceRestoreCorrection>()
+    val sliceRestoreCorrections: SharedFlow<SliceRestoreCorrection> = _sliceRestoreCorrections.asSharedFlow()
+    private var sliceRestoreCorrectionJob: Job? = null
 
     private data class PendingBookmarkSave(
         val event: PageChangedEvent,
@@ -914,6 +946,12 @@ class ReaderViewModel(
             }
         }
 
+        viewModelScope.launch {
+            conveyorSystem.isReslicing.collect { reslicing ->
+                _isReslicing.value = reslicing && readerPreferences.settings.value.flexPaginatorEnabled
+            }
+        }
+
         // If continuous initialization already computed window count/start window, init now.
         initializeConveyorIfPossible(conveyorSystem)
     }
@@ -1297,6 +1335,17 @@ class ReaderViewModel(
         val sliceMetadata = conveyorBeltSystem
             ?.getCachedWindowData(targetWindow)
             ?.takeIf { it.containsChapter(bookmark.chapterIndex) }
+            ?.also { windowData ->
+                if (windowData.isSliceStale && readerPreferences.settings.value.mode == ReaderMode.PAGINATED) {
+                    observePreciseRestoreAfterSlice(
+                        windowIndex = targetWindow,
+                        chapterIndex = bookmark.chapterIndex,
+                        charOffset = bookmark.charOffset,
+                        fallbackPageIndex = bookmark.pageIndexHint
+                    )
+                }
+            }
+            ?.takeUnless { it.isSliceStale }
             ?.sliceMetadata
             ?.takeIf { it.isValid() }
 
@@ -1305,6 +1354,38 @@ class ReaderViewModel(
         return sliceMetadata
             ?.findPageByCharOffset(bookmark.chapterIndex, bookmark.charOffset)
             ?: bookmark.pageIndexHint
+    }
+
+    private fun observePreciseRestoreAfterSlice(
+        windowIndex: Int,
+        chapterIndex: Int,
+        charOffset: Int,
+        fallbackPageIndex: Int
+    ) {
+        val conveyor = conveyorBeltSystem ?: return
+        sliceRestoreCorrectionJob?.cancel()
+        sliceRestoreCorrectionJob = viewModelScope.launch {
+            conveyor.sliceInvalidatedEvents
+                .filter { event -> event.windowIndex == windowIndex && !event.isSliceStale }
+                .first()
+
+            val precisePage = conveyor.getCachedWindowData(windowIndex)
+                ?.takeIf { it.containsChapter(chapterIndex) && !it.isSliceStale }
+                ?.sliceMetadata
+                ?.takeIf { it.isValid() }
+                ?.findPageByCharOffset(chapterIndex, charOffset)
+                ?: return@launch
+
+            if (_currentWindowIndex.value == windowIndex) {
+                _sliceRestoreCorrections.emit(
+                    SliceRestoreCorrection(
+                        windowIndex = windowIndex,
+                        pageIndex = precisePage,
+                        fallbackPageIndex = fallbackPageIndex
+                    )
+                )
+            }
+        }
     }
 
     private fun createBookmark(

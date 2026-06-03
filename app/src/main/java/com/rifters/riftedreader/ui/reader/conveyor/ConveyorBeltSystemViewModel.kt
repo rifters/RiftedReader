@@ -7,16 +7,32 @@ import com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlP
 import com.rifters.riftedreader.domain.pagination.SlidingWindowManager
 import com.rifters.riftedreader.domain.parser.BookParser
 import com.rifters.riftedreader.pagination.FlexPaginator
+import com.rifters.riftedreader.pagination.FlexSlicingConfig
 import com.rifters.riftedreader.pagination.OffscreenSlicingWebView
+import com.rifters.riftedreader.pagination.PaginationModeGuard
 import com.rifters.riftedreader.pagination.WindowData
 import com.rifters.riftedreader.util.AppLogger
 import com.rifters.riftedreader.util.BufferLogger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.util.ArrayDeque
 import java.io.File
+import kotlin.math.abs
+
+data class SliceInvalidatedEvent(
+    val windowIndex: Int,
+    val isSliceStale: Boolean
+)
 
 class ConveyorBeltSystemViewModel(
     private val offscreenSlicingWebViewFactory: (() -> OffscreenSlicingWebView)? = null
@@ -41,6 +57,10 @@ class ConveyorBeltSystemViewModel(
     private var flexPaginatorEnabledProvider: () -> Boolean = { false }
     private var flexPaginator: FlexPaginator? = null
     private var offscreenSlicingWebView: OffscreenSlicingWebView? = null
+    private var paginationModeGuard: PaginationModeGuard? = null
+    private var typographyObserverJob: Job? = null
+    private var resliceJob: Job? = null
+    private val pendingPriorityReslices = mutableListOf<Int>()
     
     // ========================================================================
     // CONVEYOR-BELT SLOT-BASED BUFFER ARCHITECTURE
@@ -84,6 +104,14 @@ class ConveyorBeltSystemViewModel(
     // Initialization state for readiness checks
     private val _isInitialized = MutableStateFlow<Boolean>(false)
     val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
+
+    private val _isReslicing = MutableStateFlow(false)
+    val isReslicing: StateFlow<Boolean> = _isReslicing.asStateFlow()
+
+    private val _sliceInvalidatedEvents = MutableSharedFlow<SliceInvalidatedEvent>(
+        extraBufferCapacity = BUFFER_SIZE
+    )
+    val sliceInvalidatedEvents: SharedFlow<SliceInvalidatedEvent> = _sliceInvalidatedEvents.asSharedFlow()
     
     private var shiftsUnlocked = false
 
@@ -365,7 +393,9 @@ class ConveyorBeltSystemViewModel(
         bookId: String,
         parser: BookParser? = null,
         bookFile: File? = null,
-        flexPaginatorEnabledProvider: () -> Boolean = { false }
+        flexPaginatorEnabledProvider: () -> Boolean = { false },
+        typographyFlow: Flow<FlexSlicingConfig>? = null,
+        paginationModeGuard: PaginationModeGuard? = null
     ) {
         this.continuousPaginator = paginator
         this.slidingWindowManager = windowManager
@@ -373,9 +403,11 @@ class ConveyorBeltSystemViewModel(
         this.bookParser = parser
         this.bookFile = bookFile
         this.flexPaginatorEnabledProvider = flexPaginatorEnabledProvider
+        this.paginationModeGuard = paginationModeGuard
         this.flexPaginator = null
         offscreenSlicingWebView?.destroy()
         offscreenSlicingWebView = null
+        observeTypographyChanges(typographyFlow)
         log("INIT", "HTML loading dependencies set: bookId=$bookId")
     }
     
@@ -500,6 +532,137 @@ class ConveyorBeltSystemViewModel(
         return windowData.copy(sliceMetadata = sliceMetadata)
     }
 
+    private fun observeTypographyChanges(typographyFlow: Flow<FlexSlicingConfig>?) {
+        typographyObserverJob?.cancel()
+        typographyObserverJob = null
+        if (typographyFlow == null) return
+
+        typographyObserverJob = viewModelScope.launch {
+            typographyFlow
+                .distinctUntilChanged()
+                .collect { typography ->
+                    FlexSlicingConfig.setDefaultTypography(
+                        fontSizePx = typography.fontSizePx,
+                        lineHeight = typography.lineHeight,
+                        fontFamily = typography.fontFamily,
+                        pagePaddingPx = typography.pagePaddingPx
+                    )
+
+                    if (!flexPaginatorEnabledProvider()) {
+                        resliceJob?.cancelAndJoin()
+                        resliceJob = null
+                        _isReslicing.value = false
+                        return@collect
+                    }
+
+                    resliceJob?.cancelAndJoin()
+                    resliceJob = viewModelScope.launch {
+                        resliceAllWindows()
+                    }
+                }
+        }
+    }
+
+    private suspend fun resliceAllWindows() {
+        if (!flexPaginatorEnabledProvider()) {
+            _isReslicing.value = false
+            return
+        }
+
+        val guard = paginationModeGuard
+        guard?.beginWindowBuild()
+        _isReslicing.value = true
+
+        try {
+            val processed = mutableSetOf<Int>()
+            val queue = ArrayDeque(prioritizedCachedPreSlicedWindows())
+
+            while (true) {
+                val nextPriority = pollPriorityReslice(processed)
+                val windowIndex = nextPriority ?: queue.removeFirstOrNull() ?: break
+
+                if (!processed.add(windowIndex)) continue
+                if (windowIndex !in getValidBuffer()) continue
+                val windowData = windowDataCache[windowIndex] ?: continue
+                if (!windowData.isPreSliced) continue
+
+                resliceWindow(windowIndex, windowData)
+            }
+        } finally {
+            _isReslicing.value = false
+            guard?.endWindowBuild()
+        }
+    }
+
+    private fun prioritizedCachedPreSlicedWindows(): List<Int> {
+        val active = _activeWindow.value
+        return getValidBuffer()
+            .filter { windowDataCache[it]?.isPreSliced == true }
+            .sortedWith(
+                compareBy<Int> {
+                    when {
+                        it == active -> 0
+                        abs(it - active) == 1 -> 1
+                        else -> 2
+                    }
+                }.thenBy { abs(it - active) }
+                    .thenBy { it }
+            )
+    }
+
+    private fun requestPriorityReslice(windowIndex: Int) {
+        if (!_isReslicing.value) return
+        synchronized(pendingPriorityReslices) {
+            pendingPriorityReslices.remove(windowIndex)
+            pendingPriorityReslices.add(0, windowIndex)
+        }
+    }
+
+    private fun pollPriorityReslice(processed: Set<Int>): Int? {
+        synchronized(pendingPriorityReslices) {
+            val index = pendingPriorityReslices.indexOfFirst { windowIndex ->
+                windowIndex !in processed &&
+                    windowIndex in getValidBuffer() &&
+                    windowDataCache[windowIndex]?.isPreSliced == true
+            }
+            if (index == -1) return null
+            return pendingPriorityReslices.removeAt(index)
+        }
+    }
+
+    private suspend fun resliceWindow(windowIndex: Int, windowData: WindowData) {
+        windowDataCache[windowIndex] = windowData.copy(isSliceStale = true)
+
+        try {
+            val slicer = offscreenSlicingWebView
+                ?: offscreenSlicingWebViewFactory?.invoke()?.also { offscreenSlicingWebView = it }
+                ?: throw IllegalStateException("FlexPaginator enabled but offscreen slicer factory was not provided")
+            val sliceMetadata = slicer.sliceWindow(
+                wrappedHtml = windowData.html,
+                windowIndex = windowIndex,
+                config = FlexSlicingConfig.getDefaultTypography()
+            )
+
+            if (!sliceMetadata.isValid()) {
+                throw IllegalStateException("Invalid SliceMetadata")
+            }
+
+            val latest = windowDataCache[windowIndex] ?: windowData
+            windowDataCache[windowIndex] = latest.copy(
+                sliceMetadata = sliceMetadata,
+                isSliceStale = false
+            )
+            _sliceInvalidatedEvents.emit(SliceInvalidatedEvent(windowIndex, isSliceStale = false))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val latest = windowDataCache[windowIndex] ?: windowData
+            windowDataCache[windowIndex] = latest.copy(isSliceStale = true)
+            AppLogger.e(FLEX_TAG, "Failed to re-slice window $windowIndex", e)
+            _sliceInvalidatedEvents.emit(SliceInvalidatedEvent(windowIndex, isSliceStale = true))
+        }
+    }
+
     private suspend fun assembleLegacyWindowData(
         paginator: ContinuousPaginator,
         windowManager: SlidingWindowManager,
@@ -604,6 +767,7 @@ class ConveyorBeltSystemViewModel(
         log("STATE", "onWindowEntered($windowIndex)")
         log("STATE", "Current: offset=$offset, buffer=${getValidBuffer()}, activeWindow=${_activeWindow.value}, phase=${_phase.value}")
         log("STATE", "shiftsUnlocked=$shiftsUnlocked")
+        requestPriorityReslice(windowIndex)
 
         // Always enforce 5-slot cache discipline on entry.
         // This makes cache removals deterministic and resilient to future paginator/buffer refactors.
@@ -814,6 +978,8 @@ class ConveyorBeltSystemViewModel(
     fun getOffset(): Int = offset
 
     override fun onCleared() {
+        typographyObserverJob?.cancel()
+        resliceJob?.cancel()
         flexPaginator = null
         offscreenSlicingWebView?.destroy()
         offscreenSlicingWebView = null

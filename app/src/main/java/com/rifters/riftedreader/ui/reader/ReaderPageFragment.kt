@@ -583,6 +583,7 @@ class ReaderPageFragment : Fragment() {
         }
 
         observeReaderViewportForSlicing()
+        observeSliceRestoreCorrections()
         syncSharedTypographyConfig(readerViewModel.readerSettings.value)
         
         // Separate content loading based on pagination mode
@@ -934,6 +935,24 @@ class ReaderPageFragment : Fragment() {
                             activeChapterIndex = chapterIndex
                         )
                     }
+            }
+        }
+    }
+
+    private fun observeSliceRestoreCorrections() {
+        launchIfViewAlive("slice_restore_corrections") {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                readerViewModel.sliceRestoreCorrections.collect { correction ->
+                    if (correction.windowIndex != windowIndex) return@collect
+                    if (!isWebViewReady || !isActiveReaderWindow()) return@collect
+                    if (currentInPageIndex != correction.fallbackPageIndex) return@collect
+
+                    binding.pageWebView.evaluateJavascript(
+                        "if (window.flexPaginator && window.flexPaginator.isReady()) { window.flexPaginator.navigateToPage(${correction.pageIndex}); } else if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage(${correction.pageIndex}, false); }",
+                        null
+                    )
+                    currentInPageIndex = correction.pageIndex
+                }
             }
         }
     }
