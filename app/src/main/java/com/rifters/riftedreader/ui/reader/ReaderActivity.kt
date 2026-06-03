@@ -58,6 +58,11 @@ import java.io.File
 import com.rifters.riftedreader.BuildConfig
 
 class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
+
+    private companion object {
+        const val TOC_JUMP_MAX_READY_ATTEMPTS = 40
+        const val TOC_JUMP_READY_CHECK_DELAY_MS = 50L
+    }
     
     private lateinit var binding: ActivityReaderBinding
     private lateinit var viewModel: ReaderViewModel
@@ -1357,14 +1362,18 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
     private fun jumpToAnchorWhenReady(windowIndex: Int, anchorId: String) {
         lifecycleScope.launch {
-            repeat(40) {
+            repeat(TOC_JUMP_MAX_READY_ATTEMPTS) {
                 val fragment = supportFragmentManager.findFragmentByTag("w$windowIndex") as? ReaderPageFragment
                 if (fragment != null && fragment.isWebViewReady()) {
                     fragment.jumpToAnchor(anchorId)
                     return@launch
                 }
-                delay(50)
+                delay(TOC_JUMP_READY_CHECK_DELAY_MS)
             }
+            AppLogger.w(
+                "ReaderActivity",
+                "TOC anchor jump timed out waiting for WebView readiness: windowIndex=$windowIndex anchorId=$anchorId"
+            )
             (supportFragmentManager.findFragmentByTag("w$windowIndex") as? ReaderPageFragment)
                 ?.jumpToAnchor(anchorId)
         }

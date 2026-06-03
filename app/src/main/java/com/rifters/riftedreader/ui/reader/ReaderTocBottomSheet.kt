@@ -56,6 +56,8 @@ class ReaderTocBottomSheet : BottomSheetDialogFragment() {
             entries: List<AnchorEntry>,
             onEntrySelected: (AnchorEntry) -> Unit
         ) {
+            if (entries.isEmpty()) return
+
             ReaderTocBottomSheet().apply {
                 this.entries = entries
                 this.onEntrySelected = onEntrySelected
