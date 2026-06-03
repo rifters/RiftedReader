@@ -23,6 +23,15 @@
     </fragment>
 
     <fragment
+        android:id="@+id/calibreWebFragment"
+        android:name="com.rifters.riftedreader.ui.calibre.CalibreWebFragment"
+        android:label="@string/calibre_web_title">
+        <action
+            android:id="@+id/action_calibreWebFragment_to_readerSettingsFragment"
+            app:destination="@id/readerSettingsFragment" />
+    </fragment>
+
+    <fragment
         android:id="@+id/settingsFragment"
         android:name="com.rifters.riftedreader.ui.settings.SettingsFragment"
         android:label="@string/settings_title">

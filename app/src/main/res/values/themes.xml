@@ -10,6 +10,8 @@
     </style>
 
     <style name="Theme.RiftedReader" parent="Base.Theme.RiftedReader" />
+
+    <style name="TextAppearance.RiftedReader.BottomSheetTitle" parent="TextAppearance.Material3.TitleLarge" />
     
     <!-- Reader theme -->
     <style name="Theme.RiftedReader.Reader" parent="Theme.Material3.DayNight.NoActionBar">

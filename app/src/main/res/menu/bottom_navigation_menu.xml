@@ -9,6 +9,10 @@
         android:icon="@drawable/ic_library_books_24"
         android:title="@string/nav_calibre_library" />
     <item
+        android:id="@+id/calibreWebFragment"
+        android:icon="@drawable/ic_home_24"
+        android:title="@string/nav_calibre_web" />
+    <item
         android:id="@+id/settingsFragment"
         android:icon="@drawable/ic_settings_24"
         android:title="@string/nav_settings" />

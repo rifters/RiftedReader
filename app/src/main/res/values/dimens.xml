@@ -3,4 +3,5 @@
     <dimen name="library_selection_stroke">2dp</dimen>
     <dimen name="reader_bookmark_dialog_padding_horizontal">32dp</dimen>
     <dimen name="reader_bookmark_dialog_padding_top">8dp</dimen>
+    <dimen name="calibre_web_sheet_padding">16dp</dimen>
 </resources>
