@@ -583,6 +583,7 @@ class ReaderPageFragment : Fragment() {
         }
 
         observeReaderViewportForSlicing()
+        observeSliceRestoreCorrections()
         syncSharedTypographyConfig(readerViewModel.readerSettings.value)
         
         // Separate content loading based on pagination mode
@@ -936,6 +937,35 @@ class ReaderPageFragment : Fragment() {
                     }
             }
         }
+    }
+
+    private fun observeSliceRestoreCorrections() {
+        launchIfViewAlive("slice_restore_corrections") {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                readerViewModel.sliceRestoreCorrections.collect { correction ->
+                    if (correction.windowIndex != windowIndex) return@collect
+                    if (!isWebViewReady || !isActiveReaderWindow()) return@collect
+                    if (currentInPageIndex != correction.fallbackPageIndex) return@collect
+
+                    val pageIndex = correction.pageIndex.coerceAtLeast(0)
+                    binding.pageWebView.evaluateJavascript(
+                        buildNavigateToPageScript(pageIndex),
+                        null
+                    )
+                    currentInPageIndex = pageIndex
+                }
+            }
+        }
+    }
+
+    private fun buildNavigateToPageScript(pageIndex: Int): String {
+        return """
+            if (window.flexPaginator && window.flexPaginator.isReady()) {
+                window.flexPaginator.navigateToPage($pageIndex);
+            } else if (window.minimalPaginator && window.minimalPaginator.isReady()) {
+                window.minimalPaginator.goToPage($pageIndex, false);
+            }
+        """.trimIndent()
     }
 
     /**

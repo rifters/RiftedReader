@@ -14,13 +14,15 @@ import com.rifters.riftedreader.domain.pagination.WindowIndex
  * @property lastChapter The last chapter index in this window (inclusive)
  * @property windowIndex The unique index of this window
  * @property sliceMetadata Optional metadata from FlexPaginator pre-slicing (null for column-based pagination)
+ * @property isSliceStale Whether cached slice metadata is stale after a typography change
  */
 data class WindowData(
     val html: String,
     val firstChapter: ChapterIndex,
     val lastChapter: ChapterIndex,
     val windowIndex: WindowIndex,
-    val sliceMetadata: SliceMetadata? = null
+    val sliceMetadata: SliceMetadata? = null,
+    val isSliceStale: Boolean = false
 ) {
     /**
      * Get the range of chapter indices contained in this window.
