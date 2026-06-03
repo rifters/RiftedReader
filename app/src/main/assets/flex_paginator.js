@@ -348,8 +348,13 @@
         }
 
         const targetPage = target.closest('.page');
-        const targetChapter = targetPage ? parseInt(targetPage.getAttribute('data-chapter'), 10) : NaN;
-        const targetPageIndex = targetPage ? parseInt(targetPage.getAttribute('data-page'), 10) : NaN;
+        if (!targetPage) {
+            log('WARN', `jumpToAnchor: anchor ${anchorId} is not inside a page`);
+            return false;
+        }
+
+        const targetChapter = parseInt(targetPage.getAttribute('data-chapter'), 10);
+        const targetPageIndex = parseInt(targetPage.getAttribute('data-page'), 10);
         const containingSlice = Number.isInteger(targetPageIndex) ? state.slices[targetPageIndex] : null;
         if (!containingSlice) {
             log('WARN', `jumpToAnchor: no slice found for anchor ${anchorId}`);
@@ -357,7 +362,7 @@
         }
 
         const startChar = getSliceStartChar(containingSlice);
-        const relativeCharOffset = targetPage ? getTextLengthBeforeTarget(targetPage, target) : 0;
+        const relativeCharOffset = getTextLengthBeforeTarget(targetPage, target);
         const targetCharOffset = startChar + relativeCharOffset;
 
         let nearestPageIndex = Number.isInteger(targetPageIndex) ? targetPageIndex : 0;

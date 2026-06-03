@@ -6,11 +6,14 @@ data class AnchorEntry(val id: String, val text: String, val level: Int)
 
 object HeadingAnchorSlugger {
 
+    private val punctuationToRemove = Regex("[`;\\u2014\\u2013()./]")
+
     fun slugify(text: String): String {
         return text
             .lowercase()
-            // Remove punctuation that should not appear in generated URL anchors.
-            .replace(Regex("[`;\\u2014\\u2013()./]"), "")
+            // Remove punctuation specified by the reader TOC anchor contract.
+            // \u2014 is an em dash and \u2013 is an en dash.
+            .replace(punctuationToRemove, "")
             .replace(Regex("\\s+"), "-")
             .replace(Regex("-+"), "-")
             .trim('-')
@@ -19,6 +22,7 @@ object HeadingAnchorSlugger {
     fun injectHeadingIds(html: String): String {
         val document = Jsoup.parseBodyFragment(html)
         document.body().select("h1, h2, h3, h4, h5, h6").forEach { heading ->
+            // Rendered TOC ids must be deterministic, so source ids are intentionally replaced.
             heading.attr("id", slugify(heading.text()))
         }
         return document.body().html()
