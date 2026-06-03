@@ -41,7 +41,7 @@ object HeadingAnchorSlugger {
         return document.select("h1, h2, h3, h4, h5, h6").map { heading ->
             val text = heading.text()
             AnchorEntry(
-                id = uniqueId(slugify(text), idCounts),
+                id = heading.id().ifBlank { uniqueId(slugify(text), idCounts) },
                 text = text,
                 level = heading.tagName().removePrefix("h").toInt()
             )

@@ -50,4 +50,21 @@ class HeadingAnchorSluggerTest {
             anchors
         )
     }
+
+    @Test
+    fun `buildAnchorMap preserves rendered heading ids`() {
+        val headingText = """Phase 3 — Write \flex_paginator.test.js\"""
+        val html = """
+            <h2 id="rendered-id">$headingText</h2>
+        """.trimIndent()
+
+        val anchors = HeadingAnchorSlugger.buildAnchorMap(html)
+
+        assertEquals(
+            listOf(
+                AnchorEntry(id = "rendered-id", text = headingText, level = 2)
+            ),
+            anchors
+        )
+    }
 }
