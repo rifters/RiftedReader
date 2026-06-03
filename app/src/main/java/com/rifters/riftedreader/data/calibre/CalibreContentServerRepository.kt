@@ -104,7 +104,9 @@ class CalibreContentServerRepository(
             ?: synchronized(configLock) {
                 currentConfig
             }
-            ?: throw IllegalStateException("Calibre Content Server config has not been loaded")
+            ?: throw IllegalStateException(
+                "Calibre Content Server config has not been loaded. Call getLibrary() or searchBooks() before accessing generated URLs, or provide a configProvider."
+            )
     }
 
     private fun apiFor(config: CalibreConnectionConfig): CalibreApiService {
@@ -173,7 +175,9 @@ class CalibreContentServerRepository(
         return listOf(requestedFormat, preferredFormat)
             .firstOrNull { it != BookFormat.ANY && it.name in available }
             ?: BookFormat.entries.firstOrNull { it != BookFormat.ANY && it.name in available }
-            ?: throw IllegalStateException("No supported format is available for ${book.title}")
+            ?: throw IllegalStateException(
+                "No supported format is available for \"${book.title}\". Available formats: ${book.formats.joinToString()}"
+            )
     }
 
     private suspend fun <T> runCalibreCall(block: suspend () -> T): Result<T> {
@@ -199,7 +203,10 @@ class CalibreContentServerRepository(
             }
             is SocketTimeoutException -> CalibreNetworkException("Connection timed out", throwable)
             is JsonSyntaxException,
-            is JsonParseException -> CalibreParseException(throwable.localizedMessage ?: "Unable to parse Calibre response", throwable)
+            is JsonParseException -> CalibreParseException(
+                throwable.localizedMessage ?: "Unable to parse Calibre metadata response",
+                throwable,
+            )
             is IOException -> CalibreNetworkException(throwable.localizedMessage ?: "Network error", throwable)
             else -> throwable
         }

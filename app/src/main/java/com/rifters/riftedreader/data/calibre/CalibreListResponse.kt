@@ -31,7 +31,8 @@ class CalibreListResponseDeserializer : JsonDeserializer<CalibreListResponse> {
         typeOfT: Type,
         context: JsonDeserializationContext,
     ): CalibreListResponse {
-        val root = json.asObjectOrNull() ?: throw JsonParseException("Expected Calibre response object")
+        val root = json.asObjectOrNull()
+            ?: throw JsonParseException("Expected JSON object for Calibre response but received: ${json.javaClass.simpleName}")
         val error = root.firstString("err", "error")
         val booksElement = root.firstPresent("result", "data", "metadata") ?: json
         val books = parseBooks(booksElement)
