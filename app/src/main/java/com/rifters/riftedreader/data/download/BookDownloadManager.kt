@@ -128,6 +128,7 @@ class BookDownloadManager(
             }
         }
 
+        // Reuse the library's internal import location so downloaded books survive app restarts.
         private const val IMPORTS_DIRECTORY = "imports"
         private const val MAX_FILENAME_ATTEMPTS = 1_000
         private val UNSAFE_FILENAME_CHARS = Regex("[\\\\/:*?\"<>|]+")
