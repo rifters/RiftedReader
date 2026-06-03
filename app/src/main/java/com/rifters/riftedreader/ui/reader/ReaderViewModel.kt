@@ -602,9 +602,23 @@ class ReaderViewModel(
                         emptyList()
                     } else {
                         val chapterHtml = (0 until pageCount).map { chapterIndex ->
-                            val content = runCatching { parser.getPageContent(bookFile, chapterIndex) }
-                                .getOrDefault(PageContent.EMPTY)
-                            chapterIndex to (content.html ?: wrapPlainTextAsHtml(content.text))
+                            val contentResult = runCatching { parser.getPageContent(bookFile, chapterIndex) }
+                            contentResult.exceptionOrNull()?.let { error ->
+                                AppLogger.e(
+                                    "ReaderViewModel",
+                                    "[PAGINATION_DEBUG] Failed to load chapter $chapterIndex for heading TOC",
+                                    error
+                                )
+                            }
+                            val content = contentResult.getOrDefault(PageContent.EMPTY)
+                            if (content.html.isNullOrBlank() && content.text.isBlank()) {
+                                AppLogger.w(
+                                    "ReaderViewModel",
+                                    "[PAGINATION_DEBUG] Chapter $chapterIndex has no extractable content for heading TOC"
+                                )
+                            }
+                            val html = content.html ?: wrapPlainTextAsHtml(content.text)
+                            chapterIndex to html
                         }
 
                         if (isContinuousMode) {
@@ -633,7 +647,11 @@ class ReaderViewModel(
 
     private fun buildWindowedHeadingToc(chapterHtml: List<Pair<Int, String>>): List<AnchorEntry> {
         val byChapter = chapterHtml.toMap()
-        val windowSize = slidingWindowManager.getWindowSize().coerceAtLeast(1)
+        val windowSize = slidingWindowManager.getWindowSize()
+        if (windowSize <= 0) {
+            AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] Invalid TOC window size: $windowSize")
+            return emptyList()
+        }
         return chapterHtml.indices
             .step(windowSize)
             .flatMap { firstChapter ->

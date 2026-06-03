@@ -1389,8 +1389,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 "ReaderActivity",
                 "TOC anchor jump timed out waiting for WebView readiness; attempting fallback jump: windowIndex=$windowIndex anchorId=$anchorId"
             )
-            (supportFragmentManager.findFragmentByTag(readerFragmentTag(windowIndex)) as? ReaderPageFragment)
-                ?.jumpToAnchor(anchorId)
+            val fallbackFragment = supportFragmentManager.findFragmentByTag(readerFragmentTag(windowIndex)) as? ReaderPageFragment
+            if (fallbackFragment == null) {
+                AppLogger.w(
+                    "ReaderActivity",
+                    "TOC anchor fallback failed: fragment not found for windowIndex=$windowIndex anchorId=$anchorId"
+                )
+            } else {
+                fallbackFragment.jumpToAnchor(anchorId)
+            }
         }
     }
 
