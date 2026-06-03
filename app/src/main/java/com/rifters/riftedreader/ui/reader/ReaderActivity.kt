@@ -1378,7 +1378,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private fun jumpToAnchorWhenReady(windowIndex: Int, anchorId: String) {
         lifecycleScope.launch {
             repeat(TOC_JUMP_MAX_READY_ATTEMPTS) {
-                val fragment = supportFragmentManager.findFragmentByTag("w$windowIndex") as? ReaderPageFragment
+                val fragment = supportFragmentManager.findFragmentByTag(readerFragmentTag(windowIndex)) as? ReaderPageFragment
                 if (fragment != null && fragment.isWebViewReady()) {
                     fragment.jumpToAnchor(anchorId)
                     return@launch
@@ -1389,10 +1389,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 "ReaderActivity",
                 "TOC anchor jump timed out waiting for WebView readiness; attempting fallback jump: windowIndex=$windowIndex anchorId=$anchorId"
             )
-            (supportFragmentManager.findFragmentByTag("w$windowIndex") as? ReaderPageFragment)
+            (supportFragmentManager.findFragmentByTag(readerFragmentTag(windowIndex)) as? ReaderPageFragment)
                 ?.jumpToAnchor(anchorId)
         }
     }
+
+    private fun readerFragmentTag(windowIndex: Int): String = "w$windowIndex"
 
     private fun isDebugBuild(): Boolean {
         return (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0

@@ -647,6 +647,7 @@ class ReaderViewModel(
                 }
                 HeadingAnchorSlugger.buildAnchorMap(windowHtml)
                     .filter { it.text.isNotBlank() }
+                    .map { it.copy(chapterIndex = it.chapterIndex ?: firstChapter) }
             }
     }
 
