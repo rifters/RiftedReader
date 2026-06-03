@@ -36,6 +36,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
     private val readerPreferences
         get() = preferencesOwner.readerPreferences
     private var syncingSettings = false
+    private var syncedReaderMode = ReaderMode.PAGINATED
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -71,6 +72,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
                     binding.lineHeightSlider.value = sliderValue
                 }
                 selectThemeChip(settings.theme)
+                syncedReaderMode = settings.mode
                 selectModeChip(settings.mode)
                 selectPaginationChip(settings.paginationMode)
                 binding.textSizeValue.text = getString(R.string.reader_text_size_value, settings.textSizeSp.roundToInt())
@@ -172,7 +174,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
             val id = checkedIds.firstOrNull() ?: return@setOnCheckedStateChangeListener
             val chip = group.findViewById<Chip>(id)
             val mode = chip?.tag as? ReaderMode ?: return@setOnCheckedStateChangeListener
-            if (readerViewModel.readerSettings.value.mode == mode) return@setOnCheckedStateChangeListener
+            if (syncedReaderMode == mode) return@setOnCheckedStateChangeListener
             com.rifters.riftedreader.util.AppLogger.userAction("ReaderTextSettingsBottomSheet", "Reader mode changed to $mode", "ui/settings/change")
             readerViewModel.toggleReaderMode()
         }

@@ -138,6 +138,7 @@ Page %4$d/%5$d (%6$d%%)</string>
     <string name="reader_experimental_page_layout_summary">Uses FlexPaginator for more accurate page counts. May affect performance on long chapters.</string>
     <string name="reader_flex_paginator_confirm_message">Switching pagination engine will reload the current chapter. Continue?</string>
     <string name="reader_beta_badge">BETA</string>
+    <string name="reader_beta_badge_content_description">Beta feature indicator</string>
     <string name="reader_reading_layout_label">Reading layout</string>
     <string name="reader_reading_layout_pages">Pages</string>
     <string name="reader_reading_layout_scroll">Scroll</string>
