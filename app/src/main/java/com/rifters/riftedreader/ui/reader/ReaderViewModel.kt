@@ -783,7 +783,7 @@ class ReaderViewModel(
                 
                 // Verify invariant
                 paginationModeGuard.assertWindowCountInvariant(
-                    slidingWindowPaginator.getWindowCount(),
+                    slidingWindowPaginator.windowCount,
                     _windowCount.value
                 )
                 
@@ -858,7 +858,7 @@ class ReaderViewModel(
         val paginator = continuousPaginator ?: return
         if (totalChapters <= 0) return
         
-        val totalWindows = slidingWindowPaginator.getWindowCount()
+        val totalWindows = slidingWindowPaginator.windowCount
         // Pre-wrap up to 5 windows (0-4) or fewer if book has fewer windows
         val windowsToPreWrap = kotlin.math.min(5, totalWindows)
         
@@ -2121,9 +2121,9 @@ class ReaderViewModel(
     fun recomputeWindowStructure(totalChapters: Int, adapter: RecyclerView.Adapter<*>) {
         paginationModeGuard.beginWindowBuild()
         try {
-            val previousWindowCount = slidingWindowPaginator.getWindowCount()
+            val previousWindowCount = slidingWindowPaginator.windowCount
             slidingWindowPaginator.recomputeWindows(totalChapters)
-            val newWindowCount = slidingWindowPaginator.getWindowCount()
+            val newWindowCount = slidingWindowPaginator.windowCount
             
             AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] rebuildSlidingWindows: " +
                 "totalChapters=$totalChapters, " +
@@ -2136,7 +2136,7 @@ class ReaderViewModel(
             val expectedWindowCount = if (totalChapters == 0) 0 else {
                 kotlin.math.ceil(totalChapters.toDouble() / chaptersPerWindow).toInt()
             }
-            val actualWindowCount = slidingWindowPaginator.getWindowCount()
+            val actualWindowCount = slidingWindowPaginator.windowCount
             if (actualWindowCount != expectedWindowCount) {
                 AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] INVARIANT_VIOLATION: " +
                     "windowCount=$actualWindowCount != expected=$expectedWindowCount " +

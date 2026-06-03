@@ -1,6 +1,7 @@
 package com.rifters.riftedreader.domain.pagination
 
 import com.rifters.riftedreader.data.preferences.ChapterVisibilitySettings
+import com.rifters.riftedreader.pagination.SlidingWindowPaginator
 import com.rifters.riftedreader.util.AppLogger
 
 /**

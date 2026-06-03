@@ -36,7 +36,7 @@ class PaginationModeGuard(
     
     // State tracking
     @Volatile
-    private var isBuilding: Boolean = false
+    private var _isBuilding: Boolean = false
     
     @Volatile
     private var buildStartTimeMs: Long = 0L
@@ -47,6 +47,9 @@ class PaginationModeGuard(
     // Build counter for nested builds tracking
     @Volatile
     private var buildNestingLevel: Int = 0
+
+    val isBuilding: Boolean
+        get() = _isBuilding
     
     /**
      * Begin a window building operation.
@@ -62,13 +65,13 @@ class PaginationModeGuard(
         synchronized(this) {
             buildNestingLevel++
             
-            if (isBuilding) {
+            if (_isBuilding) {
                 AppLogger.w(TAG, "[PAGINATION_DEBUG] Window build NESTED (level=$buildNestingLevel) - " +
                     "previous build in progress for ${System.currentTimeMillis() - buildStartTimeMs}ms")
                 return false
             }
             
-            isBuilding = true
+            _isBuilding = true
             buildStartTimeMs = System.currentTimeMillis()
             modeAtBuildStart = paginationModeLiveData?.value
             
@@ -94,8 +97,10 @@ class PaginationModeGuard(
         synchronized(this) {
             buildNestingLevel--
             
-            if (!isBuilding) {
-                AppLogger.w(TAG, "[PAGINATION_DEBUG] endWindowBuild called but no build in progress (nestingLevel=$buildNestingLevel)")
+            if (buildNestingLevel < 0) {
+                val invalidNestingLevel = buildNestingLevel
+                buildNestingLevel = 0
+                AppLogger.w(TAG, "[PAGINATION_DEBUG] endWindowBuild called but no build in progress (nestingLevel=$invalidNestingLevel)")
                 return true
             }
             
@@ -116,11 +121,13 @@ class PaginationModeGuard(
                     "modeStable=true")
             }
             
-            isBuilding = false
-            buildStartTimeMs = 0L
-            modeAtBuildStart = null
+            _isBuilding = buildNestingLevel > 0
+            if (!_isBuilding) {
+                buildStartTimeMs = 0L
+                modeAtBuildStart = null
+            }
             
-            return modeStable
+            return modeStable && buildNestingLevel == 0
         }
     }
     
@@ -149,6 +156,28 @@ class PaginationModeGuard(
         
         return matches
     }
+
+    fun canChangePaginationMode(requestedMode: PaginationMode): Boolean {
+        val building = _isBuilding
+        if (building) {
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] canChangePaginationMode: BLOCKED - " +
+                "window build in progress, requested=$requestedMode, refCount=${buildNestingLevel}")
+            return false
+        }
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] canChangePaginationMode: ALLOWED - requested=$requestedMode")
+        return true
+    }
+
+    fun tryChangePaginationMode(requestedMode: PaginationMode, onChange: () -> Unit): Boolean {
+        if (!canChangePaginationMode(requestedMode)) {
+            AppLogger.w(TAG, "[PAGINATION_DEBUG] tryChangePaginationMode: REJECTED - " +
+                "cannot change to $requestedMode while building")
+            return false
+        }
+        AppLogger.d(TAG, "[PAGINATION_DEBUG] tryChangePaginationMode: ALLOWED - changing to $requestedMode")
+        onChange()
+        return true
+    }
     
     /**
      * Assert that the window count invariant holds.
@@ -161,7 +190,7 @@ class PaginationModeGuard(
         if (expectedWindowCount != actualWindowCount) {
             val message = "[PAGINATION_DEBUG] WINDOW_COUNT_INVARIANT_VIOLATED: " +
                     "expected=$expectedWindowCount, actual=$actualWindowCount, " +
-                    "isBuilding=$isBuilding, mode=${paginationModeLiveData?.value}"
+                    "isBuilding=$_isBuilding, mode=${paginationModeLiveData?.value}"
             AppLogger.e(TAG, message)
             
             // Note: This logs the error for debugging but does not throw to avoid
@@ -179,9 +208,22 @@ class PaginationModeGuard(
      * @return Debug state string for logging
      */
     fun getDebugState(): String {
-        return "PaginationModeGuard[isBuilding=$isBuilding, " +
+        return debugState()
+    }
+
+    fun debugState(): String {
+        return "PaginationModeGuard[isBuilding=$_isBuilding, " +
             "nestingLevel=$buildNestingLevel, " +
             "mode=${paginationModeLiveData?.value}, " +
-            "buildDurationMs=${if (isBuilding) System.currentTimeMillis() - buildStartTimeMs else 0}]"
+            "buildDurationMs=${if (_isBuilding) System.currentTimeMillis() - buildStartTimeMs else 0}]"
+    }
+
+    inline fun <T> withWindowBuild(block: () -> T): T {
+        beginWindowBuild()
+        try {
+            return block()
+        } finally {
+            endWindowBuild()
+        }
     }
 }

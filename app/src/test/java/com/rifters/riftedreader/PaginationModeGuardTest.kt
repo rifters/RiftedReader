@@ -1,7 +1,7 @@
 package com.rifters.riftedreader
 
 import com.rifters.riftedreader.domain.pagination.PaginationMode
-import com.rifters.riftedreader.domain.pagination.PaginationModeGuard
+import com.rifters.riftedreader.pagination.PaginationModeGuard
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
