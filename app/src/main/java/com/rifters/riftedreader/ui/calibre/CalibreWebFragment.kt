@@ -93,6 +93,7 @@ class CalibreWebFragment : Fragment() {
             }
         }
         webView.webViewClient = DownloadInterceptWebViewClient(
+            mainHandler = mainHandler,
             onDownload = ::startDownload,
             onPageStarted = {
                 binding.pageProgress.isVisible = true
@@ -306,6 +307,7 @@ class CalibreWebFragment : Fragment() {
 }
 
 private class DownloadInterceptWebViewClient(
+    private val mainHandler: Handler,
     private val onDownload: (WebDownloadRequest) -> Unit,
     private val onPageStarted: () -> Unit,
     private val onPageFinished: () -> Unit,
@@ -325,7 +327,7 @@ private class DownloadInterceptWebViewClient(
             filename = request.url.downloadFilename(),
             headers = headers,
         )
-        Handler(Looper.getMainLooper()).post { onDownload(downloadRequest) }
+        mainHandler.post { onDownload(downloadRequest) }
         return WebResourceResponse(
             "text/plain",
             "utf-8",

@@ -155,7 +155,7 @@
                     android:layout_gravity="top|end"
                     android:background="@drawable/download_badge_background"
                     android:gravity="center"
-                    android:textColor="@android:color/white"
+                    android:textColor="?attr/colorOnError"
                     android:textSize="12sp"
                     android:visibility="gone"
                     tools:text="2"
