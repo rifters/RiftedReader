@@ -27,9 +27,6 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
     private var _binding: DialogReaderTextSettingsBinding? = null
     private val binding get() = _binding!!
     private lateinit var preferencesOwner: ReaderPreferencesOwner
-    private val readerPreferences by lazy {
-        preferencesOwner.readerPreferences
-    }
 
     private val settingsViewModel: ReaderSettingsViewModel by activityViewModels {
         ReaderSettingsViewModel.Factory(preferencesOwner.readerPreferences)
@@ -56,6 +53,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        syncedReaderMode = preferencesOwner.readerPreferences.settings.value.mode
         setupFlexPaginatorSwitch()
         setupTextSizeSlider()
         setupLineHeightSlider()
@@ -100,7 +98,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
                     "Experimental page layout disabled",
                     "ui/settings/change"
                 )
-                readerPreferences.updateSettings { current -> current.copy(flexPaginatorEnabled = false) }
+                preferencesOwner.readerPreferences.updateSettings { current -> current.copy(flexPaginatorEnabled = false) }
             }
         }
     }
@@ -114,7 +112,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
                     "Experimental page layout enabled",
                     "ui/settings/change"
                 )
-                readerPreferences.updateSettings { current -> current.copy(flexPaginatorEnabled = true) }
+                preferencesOwner.readerPreferences.updateSettings { current -> current.copy(flexPaginatorEnabled = true) }
             }
             .setNegativeButton(android.R.string.cancel) { _, _ ->
                 revertFlexPaginatorSwitch()
@@ -128,7 +126,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
     private fun revertFlexPaginatorSwitch() {
         syncingSettings = true
         try {
-            binding.flexPaginatorSwitch.isChecked = readerPreferences.settings.value.flexPaginatorEnabled
+            binding.flexPaginatorSwitch.isChecked = preferencesOwner.readerPreferences.settings.value.flexPaginatorEnabled
         } finally {
             syncingSettings = false
         }

@@ -45,7 +45,6 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:contentDescription="@string/reader_experimental_page_layout_title_beta"
                     android:text="@string/reader_experimental_page_layout_title"
                     android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
 
