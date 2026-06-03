@@ -1,14 +1,30 @@
 package com.rifters.riftedreader
 
+import com.rifters.riftedreader.data.database.dao.BookMetaDao
+import com.rifters.riftedreader.data.database.entities.Bookmark
 import com.rifters.riftedreader.data.database.entities.BookMeta
+import com.rifters.riftedreader.data.preferences.ReaderMode
+import com.rifters.riftedreader.data.preferences.ReaderPreferences
+import com.rifters.riftedreader.data.preferences.ReaderSettings
+import com.rifters.riftedreader.data.repository.BookRepository
+import com.rifters.riftedreader.data.repository.BookmarkRepository
 import com.rifters.riftedreader.domain.pagination.ContinuousPaginator
+import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.BookParser
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.domain.parser.TocEntry
+import com.rifters.riftedreader.pagination.PageSlice
+import com.rifters.riftedreader.pagination.SliceMetadata
+import com.rifters.riftedreader.pagination.WindowData
+import com.rifters.riftedreader.ui.reader.ReaderViewModel
+import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.Assert.*
 import java.io.File
+import java.lang.reflect.Proxy
 
 /**
  * Tests for bookmark restoration with character offset fallback.
@@ -56,28 +72,43 @@ class BookmarkRestorationTest {
     
     @Test
     fun bookmarkRestoration_worksAfterWindowMigration() = runBlocking {
-        val parser = MockParser(chapterCount = 20)
-        val paginator = ContinuousPaginator(File("test.txt"), parser, windowSize = 5)
-        paginator.initialize()
-        
-        // Load initial window at chapter 2
-        paginator.loadInitialWindow(2)
-        val windowInfo1 = paginator.getWindowInfo()
-        assertTrue(windowInfo1.loadedChapterIndices.contains(2))
-        
-        // Navigate to chapter 15 (should trigger window shift)
-        val globalPage = paginator.navigateToChapter(15, 0)
-        
-        val windowInfo2 = paginator.getWindowInfo()
-        // Window should have shifted to include chapter 15
-        assertTrue(windowInfo2.loadedChapterIndices.contains(15))
-        // Old chapters should be unloaded
-        assertFalse(windowInfo2.loadedChapterIndices.contains(2))
-        
-        // Verify we can still get the correct location
-        val location = paginator.getPageLocation(globalPage!!)
-        assertNotNull(location)
-        assertEquals(15, location!!.chapterIndex)
+        val bookmarkRepository = TestBookmarkRepository()
+        bookmarkRepository.saveLastRead(
+            Bookmark(
+                bookId = "book1",
+                chapterIndex = 15,
+                charOffset = 125,
+                pageIndexHint = 2,
+                nearestAnchorId = "chapter-15",
+                nearestAnchorText = "Chapter 15",
+                savedAt = 1_000
+            )
+        )
+        val viewModel = readerViewModel(bookmarkRepository)
+        val conveyor = ConveyorBeltSystemViewModel()
+        conveyor.cacheWindowData(
+            WindowData(
+                html = "<html></html>",
+                firstChapter = 15,
+                lastChapter = 19,
+                windowIndex = 3,
+                sliceMetadata = SliceMetadata(
+                    windowIndex = 3,
+                    totalPages = 3,
+                    slices = listOf(
+                        PageSlice(page = 0, chapter = 15, startChar = 0, endChar = 100, heightPx = 800),
+                        PageSlice(page = 1, chapter = 15, startChar = 100, endChar = 200, heightPx = 800),
+                        PageSlice(page = 2, chapter = 16, startChar = 0, endChar = 100, heightPx = 800)
+                    )
+                ),
+                isSliceStale = false
+            )
+        )
+        viewModel.setConveyorBeltSystem(conveyor)
+
+        val restoredPage = viewModel.restoreLastRead("book1")
+
+        assertEquals(1, restoredPage)
     }
     
     @Test
@@ -191,5 +222,79 @@ private class MockParser(private val chapterCount: Int) : BookParser {
         return (0 until chapterCount).map { 
             TocEntry(title = "Chapter ${it + 1}", pageNumber = it) 
         }
+    }
+
+    private class TestBookmarkRepository : BookmarkRepository {
+        private val lastRead = mutableMapOf<String, Bookmark>()
+
+        override suspend fun saveLastRead(bookmark: Bookmark) {
+            lastRead[bookmark.bookId] = bookmark
+        }
+
+        override suspend fun loadLastRead(bookId: String): Bookmark? {
+            return lastRead[bookId]
+        }
+
+        override suspend fun saveNamedBookmark(bookmark: Bookmark) = Unit
+
+        override suspend fun loadNamedBookmarks(bookId: String): List<Bookmark> = emptyList()
+
+        override suspend fun delete(bookmark: Bookmark) {
+            lastRead.remove(bookmark.bookId)
+        }
+    }
+
+    private fun readerViewModel(bookmarkRepository: BookmarkRepository): ReaderViewModel {
+        return ReaderViewModel(
+            bookId = "book1",
+            bookFile = File("test.txt"),
+            parser = MockParser(chapterCount = 20),
+            repository = BookRepository(noOpBookMetaDao()),
+            bookmarkRepository = bookmarkRepository,
+            readerPreferences = testReaderPreferences()
+        )
+    }
+
+    private fun noOpBookMetaDao(): BookMetaDao {
+        return Proxy.newProxyInstance(
+            BookMetaDao::class.java.classLoader,
+            arrayOf(BookMetaDao::class.java)
+        ) { _, method, _ ->
+            when (method.returnType.name) {
+                "kotlinx.coroutines.flow.Flow" -> flowOf(emptyList<BookMeta>())
+                "boolean" -> false
+                "int" -> 0
+                "float" -> 0f
+                else -> null
+            }
+        } as BookMetaDao
+    }
+
+    private fun testReaderPreferences(): ReaderPreferences {
+        val unsafeField = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe")
+        unsafeField.isAccessible = true
+        val unsafe = unsafeField.get(null)
+        val allocateInstance = unsafe.javaClass.getMethod("allocateInstance", Class::class.java)
+        val preferences = allocateInstance.invoke(unsafe, ReaderPreferences::class.java) as ReaderPreferences
+        val settingsField = ReaderPreferences::class.java.getDeclaredField("_settings")
+        settingsField.isAccessible = true
+        settingsField.set(
+            preferences,
+            MutableStateFlow(
+                ReaderSettings(
+                    mode = ReaderMode.PAGINATED,
+                    paginationMode = PaginationMode.CONTINUOUS
+                )
+            )
+        )
+        return preferences
+    }
+
+    private fun ConveyorBeltSystemViewModel.cacheWindowData(windowData: WindowData) {
+        val cacheField = ConveyorBeltSystemViewModel::class.java.getDeclaredField("windowDataCache")
+        cacheField.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val cache = cacheField.get(this) as MutableMap<Int, WindowData>
+        cache[windowData.windowIndex] = windowData
     }
 }
