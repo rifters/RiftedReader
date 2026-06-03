@@ -50,7 +50,10 @@ class MainActivity : AppCompatActivity() {
                     binding.bottomNavigation.menu.findItem(R.id.calibreLibraryFragment)?.isVisible = shouldShowCalibreNavItem
                     if (!shouldShowCalibreNavItem) {
                         if (navController.currentDestination?.id == R.id.calibreLibraryFragment) {
-                            navController.navigate(R.id.libraryFragment)
+                            val returnedToLibrary = navController.popBackStack(R.id.libraryFragment, false)
+                            if (!returnedToLibrary) {
+                                navController.navigate(R.id.libraryFragment)
+                            }
                         }
                     }
                 }
