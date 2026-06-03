@@ -10,9 +10,14 @@ import com.rifters.riftedreader.data.calibre.CalibreConnectionConfig
 import com.rifters.riftedreader.data.calibre.CalibreConnectionRepository
 import com.rifters.riftedreader.data.calibre.CalibreContentServerRepository
 import com.rifters.riftedreader.data.calibre.CalibreException
+import com.rifters.riftedreader.data.download.BookDownloadManager
+import com.rifters.riftedreader.data.download.DuplicateBookDownloadException
+import com.rifters.riftedreader.data.download.UnsupportedBookDownloadException
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
@@ -25,6 +30,7 @@ import kotlinx.coroutines.launch
 class CalibreLibraryViewModel(
     private val contentServerRepository: CalibreContentServerRepository,
     private val connectionRepository: CalibreConnectionRepository,
+    private val bookDownloadManager: BookDownloadManager,
 ) : ViewModel() {
 
     private val _libraryState = MutableStateFlow<CalibreLibraryState>(CalibreLibraryState.Idle)
@@ -32,6 +38,9 @@ class CalibreLibraryViewModel(
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _downloadEvents = MutableSharedFlow<CalibreDownloadEvent>()
+    val downloadEvents: SharedFlow<CalibreDownloadEvent> = _downloadEvents
 
     val isContentServerEnabled: StateFlow<Boolean> = connectionRepository.configFlow()
         .map { it.contentServerEnabled }
@@ -67,9 +76,53 @@ class CalibreLibraryViewModel(
     }
 
     fun downloadBook(book: CalibreBook, format: BookFormat) {
-        val message = "download requested: ${book.title} $format"
-        Log.i(TAG, message)
-        AppLogger.event(TAG, message, "ui/calibre/download")
+        viewModelScope.launch {
+            val message = "download requested: ${book.title} $format"
+            Log.i(TAG, message)
+            AppLogger.event(TAG, message, "ui/calibre/download")
+
+            val request = buildDownloadRequest(book, format).getOrElse {
+                _downloadEvents.emit(CalibreDownloadEvent.DownloadFailed)
+                return@launch
+            }
+
+            bookDownloadManager.downloadFromUrl(
+                url = request.url,
+                filename = request.filename,
+                headers = request.headers,
+            ).fold(
+                onSuccess = { metadata ->
+                    _downloadEvents.emit(CalibreDownloadEvent.DownloadSuccess(metadata.title))
+                },
+                onFailure = { throwable ->
+                    when (throwable) {
+                        is UnsupportedBookDownloadException -> {
+                            _downloadEvents.emit(CalibreDownloadEvent.DownloadUnsupported(book.title))
+                        }
+                        is DuplicateBookDownloadException -> {
+                            _downloadEvents.emit(
+                                CalibreDownloadEvent.DownloadDuplicate(
+                                    throwable.existingBook.title
+                                )
+                            )
+                        }
+                        else -> {
+                            _downloadEvents.emit(CalibreDownloadEvent.DownloadFailed)
+                        }
+                    }
+                }
+            )
+        }
+    }
+
+    private fun buildDownloadRequest(book: CalibreBook, format: BookFormat): Result<DownloadRequest> {
+        return runCatching {
+            DownloadRequest(
+                url = contentServerRepository.getDownloadUrl(book, format),
+                filename = contentServerRepository.getDownloadFilename(book, format),
+                headers = contentServerRepository.getDownloadHeaders(),
+            )
+        }
     }
 
     private fun observeConfig() {
@@ -176,4 +229,17 @@ sealed class CalibreLibraryState {
 fun supportedFormats(book: CalibreBook): List<BookFormat> {
     val available = book.formats.map { it.uppercase() }.toSet()
     return listOf(BookFormat.EPUB, BookFormat.MOBI, BookFormat.PDF).filter { it.name in available }
+}
+
+private data class DownloadRequest(
+    val url: String,
+    val filename: String,
+    val headers: Map<String, String>,
+)
+
+sealed interface CalibreDownloadEvent {
+    data class DownloadSuccess(val title: String) : CalibreDownloadEvent
+    data class DownloadUnsupported(val title: String) : CalibreDownloadEvent
+    data class DownloadDuplicate(val title: String) : CalibreDownloadEvent
+    data object DownloadFailed : CalibreDownloadEvent
 }
