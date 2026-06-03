@@ -79,6 +79,14 @@
         try {
             log('INIT', 'Starting flex paginator initialization');
 
+            const invalidGlobals = getInvalidRequiredGlobals();
+            if (invalidGlobals.length > 0) {
+                const error = `Missing or invalid FLEX_PAGINATOR globals: ${invalidGlobals.join(', ')}`;
+                log('ERROR', error);
+                callAndroidBridge('onSlicingError', error);
+                return;
+            }
+
             // Apply injected viewport + typography config when provided.
             const injectedHeight = (typeof window.FLEX_VIEWPORT_HEIGHT === 'number') ? window.FLEX_VIEWPORT_HEIGHT : null;
             if (injectedHeight && injectedHeight > 0) {
@@ -182,8 +190,8 @@
         let currentPageIndex = 0;
         let accumulatedHeight = 0;
         let currentChapter = null;
-        let chapterStartChar = 0;
-        let currentCharOffset = 0;
+        let sliceStartChar = 0;
+        let currentChapterCharOffset = 0;
         
         // Clear document body
         document.body.innerHTML = '';
@@ -209,8 +217,8 @@
                 const slice = {
                     page: currentPageIndex - 1,
                     chapter: currentChapter,
-                    startChar: chapterStartChar,
-                    endChar: currentCharOffset,
+                    startChar: sliceStartChar,
+                    endChar: currentChapterCharOffset,
                     heightPx: accumulatedHeight
                 };
                 state.slices.push(slice);
@@ -234,7 +242,7 @@
             flexContainer.appendChild(currentPage);
             
             currentChapter = chapterIndex;
-            chapterStartChar = currentCharOffset;
+            sliceStartChar = currentChapterCharOffset;
             accumulatedHeight = 0;
             currentPageIndex++;
         }
@@ -248,27 +256,16 @@
             
             // Force hard break: always start a new page at section boundary
             // (unless this is the very first section and we haven't created a page yet)
-            if (currentPage !== null) {
-                // Finalize current page before starting new chapter
-                const slice = {
-                    page: currentPageIndex - 1,
-                    chapter: currentChapter,
-                    startChar: chapterStartChar,
-                    endChar: currentCharOffset,
-                    heightPx: accumulatedHeight
-                };
-                state.slices.push(slice);
-                log('SLICE', `Page ${slice.page}: chapter=${slice.chapter}, chars=${slice.startChar}-${slice.endChar} (end of chapter)`);
-            }
-            
             // Start new page for this chapter
             startNewPage(chapterIndex);
-            currentCharOffset = 0; // Reset char offset for new chapter
+            // PageSlice start/end offsets are chapter-local; reset at chapter boundaries.
+            sliceStartChar = 0;
+            currentChapterCharOffset = 0;
             
             // Walk nodes in this section
             walkNodes(section, currentPage, (height, textLength) => {
                 accumulatedHeight += height;
-                currentCharOffset += textLength;
+                currentChapterCharOffset += textLength;
                 
                 // Check if we need to start a new page
                 if (accumulatedHeight >= state.viewportHeight) {
@@ -282,8 +279,8 @@
             const slice = {
                 page: currentPageIndex - 1,
                 chapter: currentChapter,
-                startChar: chapterStartChar,
-                endChar: currentCharOffset,
+                startChar: sliceStartChar,
+                endChar: currentChapterCharOffset,
                 heightPx: accumulatedHeight
             };
             state.slices.push(slice);
@@ -638,6 +635,19 @@
         } catch (e) {
             console.error(`[FLEX] Bridge call failed: ${e.message}`);
         }
+    }
+
+    function getInvalidRequiredGlobals() {
+        const validators = {
+            FLEX_WINDOW_INDEX: value => Number.isInteger(value) && value >= 0,
+            FLEX_VIEWPORT_WIDTH: value => typeof value === 'number' && value >= MIN_VIEWPORT_WIDTH,
+            FLEX_VIEWPORT_HEIGHT: value => typeof value === 'number' && value > 0,
+            FLEX_FONT_SIZE_PX: value => typeof value === 'number' && value > 0,
+            FLEX_LINE_HEIGHT: value => typeof value === 'number' && value > 0,
+            FLEX_PAGE_PADDING_PX: value => typeof value === 'number' && value >= 0
+        };
+
+        return Object.keys(validators).filter(name => !validators[name](window[name]));
     }
     
     /**
