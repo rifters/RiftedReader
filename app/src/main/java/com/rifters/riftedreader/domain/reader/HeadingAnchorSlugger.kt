@@ -5,10 +5,13 @@ import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 
-data class AnchorEntry(val id: String, val text: String, val level: Int) {
-    var charOffset: Int = 0
-    var chapterIndex: Int? = null
-}
+data class AnchorEntry(
+    val id: String,
+    val text: String,
+    val level: Int,
+    val charOffset: Int = 0,
+    val chapterIndex: Int? = null
+)
 
 object HeadingAnchorSlugger {
 
@@ -55,11 +58,10 @@ object HeadingAnchorSlugger {
             AnchorEntry(
                 id = heading.id().ifBlank { uniqueId(slugify(text), idCounts) },
                 text = text,
-                level = heading.tagName().removePrefix("h").toInt()
-            ).apply {
-                charOffset = textOffsetBefore(offsetRoot, heading)
+                level = heading.tagName().removePrefix("h").toInt(),
+                charOffset = textOffsetBefore(offsetRoot, heading),
                 chapterIndex = chapterSection?.attr("data-chapter")?.toIntOrNull()
-            }
+            )
         }
     }
 

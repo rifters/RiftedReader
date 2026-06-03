@@ -62,6 +62,9 @@ class ReaderViewModel(
     private val bookmarkRepository: BookmarkRepository,
     private val readerPreferences: ReaderPreferences
 ) : ViewModel() {
+    private companion object {
+        const val LAST_READ_DEBOUNCE_MS = 2_000L
+    }
 
     // Expose reader settings as StateFlow for UI consumption
     val readerSettings: StateFlow<ReaderSettings>
@@ -387,11 +390,11 @@ class ReaderViewModel(
         observeVisibilitySettingsChanges()
     }
 
-    @OptIn(FlowPreview::class)
+    @OptIn(FlowPreview::class) // Flow debounce keeps disk writes cancellable with viewModelScope.
     private fun observePageChangedEvents() {
         viewModelScope.launch(Dispatchers.IO) {
             pageChangedEvents
-                .debounce(2_000)
+                .debounce(LAST_READ_DEBOUNCE_MS)
                 .collect { pending ->
                     bookmarkRepository.saveLastRead(
                         createBookmark(

@@ -21,7 +21,7 @@ class BookmarkManager(
     ): Bookmark {
         val previewText = BookmarkPreviewExtractor.extractPreview(pageContent, characterOffset)
             ?: BookmarkPreviewExtractor.extractPreviewFromStart(pageContent)
-            ?: chapterTitle
+            ?: "No preview available"
 
         val bookmark = Bookmark(
             bookId = bookId,

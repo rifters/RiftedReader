@@ -6,6 +6,12 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.UUID
 
+/**
+ * Stable reader position saved for a book.
+ *
+ * charOffset is the restore source of truth when slice metadata is available;
+ * pageIndexHint is only a fallback for legacy or not-yet-sliced content.
+ */
 data class Bookmark(
     val bookId: String,
     val chapterIndex: Int,
