@@ -444,7 +444,8 @@
             return { found: false, length };
         }
 
-        return walk(root).length;
+        const result = walk(root);
+        return result.found ? result.length : 0;
     }
 
     function isReady() {

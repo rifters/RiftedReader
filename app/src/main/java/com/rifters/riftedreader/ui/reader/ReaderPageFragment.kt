@@ -1658,8 +1658,8 @@ class ReaderPageFragment : Fragment() {
             .replace("<", "\\u003C")
             .replace(">", "\\u003E")
             .replace("&", "\\u0026")
-            .replace("\u2028", "\\u2028")
-            .replace("\u2029", "\\u2029")
+            .replace("\u2028", "\\u" + "2028")
+            .replace("\u2029", "\\u" + "2029")
 
     private fun syncSharedTypographyConfig(settings: com.rifters.riftedreader.data.preferences.ReaderSettings) {
         FlexSlicingConfig.setDefaultTypography(
