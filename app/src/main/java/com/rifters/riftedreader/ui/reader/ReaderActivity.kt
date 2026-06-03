@@ -56,6 +56,13 @@ import com.rifters.riftedreader.ui.reader.conveyor.ConveyorPhase
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
 import com.rifters.riftedreader.util.AppLogger
 import com.rifters.riftedreader.util.BufferLogger
+import com.rifters.riftedreader.util.ReaderConstants.CONVEYOR_READY_TIMEOUT_MS
+import com.rifters.riftedreader.util.ReaderConstants.MIN_HORIZONTAL_FLING_DISTANCE_PX
+import com.rifters.riftedreader.util.ReaderConstants.MIN_HORIZONTAL_FLING_VELOCITY_PX_PER_SEC
+import com.rifters.riftedreader.util.ReaderConstants.PENDING_NAVIGATION_POLL_MS
+import com.rifters.riftedreader.util.ReaderConstants.PENDING_NAVIGATION_TIMEOUT_MS
+import com.rifters.riftedreader.util.ReaderConstants.TOC_JUMP_MAX_READY_ATTEMPTS
+import com.rifters.riftedreader.util.ReaderConstants.TOC_JUMP_READY_CHECK_DELAY_MS
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -66,13 +73,6 @@ import java.io.File
 import com.rifters.riftedreader.BuildConfig
 
 class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkListFragment.Listener {
-
-    private companion object {
-        // 40 attempts × 50ms gives WebView up to 2 seconds to finish loading after TOC navigation.
-        const val TOC_JUMP_MAX_READY_ATTEMPTS = 40
-        const val TOC_JUMP_READY_CHECK_DELAY_MS = 50L
-    }
-    
     private lateinit var binding: ActivityReaderBinding
     private lateinit var viewModel: ReaderViewModel
     private lateinit var conveyorBeltSystem: ConveyorBeltSystemViewModel
@@ -130,8 +130,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
         )
 
         pendingPagedNavJob = lifecycleScope.launch {
-            val deadlineMs = 1200L
-            val pollMs = 50L
+            val deadlineMs = PENDING_NAVIGATION_TIMEOUT_MS
+            val pollMs = PENDING_NAVIGATION_POLL_MS
             val startMs = System.currentTimeMillis()
 
             while (System.currentTimeMillis() - startMs < deadlineMs) {
@@ -309,8 +309,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                 val absDy = kotlin.math.abs(dy)
 
                 // Basic horizontal fling thresholds
-                val minDistancePx = 64f
-                val minVelocityPxPerSec = 800f
+                val minDistancePx = MIN_HORIZONTAL_FLING_DISTANCE_PX
+                val minVelocityPxPerSec = MIN_HORIZONTAL_FLING_VELOCITY_PX_PER_SEC
                 if (absDx < minDistancePx || absDx < absDy || kotlin.math.abs(velocityX) < minVelocityPxPerSec) {
                     return false
                 }
@@ -738,7 +738,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                     AppLogger.d("ReaderActivity", "[CONVEYOR_ACTIVE] Waiting for conveyor readiness before initial sync")
                     
                     // Timeout after 10 seconds to avoid hanging indefinitely
-                    withTimeout(10_000L) {
+                    withTimeout(CONVEYOR_READY_TIMEOUT_MS) {
                         // Wait for both windowCount > 0 AND isInitialized to be true
                         viewModel.conveyorBeltSystem!!.windowCount.first { it > 0 }
                         viewModel.conveyorBeltSystem!!.isInitialized.first { it }
@@ -751,7 +751,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                     
                     // Timeout after 10 seconds to avoid hanging indefinitely
                     // Book parsing typically completes within seconds, 10s is generous for edge cases
-                    withTimeout(10_000L) {
+                    withTimeout(CONVEYOR_READY_TIMEOUT_MS) {
                         viewModel.windowCount.first { windowCount ->
                             // Wait for window count to be available
                             windowCount > 0

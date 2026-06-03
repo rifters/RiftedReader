@@ -34,6 +34,12 @@ import com.rifters.riftedreader.pagination.WindowData
 import com.rifters.riftedreader.pagination.WindowSyncHelpers
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
 import com.rifters.riftedreader.util.AppLogger
+import com.rifters.riftedreader.util.ReaderConstants.BOOKMARK_AUTOSAVE_DEBOUNCE_MS
+import com.rifters.riftedreader.util.ReaderConstants.BOOKMARK_MATCH_CHAR_RADIUS
+import com.rifters.riftedreader.util.ReaderConstants.CONVEYOR_BUFFER_SIZE
+import com.rifters.riftedreader.util.ReaderConstants.DEFAULT_PAGINATION_WINDOW_SIZE
+import com.rifters.riftedreader.util.ReaderConstants.CONVEYOR_SHIFT_THRESHOLD_PAGES
+import com.rifters.riftedreader.util.ReaderConstants.SCROLL_AUTOSAVE_DEBOUNCE_MS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -86,10 +92,7 @@ class ReaderViewModel(
     private val readerPreferences: ReaderPreferences
 ) : ViewModel() {
     companion object {
-        private const val LAST_READ_DEBOUNCE_MS = 2_000L
         private const val MODE_SWITCH_BOOKMARK_LABEL = "_mode_switch"
-        private const val BOOKMARK_MATCH_CHAR_RADIUS = 200
-        const val SCROLL_POSITION_DEBOUNCE_MS = 500L
     }
 
     // Expose reader settings as StateFlow for UI consumption
@@ -168,7 +171,7 @@ class ReaderViewModel(
     
     // Threshold for triggering buffer shifts (number of pages from window boundary)
     // When user is within this many pages of window edge, trigger preloading of adjacent window
-    private val bufferShiftThresholdPages: Int = 2
+    private         val bufferShiftThresholdPages: Int = CONVEYOR_SHIFT_THRESHOLD_PAGES
 
     // LiveData for window count (compatibility with adapter / UI code)
     val windowCountLiveData = MutableLiveData(0)
@@ -468,7 +471,7 @@ class ReaderViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             pageChangedEvents
                 .filterNotNull()
-                .debounce(LAST_READ_DEBOUNCE_MS)
+                .debounce(BOOKMARK_AUTOSAVE_DEBOUNCE_MS)
                 .collect { pending ->
                     bookmarkRepository.saveLastRead(
                         createBookmark(
@@ -486,7 +489,7 @@ class ReaderViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             scrollPositionEvents
                 .filterNotNull()
-                .debounce(SCROLL_POSITION_DEBOUNCE_MS)
+                .debounce(SCROLL_AUTOSAVE_DEBOUNCE_MS)
                 .collect { pending ->
                     bookmarkRepository.saveLastRead(createScrollBookmark(pending))
                 }
@@ -713,7 +716,7 @@ class ReaderViewModel(
             paginationModeGuard.beginWindowBuild()
             try {
                 AppLogger.d("ReaderViewModel", "[WINDOWED] Initializing horizontal windowed pagination for book=$bookId")
-                val paginator = ContinuousPaginator(bookFile, parser, windowSize = 5)
+                val paginator = ContinuousPaginator(bookFile, parser, windowSize = DEFAULT_PAGINATION_WINDOW_SIZE)
                 paginator.initialize()
                 continuousPaginator = paginator
 
@@ -860,7 +863,7 @@ class ReaderViewModel(
         
         val totalWindows = slidingWindowPaginator.windowCount
         // Pre-wrap up to 5 windows (0-4) or fewer if book has fewer windows
-        val windowsToPreWrap = kotlin.math.min(5, totalWindows)
+        val windowsToPreWrap = kotlin.math.min(CONVEYOR_BUFFER_SIZE, totalWindows)
         
         AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] preWrapInitialWindows: totalChapters=$totalChapters, totalWindows=$totalWindows, preWrapping=$windowsToPreWrap windows")
         

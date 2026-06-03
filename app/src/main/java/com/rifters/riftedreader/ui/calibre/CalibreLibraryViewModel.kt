@@ -14,6 +14,7 @@ import com.rifters.riftedreader.data.download.BookDownloadManager
 import com.rifters.riftedreader.data.download.DuplicateBookDownloadException
 import com.rifters.riftedreader.data.download.UnsupportedBookDownloadException
 import com.rifters.riftedreader.util.AppLogger
+import com.rifters.riftedreader.util.ReaderConstants.CALIBRE_SEARCH_DEBOUNCE_MS
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -143,7 +144,7 @@ class CalibreLibraryViewModel(
     private fun observeSearch() {
         viewModelScope.launch {
             _searchQuery
-                .debounce(SEARCH_DEBOUNCE_MS)
+                .debounce(CALIBRE_SEARCH_DEBOUNCE_MS)
                 .distinctUntilChanged()
                 .collect { query ->
                     loadPage(offset = 0, append = false, query = query)
@@ -210,7 +211,6 @@ class CalibreLibraryViewModel(
     companion object {
         private const val TAG = "CalibreLibraryViewModel"
         private const val PAGE_SIZE = 50
-        private const val SEARCH_DEBOUNCE_MS = 400L
     }
 }
 

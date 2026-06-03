@@ -13,6 +13,10 @@ import com.rifters.riftedreader.pagination.PaginationModeGuard
 import com.rifters.riftedreader.pagination.WindowData
 import com.rifters.riftedreader.util.AppLogger
 import com.rifters.riftedreader.util.BufferLogger
+import com.rifters.riftedreader.util.ReaderConstants.CONVEYOR_BUFFER_SIZE
+import com.rifters.riftedreader.util.ReaderConstants.CONVEYOR_CENTER_INDEX
+import com.rifters.riftedreader.util.ReaderConstants.CONVEYOR_STEADY_TRIGGER_WINDOW
+import com.rifters.riftedreader.util.ReaderConstants.CONVEYOR_UNLOCK_WINDOW
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
@@ -49,12 +53,8 @@ class ConveyorBeltSystemViewModel(
     companion object {
         private const val TAG = "ConveyorBeltSystemVM"
         private const val LOG_PREFIX = "[CONVEYOR_ISOLATED]"
-        private const val BUFFER_SIZE = 5
-        private const val CENTER_INDEX = 2
-        private const val UNLOCK_WINDOW = 2
-        private const val STEADY_TRIGGER_WINDOW = 3
         private const val FLEX_TAG = "FlexPaginator"
-        private const val SLICE_EVENT_BUFFER_CAPACITY = BUFFER_SIZE
+        private const val SLICE_EVENT_BUFFER_CAPACITY = CONVEYOR_BUFFER_SIZE
     }
     
     // HTML loading dependencies (set via setHtmlLoadingDependencies)
@@ -85,7 +85,7 @@ class ConveyorBeltSystemViewModel(
     private var offset: Int = 0
     
     // Fixed 5-slot array: slots[i] = offset + i
-    private val slots = IntArray(BUFFER_SIZE) { 0 }
+    private val slots = IntArray(CONVEYOR_BUFFER_SIZE) { 0 }
     
     // HTML cache for loaded windows (keyed by real window index)
     private val htmlCache = mutableMapOf<Int, String>()
@@ -204,8 +204,8 @@ class ConveyorBeltSystemViewModel(
      * @return Real window index at this position, or 0 if invalid
      */
     fun getWindowIndexAtPosition(position: Int): Int {
-        if (position !in 0 until BUFFER_SIZE) {
-            log("GET_WINDOW_AT_POS", "Position $position out of range [0, $BUFFER_SIZE), returning 0")
+        if (position !in 0 until CONVEYOR_BUFFER_SIZE) {
+            log("GET_WINDOW_AT_POS", "Position $position out of range [0, $CONVEYOR_BUFFER_SIZE), returning 0")
             return 0  // Safe fallback
         }
         
@@ -227,7 +227,7 @@ class ConveyorBeltSystemViewModel(
      * @return The position in the RecyclerView (0-4), or -1 if not in buffer
      */
     fun getPositionForWindow(windowIndex: Int): Int {
-        for (i in 0 until BUFFER_SIZE) {
+        for (i in 0 until CONVEYOR_BUFFER_SIZE) {
             if (slots[i] == windowIndex) {
                 return i
             }
@@ -279,7 +279,7 @@ class ConveyorBeltSystemViewModel(
         val oldBuffer = getValidBuffer()
         
         // Increment offset (bounded by totalWindowCount)
-        val maxOffset = (totalWindowCount - BUFFER_SIZE).coerceAtLeast(0)
+        val maxOffset = (totalWindowCount - CONVEYOR_BUFFER_SIZE).coerceAtLeast(0)
         offset = (offset + count).coerceAtMost(maxOffset)
 
         // Recompute slots
@@ -379,7 +379,7 @@ class ConveyorBeltSystemViewModel(
      * Only includes valid windows (bounded by totalWindowCount).
      */
     private fun updateSlots() {
-        for (i in 0 until BUFFER_SIZE) {
+        for (i in 0 until CONVEYOR_BUFFER_SIZE) {
             val windowIndex = offset + i
             slots[i] = if (windowIndex < totalWindowCount) windowIndex else -1
         }
@@ -828,13 +828,13 @@ class ConveyorBeltSystemViewModel(
         log("STARTUP", "Window $windowIndex at position $position")
         
         // Window 2 unlocks shifts
-        if (windowIndex == UNLOCK_WINDOW) {
+        if (windowIndex == CONVEYOR_UNLOCK_WINDOW) {
             shiftsUnlocked = true
             log("STARTUP", "*** SHIFTS UNLOCKED at window 2 ***")
         }
         
         // Window 3 triggers steady (only if shifts were unlocked)
-        if (windowIndex == STEADY_TRIGGER_WINDOW && shiftsUnlocked) {
+        if (windowIndex == CONVEYOR_STEADY_TRIGGER_WINDOW && shiftsUnlocked) {
             transitionToSteady(windowIndex)
         }
     }
@@ -844,9 +844,9 @@ class ConveyorBeltSystemViewModel(
         
         // In STEADY, we need a centered buffer around the new active window
         // Calculate new offset to center the buffer on windowIndex
-        val centerOffset = BUFFER_SIZE / 2
+        val centerOffset = CONVEYOR_BUFFER_SIZE / 2
         val newOffset = (windowIndex - centerOffset).coerceAtLeast(0)
-        val maxOffset = (totalWindowCount - BUFFER_SIZE).coerceAtLeast(0)
+        val maxOffset = (totalWindowCount - CONVEYOR_BUFFER_SIZE).coerceAtLeast(0)
         val clampedOffset = newOffset.coerceAtMost(maxOffset)
 
         _activeWindow.value = windowIndex
@@ -868,7 +868,7 @@ class ConveyorBeltSystemViewModel(
         log("STEADY_NAV", "STEADY phase: ensuring window $windowIndex is in buffer")
         
         // Check if navigating back to window 2 (revert condition)
-        if (windowIndex == UNLOCK_WINDOW) {
+        if (windowIndex == CONVEYOR_UNLOCK_WINDOW) {
             revertToStartup()
             return
         }
@@ -881,9 +881,9 @@ class ConveyorBeltSystemViewModel(
             log("STEADY_NAV", "Window $windowIndex not in buffer (unexpected), recentering buffer")
             
             // Recenter buffer on this window
-            val centerOffset = BUFFER_SIZE / 2
+            val centerOffset = CONVEYOR_BUFFER_SIZE / 2
             val newOffset = (windowIndex - centerOffset).coerceAtLeast(0)
-            val maxOffset = (totalWindowCount - BUFFER_SIZE).coerceAtLeast(0)
+            val maxOffset = (totalWindowCount - CONVEYOR_BUFFER_SIZE).coerceAtLeast(0)
             val clampedOffset = newOffset.coerceAtMost(maxOffset)
             applyNewOffset(newOffset = clampedOffset, reason = "steadyRecenter")
             
@@ -902,14 +902,14 @@ class ConveyorBeltSystemViewModel(
         updateSlots()
         
         _buffer.value = getValidBuffer()
-        _activeWindow.value = UNLOCK_WINDOW
+        _activeWindow.value = CONVEYOR_UNLOCK_WINDOW
         _phase.value = ConveyorPhase.STARTUP
         shiftsUnlocked = false
         
         log("REVERT", "*** PHASE TRANSITION: STEADY → STARTUP ***")
-        log("REVERT", "Buffer reverted: offset=$offset, buffer=${getValidBuffer()}, activeWindow=$UNLOCK_WINDOW")
+        log("REVERT", "Buffer reverted: offset=$offset, buffer=${getValidBuffer()}, activeWindow=$CONVEYOR_UNLOCK_WINDOW")
 
-        bufferLog(event = "PHASE", message = "STEADY_TO_STARTUP activeWindow=$UNLOCK_WINDOW")
+        bufferLog(event = "PHASE", message = "STEADY_TO_STARTUP activeWindow=$CONVEYOR_UNLOCK_WINDOW")
         
         // Clear HTML cache on revert since we're going back to initial windows
         htmlCache.clear()
@@ -931,9 +931,9 @@ class ConveyorBeltSystemViewModel(
         
         // Calculate initial offset - try to center the buffer around the start window
         // This ensures we have windows both before and after the start position when possible
-        val centerOffset = BUFFER_SIZE / 2
+        val centerOffset = CONVEYOR_BUFFER_SIZE / 2
         var initialOffset = (clampedStart - centerOffset).coerceAtLeast(0)
-        val maxOffset = (totalWindowCount - BUFFER_SIZE).coerceAtLeast(0)
+        val maxOffset = (totalWindowCount - CONVEYOR_BUFFER_SIZE).coerceAtLeast(0)
         initialOffset = initialOffset.coerceAtMost(maxOffset)
         
         // Set offset and compute slots
@@ -986,7 +986,7 @@ class ConveyorBeltSystemViewModel(
     
     fun getCenterWindow(): Int? {
         // Get the windowId at the center position (index 2) of the 5-window buffer
-        val centerWindowIndex = slots[CENTER_INDEX]
+        val centerWindowIndex = slots[CONVEYOR_CENTER_INDEX]
         
         // Return null if center slot is invalid (can happen for books with < 5 windows)
         return if (centerWindowIndex >= 0 && centerWindowIndex < totalWindowCount) {

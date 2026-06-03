@@ -26,6 +26,7 @@ import androidx.media.app.NotificationCompat as MediaNotificationCompat
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.preferences.TTSPreferences
 import com.rifters.riftedreader.util.AppLogger
+import com.rifters.riftedreader.util.ReaderConstants.TTS_START_DELAY_MS
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -550,7 +551,7 @@ class TTSService : Service() {
                     "Scheduling speakCurrentSentence() after 200ms delay."
         )
         serviceScope.launch {
-            delay(200)
+            delay(TTS_START_DELAY_MS)
             speakCurrentSentence()
         }
     }

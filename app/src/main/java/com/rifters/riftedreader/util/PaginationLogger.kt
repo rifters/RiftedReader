@@ -1,6 +1,8 @@
 package com.rifters.riftedreader.util
 
 import com.rifters.riftedreader.domain.pagination.PaginationMode
+import com.rifters.riftedreader.util.ReaderConstants.CONVEYOR_BUFFER_SIZE
+import com.rifters.riftedreader.util.ReaderConstants.DEFAULT_PAGINATION_WINDOW_SIZE
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -22,8 +24,8 @@ object PaginationLogger {
     private const val TAG = "PaginationLogger"
     
     // Sliding window configuration constants (for validation)
-    const val EXPECTED_CHAPTERS_PER_WINDOW = 5
-    const val EXPECTED_ACTIVE_WINDOWS = 5
+    const val EXPECTED_CHAPTERS_PER_WINDOW = DEFAULT_PAGINATION_WINDOW_SIZE
+    const val EXPECTED_ACTIVE_WINDOWS = CONVEYOR_BUFFER_SIZE
     
     /**
      * Log window computation with full details.

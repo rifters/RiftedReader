@@ -4,6 +4,7 @@ import android.webkit.WebResourceResponse
 import androidx.webkit.WebViewAssetLoader
 import com.rifters.riftedreader.util.AppLogger
 import com.rifters.riftedreader.util.EpubImageAssetHelper
+import com.rifters.riftedreader.util.ReaderConstants.IMAGE_BACKOFF_DELAYS_MS
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
@@ -29,10 +30,6 @@ class EpubImagePathHandler(
 
     companion object {
         private const val TAG = "EpubImagePathHandler"
-        
-        // Bounded exponential backoff delays in milliseconds
-        // Total wait time: 50 + 100 + 200 + 400 + 800 = 1550ms (~1.55s)
-        private val BACKOFF_DELAYS_MS = longArrayOf(50L, 100L, 200L, 400L, 800L)
         
         // Transparent PNG fallback - using centralized constant from EpubImageAssetHelper
         // (Previously duplicated locally - now using centralized constant for consistency)
@@ -74,8 +71,8 @@ class EpubImagePathHandler(
             // NOTE: Thread.sleep() is safe here because WebViewAssetLoader.PathHandler.handle()
             // is called on a background thread, not the main/UI thread
             var attemptIndex = 0
-            while ((!imageFile.exists() || !imageFile.isFile) && attemptIndex < BACKOFF_DELAYS_MS.size) {
-                val waitMs = BACKOFF_DELAYS_MS[attemptIndex]
+            while ((!imageFile.exists() || !imageFile.isFile) && attemptIndex < IMAGE_BACKOFF_DELAYS_MS.size) {
+                val waitMs = IMAGE_BACKOFF_DELAYS_MS[attemptIndex]
                 AppLogger.d(TAG, "[ASSET_BACKOFF] url=$fullUrl attempt=${attemptIndex + 1} waitMs=$waitMs")
                 
                 try {
