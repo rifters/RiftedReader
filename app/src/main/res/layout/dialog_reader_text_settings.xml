@@ -45,6 +45,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:contentDescription="@string/reader_experimental_page_layout_title_beta"
                     android:text="@string/reader_experimental_page_layout_title"
                     android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
 
@@ -55,7 +56,6 @@
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
                     android:clickable="false"
-                    android:contentDescription="@string/reader_beta_badge_content_description"
                     android:focusable="false"
                     android:minHeight="24dp"
                     android:text="@string/reader_beta_badge" />
