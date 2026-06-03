@@ -199,7 +199,7 @@ class CalibreWebFragment : Fragment() {
         binding.retryButton.isVisible = true
     }
 
-    private fun startDownload(request: DownloadRequest) {
+    private fun startDownload(request: WebDownloadRequest) {
         val filename = request.filename
         Toast.makeText(requireContext(), getString(R.string.calibre_web_downloading, filename), Toast.LENGTH_SHORT).show()
         val id = UUID.randomUUID().toString()
@@ -231,7 +231,7 @@ class CalibreWebFragment : Fragment() {
         }
         TextView(requireContext()).apply {
             text = getString(R.string.calibre_web_active_downloads)
-            textAppearance = com.google.android.material.R.style.TextAppearance_Material3_TitleLarge
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleLarge)
             container.addView(this)
         }
         if (activeDownloads.isEmpty()) {
@@ -305,7 +305,7 @@ class CalibreWebFragment : Fragment() {
 }
 
 private class DownloadInterceptWebViewClient(
-    private val onDownload: (DownloadRequest) -> Unit,
+    private val onDownload: (WebDownloadRequest) -> Unit,
     private val onPageStarted: () -> Unit,
     private val onPageFinished: () -> Unit,
     private val onMainFrameError: (url: String, description: String) -> Unit,
@@ -319,7 +319,7 @@ private class DownloadInterceptWebViewClient(
         if (!cookies.isNullOrBlank()) {
             headers["Cookie"] = cookies
         }
-        val downloadRequest = DownloadRequest(
+        val downloadRequest = WebDownloadRequest(
             url = request.url.toString(),
             filename = request.url.downloadFilename(),
             headers = headers,
@@ -365,7 +365,7 @@ private class DownloadInterceptWebViewClient(
     }
 }
 
-private data class DownloadRequest(
+private data class WebDownloadRequest(
     val url: String,
     val filename: String,
     val headers: Map<String, String>,
