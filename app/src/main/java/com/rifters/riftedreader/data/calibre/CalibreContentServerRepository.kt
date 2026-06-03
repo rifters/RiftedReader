@@ -25,10 +25,14 @@ class CalibreContentServerRepository(
     private var currentConfig: CalibreConnectionConfig? = null
     private var cachedBaseUrl: String? = null
     private var cachedApiService: CalibreApiService? = null
+    private val configLock = Any()
+    private val apiLock = Any()
 
     private val okHttpClient = okHttpClientBuilder
         .addInterceptor(CalibreAuthInterceptor(credentialStore) {
-            currentConfig?.contentServerUsername.orEmpty()
+            synchronized(configLock) {
+                currentConfig?.contentServerUsername.orEmpty()
+            }
         })
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -83,7 +87,9 @@ class CalibreContentServerRepository(
 
     private suspend fun loadEnabledConfig(): CalibreConnectionConfig {
         val config = connectionRepository.loadConfig()
-        currentConfig = config
+        synchronized(configLock) {
+            currentConfig = config
+        }
         if (!config.contentServerEnabled) {
             throw CalibreConfigException("Content Server is not enabled")
         }
@@ -95,30 +101,34 @@ class CalibreContentServerRepository(
 
     private fun latestConfig(): CalibreConnectionConfig {
         return configProvider?.invoke()
-            ?: currentConfig
+            ?: synchronized(configLock) {
+                currentConfig
+            }
             ?: throw IllegalStateException("Calibre Content Server config has not been loaded")
     }
 
     private fun apiFor(config: CalibreConnectionConfig): CalibreApiService {
-        val baseUrl = retrofitBaseUrl(config.contentServerUrl)
-        cachedApiService?.let { service ->
-            if (cachedBaseUrl == baseUrl) return service
-        }
-
-        val gson = GsonBuilder()
-            .registerTypeAdapter(CalibreListResponse::class.java, CalibreListResponseDeserializer())
-            .create()
-
-        return Retrofit.Builder()
-            .baseUrl(baseUrl)
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create(gson))
-            .build()
-            .create(CalibreApiService::class.java)
-            .also {
-                cachedBaseUrl = baseUrl
-                cachedApiService = it
+        synchronized(apiLock) {
+            val baseUrl = retrofitBaseUrl(config.contentServerUrl)
+            cachedApiService?.let { service ->
+                if (cachedBaseUrl == baseUrl) return service
             }
+
+            val gson = GsonBuilder()
+                .registerTypeAdapter(CalibreListResponse::class.java, CalibreListResponseDeserializer())
+                .create()
+
+            return Retrofit.Builder()
+                .baseUrl(baseUrl)
+                .client(okHttpClient)
+                .addConverterFactory(GsonConverterFactory.create(gson))
+                .build()
+                .create(CalibreApiService::class.java)
+                .also {
+                    cachedBaseUrl = baseUrl
+                    cachedApiService = it
+                }
+        }
     }
 
     private fun CalibreListResponse.toLibrary(
@@ -143,7 +153,7 @@ class CalibreContentServerRepository(
     private fun CalibreBookMetadata.toBook(id: Int, baseUrl: String): CalibreBook {
         return CalibreBook(
             id = this.id ?: id,
-            title = title?.takeIf { it.isNotBlank() } ?: "Untitled",
+            title = title,
             authors = authors,
             formats = formats,
             tags = tags,

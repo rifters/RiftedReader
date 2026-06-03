@@ -16,7 +16,7 @@ data class CalibreListResponse(
 
 data class CalibreBookMetadata(
     val id: Int?,
-    val title: String?,
+    val title: String,
     val authors: List<String>,
     val formats: List<String>,
     val tags: List<String>,
@@ -68,7 +68,7 @@ class CalibreListResponseDeserializer : JsonDeserializer<CalibreListResponse> {
     private fun JsonObject.toMetadata(id: Int): CalibreBookMetadata {
         return CalibreBookMetadata(
             id = firstInt("book_id", "id") ?: id,
-            title = firstString("title"),
+            title = firstString("title") ?: DEFAULT_TITLE,
             authors = firstStringList("authors"),
             formats = parseFormats(firstPresent("formats")),
             tags = firstStringList("tags"),
@@ -139,5 +139,9 @@ class CalibreListResponseDeserializer : JsonDeserializer<CalibreListResponse> {
         if (!isJsonPrimitive) return null
         val primitive = asJsonPrimitive
         return if (primitive.isNumber) primitive.asDouble else primitive.asString.toDoubleOrNull()
+    }
+
+    private companion object {
+        const val DEFAULT_TITLE = "Untitled"
     }
 }

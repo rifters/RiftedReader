@@ -9,7 +9,7 @@ data class CalibreBook(
     val series: String?,
     val seriesIndex: Double?,
     val coverUrl: String?,
-    val publishedDate: String?,
+    val publishedDate: String?
 )
 
 data class CalibreLibrary(
