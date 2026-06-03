@@ -357,6 +357,11 @@
 
         const targetChapter = parseInt(targetPage.getAttribute('data-chapter'), 10);
         const targetPageIndex = parseInt(targetPage.getAttribute('data-page'), 10);
+        if (!Number.isInteger(targetChapter) || !Number.isInteger(targetPageIndex)) {
+            log('WARN', `jumpToAnchor: invalid page metadata for anchor ${anchorId}`);
+            return false;
+        }
+
         const containingSlice = Number.isInteger(targetPageIndex) ? state.slices[targetPageIndex] : null;
         if (!containingSlice) {
             log('WARN', `jumpToAnchor: no slice found for anchor ${anchorId}`);
@@ -368,6 +373,7 @@
         const targetCharOffset = startChar + relativeCharOffset;
 
         let nearestPageIndex = Number.isInteger(targetPageIndex) ? targetPageIndex : 0;
+        // Sentinel below any valid slice offset so page 0 can be selected.
         let nearestStartChar = -1;
         for (let i = 0; i < state.slices.length; i++) {
             const slice = state.slices[i];
@@ -418,8 +424,9 @@
      *
      * @param {Node} root The page container that owns the target heading.
      * @param {Node} target The heading element being navigated to.
-     * @returns {number} Character count before target within root, used to select
-     * the closest precomputed slice whose charOffset/startChar is before the anchor.
+     * @returns {number} Cumulative character count from the start of root up to
+     * the target element, or 0 if target is not found. This selects the closest
+     * precomputed slice whose charOffset/startChar is before the anchor.
      */
     function getTextLengthBeforeTarget(root, target) {
         function walk(node) {
