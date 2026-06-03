@@ -17,7 +17,7 @@ import kotlin.coroutines.resumeWithException
  * Hidden WebView for offscreen pre-slicing of window HTML.
  * 
  * **Architecture**:
- * 1. This WebView is invisible (1x1 pixel, GONE visibility)
+ * 1. This WebView is invisible (GONE visibility)
  * 2. It loads wrapped HTML from FlexPaginator
  * 3. flex_paginator.js performs node-walking slicing algorithm
  * 4. JavaScript calls AndroidBridge.onSlicingComplete(metadataJson)
@@ -30,17 +30,28 @@ import kotlin.coroutines.resumeWithException
  * - WebView pooling recommended for production (not implemented here)
  * 
  * @param context Android context for WebView creation
+ * @param viewportWidthPx Viewport width in pixels for offscreen layout
+ * @param viewportHeightPx Viewport height in pixels for offscreen layout
  */
-class OffscreenSlicingWebView(context: Context) {
+class OffscreenSlicingWebView(
+    context: Context,
+    private val viewportWidthPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_WIDTH_PX,
+    private val viewportHeightPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_HEIGHT_PX
+) {
     
     companion object {
         private const val TAG = "OffscreenSlicingWebView"
         private const val SLICING_TIMEOUT_MS = 10000L // 10 seconds
     }
+
+    init {
+        require(viewportWidthPx > 0) { "viewportWidthPx must be > 0" }
+        require(viewportHeightPx > 0) { "viewportHeightPx must be > 0" }
+    }
     
     private val webView: WebView = WebView(context).apply {
         // Make WebView invisible
-        layoutParams = android.view.ViewGroup.LayoutParams(1, 1)
+        layoutParams = android.view.ViewGroup.LayoutParams(viewportWidthPx, viewportHeightPx)
         visibility = View.GONE
         
         // Enable JavaScript (required for flex_paginator.js)
