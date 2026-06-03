@@ -949,7 +949,7 @@
             
             // Update current page based on container scroll position
             const prevPage = state.currentPage;  // ← TRACK PREVIOUS
-            state.currentPage = syncPaginationState(currentScrollLeft);
+            syncPaginationState(currentScrollLeft);
             
             // DIAGNOSTIC: Log page calculation from scroll
             log('DIAGNOSTIC', `Scroll page calculation: round(${currentScrollLeft.toFixed(1)} / ${state.appliedColumnWidth}) clamped to ${state.currentPage}`);
@@ -1023,8 +1023,10 @@
         
         // Use columnContainer.scrollLeft instead of window scroll
         const currentScrollLeft = state.columnContainer.scrollLeft;
-        // Snap backward to the page containing the current scroll offset instead of
-        // rounding forward, which can jump ahead before the user crosses a page boundary.
+        // Snap alignment uses floor() to choose the page containing the current
+        // scroll offset. Live state sync uses round() because it tracks the nearest
+        // visible page while the user scrolls; snapping must not jump forward before
+        // the offset actually crosses into the next page.
         const targetPage = Math.floor(currentScrollLeft / state.appliedColumnWidth);
         const clampedPage = Math.max(0, Math.min(targetPage, state.pageCount - 1));
         const targetScrollPos = clampedPage * state.appliedColumnWidth;
@@ -1147,17 +1149,17 @@
      *
      * The caller may pass a known scrollLeft to avoid reading from the DOM twice.
      * This uses nearest-page rounding for live state, while snapToNearestPage uses
-     * floor() to choose the containing page when aligning to a boundary.
+     * floor() to choose the containing page when aligning to a boundary. Use this
+     * for live/manual scroll state only, not for choosing a snap target.
      */
     function syncPaginationState(currentScrollLeft) {
-        if (!state.columnContainer || state.appliedColumnWidth <= 0) return state.currentPage;
+        if (!state.columnContainer || state.appliedColumnWidth <= 0) return;
         const scrollLeft = typeof currentScrollLeft === 'number'
             ? currentScrollLeft
             : state.columnContainer.scrollLeft;
         const computedPage = Math.round(scrollLeft / state.appliedColumnWidth);
         const clampedPage = Math.max(0, Math.min(computedPage, state.pageCount - 1));
         state.currentPage = clampedPage;
-        return clampedPage;
     }
     
     /**
