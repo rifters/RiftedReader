@@ -1,6 +1,7 @@
 package com.rifters.riftedreader.domain.reader
 
 import com.rifters.riftedreader.ui.reader.ReaderThemePalette
+import com.rifters.riftedreader.util.CssSanitizers
 import com.rifters.riftedreader.util.EpubImageAssetHelper
 
 /**
@@ -65,7 +66,7 @@ object ReaderHtmlWrapper {
     fun wrap(contentHtml: String, config: ReaderHtmlConfig): String {
         val backgroundColor = colorToHex(config.palette.backgroundColor)
         val textColor = colorToHex(config.palette.textColor)
-        val sanitizedFontFamily = sanitizeCssFontFamily(config.fontFamily)
+        val sanitizedFontFamily = CssSanitizers.sanitizeCssFontFamily(config.fontFamily, "serif")
         
         // Enable diagnostics in paginator if configured
         val diagnosticsScript = if (config.enableDiagnostics) {
@@ -281,15 +282,4 @@ object ReaderHtmlWrapper {
         """.trimIndent()
     }
 
-    private fun sanitizeCssFontFamily(input: String): String {
-        val trimmed = input.trim()
-        if (trimmed.isEmpty()) return "serif"
-        return trimmed
-            .replace("\n", " ")
-            .replace("\r", " ")
-            .replace("\t", " ")
-            .replace("\"", "")
-            .replace("'", "")
-            .replace(";", "")
-    }
 }

@@ -18,7 +18,7 @@ class FlexSlicingConfigTypographyTest {
 
             val config = FlexSlicingConfig()
             assertEquals(21, config.fontSizePx)
-            assertEquals(1.9f, config.lineHeight)
+            assertEquals(1.9f, config.lineHeight, 0.001f)
             assertEquals("Bookerly", config.fontFamily)
             assertEquals(22, config.pagePaddingPx)
         } finally {

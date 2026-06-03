@@ -1,5 +1,8 @@
 package com.rifters.riftedreader.pagination
 
+import com.rifters.riftedreader.util.CssSanitizers
+import java.util.concurrent.atomic.AtomicReference
+
 /**
  * Configuration for FlexPaginator offscreen slicing.
  *
@@ -24,21 +27,30 @@ data class FlexSlicingConfig(
     }
 
     companion object {
+        const val MIN_FONT_SIZE_PX = 1
         const val DEFAULT_VIEWPORT_WIDTH_PX = 360
         const val DEFAULT_VIEWPORT_HEIGHT_PX = 600
         const val DEFAULT_FONT_SIZE_PX = 16
         const val DEFAULT_LINE_HEIGHT = 1.6f
-        const val DEFAULT_FONT_FAMILY = "serif"
+        const val DEFAULT_FONT_FAMILY = "sans-serif"
+        const val READER_FONT_FAMILY_SERIF = "serif"
         const val DEFAULT_PAGE_PADDING_PX = 16
 
-        @Volatile
-        private var defaultFontSizePx: Int = DEFAULT_FONT_SIZE_PX
-        @Volatile
-        private var defaultLineHeight: Float = DEFAULT_LINE_HEIGHT
-        @Volatile
-        private var defaultFontFamily: String = DEFAULT_FONT_FAMILY
-        @Volatile
-        private var defaultPagePaddingPx: Int = DEFAULT_PAGE_PADDING_PX
+        private data class TypographyDefaults(
+            val fontSizePx: Int,
+            val lineHeight: Float,
+            val fontFamily: String,
+            val pagePaddingPx: Int
+        )
+
+        private val typographyDefaultsRef = AtomicReference(
+            TypographyDefaults(
+                fontSizePx = DEFAULT_FONT_SIZE_PX,
+                lineHeight = DEFAULT_LINE_HEIGHT,
+                fontFamily = DEFAULT_FONT_FAMILY,
+                pagePaddingPx = DEFAULT_PAGE_PADDING_PX
+            )
+        )
 
         fun setDefaultTypography(
             fontSizePx: Int,
@@ -46,29 +58,34 @@ data class FlexSlicingConfig(
             fontFamily: String = DEFAULT_FONT_FAMILY,
             pagePaddingPx: Int = DEFAULT_PAGE_PADDING_PX
         ) {
-            require(fontSizePx > 0) { "fontSizePx must be > 0" }
+            require(fontSizePx >= MIN_FONT_SIZE_PX) { "fontSizePx must be >= $MIN_FONT_SIZE_PX" }
             require(lineHeight > 0f) { "lineHeight must be > 0" }
             require(pagePaddingPx >= 0) { "pagePaddingPx must be >= 0" }
-            defaultFontSizePx = fontSizePx
-            defaultLineHeight = lineHeight
-            defaultFontFamily = fontFamily.trim().ifEmpty { DEFAULT_FONT_FAMILY }
-            defaultPagePaddingPx = pagePaddingPx
-        }
-
-        fun getDefaultTypography(): FlexSlicingConfig {
-            return FlexSlicingConfig(
-                viewportWidthPx = DEFAULT_VIEWPORT_WIDTH_PX,
-                viewportHeightPx = DEFAULT_VIEWPORT_HEIGHT_PX,
-                fontSizePx = defaultFontSizePx,
-                lineHeight = defaultLineHeight,
-                fontFamily = defaultFontFamily,
-                pagePaddingPx = defaultPagePaddingPx
+            typographyDefaultsRef.set(
+                TypographyDefaults(
+                fontSizePx = fontSizePx,
+                lineHeight = lineHeight,
+                fontFamily = CssSanitizers.sanitizeCssFontFamily(fontFamily, DEFAULT_FONT_FAMILY),
+                pagePaddingPx = pagePaddingPx
+            )
             )
         }
 
-        private fun getDefaultFontSizePx(): Int = defaultFontSizePx
-        private fun getDefaultLineHeight(): Float = defaultLineHeight
-        private fun getDefaultFontFamily(): String = defaultFontFamily
-        private fun getDefaultPagePaddingPx(): Int = defaultPagePaddingPx
+        fun getDefaultTypography(): FlexSlicingConfig {
+            val typography = typographyDefaultsRef.get()
+            return FlexSlicingConfig(
+                viewportWidthPx = DEFAULT_VIEWPORT_WIDTH_PX,
+                viewportHeightPx = DEFAULT_VIEWPORT_HEIGHT_PX,
+                fontSizePx = typography.fontSizePx,
+                lineHeight = typography.lineHeight,
+                fontFamily = typography.fontFamily,
+                pagePaddingPx = typography.pagePaddingPx
+            )
+        }
+
+        private fun getDefaultFontSizePx(): Int = typographyDefaultsRef.get().fontSizePx
+        private fun getDefaultLineHeight(): Float = typographyDefaultsRef.get().lineHeight
+        private fun getDefaultFontFamily(): String = typographyDefaultsRef.get().fontFamily
+        private fun getDefaultPagePaddingPx(): Int = typographyDefaultsRef.get().pagePaddingPx
     }
 }

@@ -7,6 +7,7 @@ import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import com.rifters.riftedreader.util.AppLogger
+import com.rifters.riftedreader.util.CssSanitizers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONArray
 import org.json.JSONObject
@@ -174,7 +175,10 @@ class OffscreenSlicingWebView(
         windowIndex: Int,
         config: FlexSlicingConfig
     ): String {
-        val sanitizedFontFamily = sanitizeCssFontFamily(config.fontFamily)
+        val sanitizedFontFamily = CssSanitizers.sanitizeCssFontFamily(
+            config.fontFamily,
+            FlexSlicingConfig.DEFAULT_FONT_FAMILY
+        )
         return buildString {
             append("<!DOCTYPE html>\n")
             append("<html>\n")
@@ -214,19 +218,6 @@ class OffscreenSlicingWebView(
         }
     }
 
-    private fun sanitizeCssFontFamily(input: String): String {
-        val trimmed = input.trim()
-        if (trimmed.isEmpty()) return "sans-serif"
-        // Allow common characters; drop quotes/semicolons/newlines to avoid breaking CSS/JS.
-        return trimmed
-            .replace("\n", " ")
-            .replace("\r", " ")
-            .replace("\t", " ")
-            .replace("\"", "")
-            .replace("'", "")
-            .replace(";", "")
-    }
-    
     /**
      * Clean up WebView resources.
      * 

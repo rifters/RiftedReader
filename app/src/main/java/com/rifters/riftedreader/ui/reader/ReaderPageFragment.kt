@@ -34,6 +34,7 @@ import com.rifters.riftedreader.databinding.FragmentReaderPageBinding
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.util.AppLoggerBridge
+import com.rifters.riftedreader.util.CssSanitizers
 import com.rifters.riftedreader.util.EpubImageAssetHelper
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -43,6 +44,7 @@ import org.json.JSONArray
 import java.io.File
 import kotlin.coroutines.resume
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 class ReaderPageFragment : Fragment() {
 
@@ -146,6 +148,7 @@ class ReaderPageFragment : Fragment() {
     private var slicingViewportHeightPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_HEIGHT_PX
     private var hasCapturedSlicingViewport: Boolean = false
     private var viewportLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
+    private val readerFontFamily: String = FlexSlicingConfig.READER_FONT_FAMILY_SERIF
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -1483,15 +1486,10 @@ class ReaderPageFragment : Fragment() {
     ): String {
         val backgroundColor = String.format("#%06X", 0xFFFFFF and palette.backgroundColor)
         val textColor = String.format("#%06X", 0xFFFFFF and palette.textColor)
-        val sanitizedFontFamily = typography.fontFamily
-            .trim()
-            .ifEmpty { FlexSlicingConfig.DEFAULT_FONT_FAMILY }
-            .replace("\n", " ")
-            .replace("\r", " ")
-            .replace("\t", " ")
-            .replace("\"", "")
-            .replace("'", "")
-            .replace(";", "")
+        val sanitizedFontFamily = CssSanitizers.sanitizeCssFontFamily(
+            typography.fontFamily,
+            FlexSlicingConfig.DEFAULT_FONT_FAMILY
+        )
         
         return """
             <!DOCTYPE html>
@@ -1582,9 +1580,9 @@ class ReaderPageFragment : Fragment() {
 
     private fun syncSharedTypographyConfig(settings: com.rifters.riftedreader.data.preferences.ReaderSettings) {
         FlexSlicingConfig.setDefaultTypography(
-            fontSizePx = settings.textSizeSp.toInt().coerceAtLeast(1),
+            fontSizePx = settings.textSizeSp.roundToInt().coerceAtLeast(FlexSlicingConfig.MIN_FONT_SIZE_PX),
             lineHeight = settings.lineHeightMultiplier,
-            fontFamily = FlexSlicingConfig.DEFAULT_FONT_FAMILY,
+            fontFamily = readerFontFamily,
             pagePaddingPx = FlexSlicingConfig.DEFAULT_PAGE_PADDING_PX
         )
     }
