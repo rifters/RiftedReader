@@ -88,7 +88,7 @@ class BookDownloadManager(
         }
         val safeName = sanitizeFileName(filename)
         var counter = 0
-        while (true) {
+        while (counter < MAX_FILENAME_ATTEMPTS) {
             val candidate = if (counter == 0) safeName else uniqueName(safeName, counter)
             val destination = File(directory, candidate)
             if (destination.createNewFile()) {
@@ -96,6 +96,7 @@ class BookDownloadManager(
             }
             counter++
         }
+        throw IOException("Unable to reserve a unique import filename for $safeName")
     }
 
     private fun uniqueName(fileName: String, counter: Int): String {
@@ -118,12 +119,15 @@ class BookDownloadManager(
         private var INSTANCE: BookDownloadManager? = null
 
         fun getInstance(context: Context, bookRepository: BookRepository): BookDownloadManager {
+            val current = INSTANCE
+            if (current != null) return current
             return synchronized(this) {
                 INSTANCE ?: BookDownloadManager(context, bookRepository).also { INSTANCE = it }
             }
         }
 
         private const val IMPORTS_DIRECTORY = "imports"
+        private const val MAX_FILENAME_ATTEMPTS = 1_000
         private val UNSAFE_FILENAME_CHARS = Regex("[\\\\/:*?\"<>|]+")
         private val DEFAULT_CLIENT = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)

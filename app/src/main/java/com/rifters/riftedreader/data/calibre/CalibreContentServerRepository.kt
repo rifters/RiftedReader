@@ -86,7 +86,7 @@ class CalibreContentServerRepository(
 
     fun getDownloadHeaders(): Map<String, String> {
         val config = latestConfig()
-        if (config.contentServerUsername.isBlank() && config.contentServerPassword.isEmpty()) {
+        if (config.contentServerUsername.isBlank() && config.contentServerPassword.isBlank()) {
             return emptyMap()
         }
         return mapOf(
