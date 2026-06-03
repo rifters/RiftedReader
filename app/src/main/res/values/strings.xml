@@ -147,6 +147,14 @@ Page %4$d/%5$d (%6$d%%)</string>
     <string name="reader_tap_zones">Tap zones</string>
     <string name="reader_chapters">Chapters</string>
     <string name="reader_toc">Table of contents</string>
+    <string name="reader_save_bookmark">Save bookmark</string>
+    <string name="reader_bookmarks">Bookmarks</string>
+    <string name="reader_bookmark_note_hint">Add a note… (optional)</string>
+    <string name="reader_bookmark_saved">Bookmark saved</string>
+    <string name="reader_bookmark_deleted">Bookmark deleted</string>
+    <string name="reader_bookmark_unavailable">Open a page before saving a bookmark.</string>
+    <string name="reader_bookmarks_empty">No bookmarks yet</string>
+    <string name="reader_bookmark_fallback_title">Chapter %1$d</string>
     <string name="reader_tap_zones_title">Tap zones</string>
     <string name="reader_tap_zones_description">Choose what each tap area does while reading.</string>
     <string name="reader_zone_top_left">Top left</string>
@@ -291,6 +299,7 @@ Page %4$d/%5$d (%6$d%%)</string>
     <string name="delete">Delete</string>
     <string name="edit">Edit</string>
     <string name="save">Save</string>
+    <string name="undo">UNDO</string>
     <string name="loading">Loading…</string>
     <string name="error">Error</string>
     <string name="apply">Apply</string>
