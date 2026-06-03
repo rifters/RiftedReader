@@ -272,6 +272,30 @@ Page %4$d/%5$d (%6$d%%)</string>
     <string name="settings_reader_mode">Reading mode</string>
     <string name="settings_reader_continuous_streaming_title">Continuous pagination streaming (beta)</string>
     <string name="settings_reader_continuous_streaming_summary">Keep nearby chapters streaming in the background. Disable if you notice repeated fallback jumps or prefer the classic chapter-by-chapter loading.</string>
+
+    <string name="settings_calibre_library_category">Calibre Library</string>
+    <string name="settings_calibre_content_server_category">Content Server</string>
+    <string name="settings_calibre_content_server_enabled">Calibre Content Server</string>
+    <string name="settings_calibre_content_server_url">Server URL</string>
+    <string name="settings_calibre_content_server_username">Username</string>
+    <string name="settings_calibre_content_server_password">Password</string>
+    <string name="settings_calibre_test_connection">Test Connection</string>
+    <string name="settings_calibre_web_category">Calibre-Web</string>
+    <string name="settings_calibre_web_enabled">Calibre-Web</string>
+    <string name="settings_calibre_web_url">Web URL</string>
+    <string name="settings_calibre_download_directory">Download folder</string>
+    <string name="settings_calibre_preferred_format">Preferred format</string>
+    <string name="settings_calibre_hint_content_server_url">http://192.168.1.100:8080</string>
+    <string name="settings_calibre_hint_content_server_username">Optional — leave blank if no auth</string>
+    <string name="settings_calibre_hint_password">Optional</string>
+    <string name="settings_calibre_hint_web_url">http://192.168.1.100:8083</string>
+    <string name="settings_calibre_testing">Testing…</string>
+    <string name="settings_calibre_connected">✅ Connected</string>
+    <string name="settings_calibre_auth_required">⚠️ Authentication required — check credentials</string>
+    <string name="calibre_format_epub">EPUB</string>
+    <string name="calibre_format_mobi">MOBI</string>
+    <string name="calibre_format_pdf">PDF</string>
+    <string name="calibre_format_any">Any</string>
     
     <!-- Chapter visibility settings -->
     <string name="settings_reader_chapter_visibility_category">Chapter visibility</string>
