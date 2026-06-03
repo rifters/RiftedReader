@@ -579,7 +579,7 @@ class ConveyorBeltSystemViewModel(
 
             while (true) {
                 val nextPriority = pollPriorityReslice(processed)
-                val windowIndex = nextPriority ?: queue.removeFirstOrNull() ?: break
+                val windowIndex = nextPriority ?: if (queue.isEmpty()) break else queue.removeFirst()
 
                 if (!processed.add(windowIndex)) continue
                 if (windowIndex !in getValidBuffer()) continue
