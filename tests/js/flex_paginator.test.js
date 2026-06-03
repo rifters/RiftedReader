@@ -111,8 +111,8 @@ function createMockAndroidBridge() {
 /**
  * Helper to create wrapped chapter HTML
  */
-function createWindowRoot(sections, windowIndex = 3) {
-  return `<div id="window-root" data-window-index="${windowIndex}">${sections}</div>`;
+function createWindowRoot(sections, dataWindowIndex = 3) {
+  return `<div id="window-root" data-window-index="${dataWindowIndex}">${sections}</div>`;
 }
 
 describe('flex_paginator.js', () => {
@@ -141,7 +141,7 @@ describe('flex_paginator.js', () => {
           <div style="height:48px">${content}</div>
         </section>
       `));
-      setupFlexGlobals({ windowIndex: 5, width: 320, height: 48 });
+      setupFlexGlobals({ windowIndex: 3, width: 320, height: 48 });
       const mockBridge = createMockAndroidBridge();
 
       const paginator = loadPaginator();
