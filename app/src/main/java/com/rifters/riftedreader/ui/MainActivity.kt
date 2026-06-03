@@ -37,6 +37,7 @@ class MainActivity : AppCompatActivity() {
         setupActionBarWithNavController(navController)
         binding.bottomNavigation.setupWithNavController(navController)
         binding.bottomNavigation.menu.findItem(R.id.calibreLibraryFragment)?.isVisible = false
+        binding.bottomNavigation.menu.findItem(R.id.calibreWebFragment)?.isVisible = false
         observeCalibreNavigation()
         
         AppLogger.event("MainActivity", "onCreate completed", "ui/MainActivity/lifecycle")
@@ -46,10 +47,12 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 calibreRepository.configFlow().collect { config ->
-                    val shouldShowCalibreNavItem = config.contentServerEnabled || config.calibreWebEnabled
-                    binding.bottomNavigation.menu.findItem(R.id.calibreLibraryFragment)?.isVisible = shouldShowCalibreNavItem
-                    if (!shouldShowCalibreNavItem) {
-                        if (navController.currentDestination?.id == R.id.calibreLibraryFragment) {
+                    binding.bottomNavigation.menu.findItem(R.id.calibreLibraryFragment)?.isVisible = config.contentServerEnabled
+                    binding.bottomNavigation.menu.findItem(R.id.calibreWebFragment)?.isVisible = config.calibreWebEnabled
+                    if (!config.contentServerEnabled && !config.calibreWebEnabled) {
+                        if (navController.currentDestination?.id == R.id.calibreLibraryFragment ||
+                            navController.currentDestination?.id == R.id.calibreWebFragment
+                        ) {
                             val returnedToLibrary = navController.popBackStack(R.id.libraryFragment, false)
                             if (!returnedToLibrary) {
                                 navController.navigate(R.id.libraryFragment)
