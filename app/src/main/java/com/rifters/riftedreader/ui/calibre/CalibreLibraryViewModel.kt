@@ -10,7 +10,6 @@ import com.rifters.riftedreader.data.calibre.CalibreConnectionConfig
 import com.rifters.riftedreader.data.calibre.CalibreConnectionRepository
 import com.rifters.riftedreader.data.calibre.CalibreContentServerRepository
 import com.rifters.riftedreader.data.calibre.CalibreException
-import com.rifters.riftedreader.data.database.entities.BookMeta
 import com.rifters.riftedreader.data.download.BookDownloadManager
 import com.rifters.riftedreader.data.download.DuplicateBookDownloadException
 import com.rifters.riftedreader.data.download.UnsupportedBookDownloadException
