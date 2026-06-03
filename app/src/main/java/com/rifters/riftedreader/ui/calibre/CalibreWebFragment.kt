@@ -2,7 +2,6 @@ package com.rifters.riftedreader.ui.calibre
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
-import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -227,19 +226,21 @@ class CalibreWebFragment : Fragment() {
 
     private fun showActiveDownloadsSheet() {
         val dialog = BottomSheetDialog(requireContext())
+        dialog.setTitle(getString(R.string.calibre_web_active_downloads))
+        val sheetPadding = resources.getDimensionPixelSize(R.dimen.calibre_web_sheet_padding)
         val container = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(SHEET_PADDING, SHEET_PADDING, SHEET_PADDING, SHEET_PADDING)
+            setPadding(sheetPadding, sheetPadding, sheetPadding, sheetPadding)
         }
         TextView(requireContext()).apply {
             text = getString(R.string.calibre_web_active_downloads)
-            typeface = Typeface.DEFAULT_BOLD
+            setTextAppearance(R.style.TextAppearance_RiftedReader_BottomSheetTitle)
             container.addView(this)
         }
         if (activeDownloads.isEmpty()) {
             TextView(requireContext()).apply {
                 text = getString(R.string.calibre_web_no_active_downloads)
-                setPadding(0, SHEET_PADDING, 0, 0)
+                setPadding(0, sheetPadding, 0, 0)
                 container.addView(this)
             }
         } else {
@@ -247,7 +248,7 @@ class CalibreWebFragment : Fragment() {
                 val row = LinearLayout(requireContext()).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
-                    setPadding(0, SHEET_PADDING / 2, 0, 0)
+                    setPadding(0, sheetPadding / 2, 0, 0)
                 }
                 TextView(requireContext()).apply {
                     text = download.filename
@@ -302,7 +303,6 @@ class CalibreWebFragment : Fragment() {
     companion object {
         private const val COMPLETE_PROGRESS = 100
         private const val OVERLAY_HIDE_DELAY_MS = 3_000L
-        private const val SHEET_PADDING = 32
     }
 }
 
@@ -354,7 +354,8 @@ private class DownloadInterceptWebViewClient(
 
     private fun Uri.isDownloadUrl(): Boolean {
         val normalizedPath = path.orEmpty().lowercase(Locale.ROOT)
-        return DOWNLOAD_EXTENSIONS.any { normalizedPath.endsWith(it) } || normalizedPath.contains("/get/")
+        return DOWNLOAD_EXTENSIONS.any { normalizedPath.endsWith(it) } ||
+            pathSegments.any { it.equals("get", ignoreCase = true) }
     }
 
     private fun Uri.downloadFilename(): String {
