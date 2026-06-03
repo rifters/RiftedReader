@@ -1,7 +1,5 @@
 package com.rifters.riftedreader.ui.reader.conveyor
 
-import android.content.Context
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rifters.riftedreader.domain.pagination.ContinuousPaginator
@@ -21,7 +19,7 @@ import java.util.ArrayDeque
 import java.io.File
 
 class ConveyorBeltSystemViewModel(
-    context: Context? = null
+    private val offscreenSlicingWebViewFactory: (() -> OffscreenSlicingWebView)? = null
 ) : ViewModel() {
     
     companion object {
@@ -42,7 +40,6 @@ class ConveyorBeltSystemViewModel(
     private var bookFile: File? = null
     private var flexPaginatorEnabledProvider: () -> Boolean = { false }
     private var flexPaginator: FlexPaginator? = null
-    private val applicationContext = context?.applicationContext
     private var offscreenSlicingWebView: OffscreenSlicingWebView? = null
     
     // ========================================================================
@@ -452,14 +449,14 @@ class ConveyorBeltSystemViewModel(
         windowIndex: Int
     ): WindowData? {
         if (!flexPaginatorEnabledProvider()) {
-            Log.v(FLEX_TAG, "windowIndex=$windowIndex legacy path")
+            AppLogger.v(FLEX_TAG, "windowIndex=$windowIndex legacy path")
             return assembleLegacyWindowData(paginator, windowManager, bookId, windowIndex)
         }
 
         return try {
             assembleFlexWindowData(paginator, windowManager, windowIndex)
         } catch (e: Exception) {
-            Log.d(FLEX_TAG, "windowIndex=$windowIndex fallback: ${e.message}")
+            AppLogger.d(FLEX_TAG, "windowIndex=$windowIndex fallback: ${e.message}")
             assembleLegacyWindowData(paginator, windowManager, bookId, windowIndex)
         }
     }
@@ -471,7 +468,8 @@ class ConveyorBeltSystemViewModel(
     ): WindowData {
         val parser = bookParser ?: throw IllegalStateException("FlexPaginator parser dependency is not set")
         val file = bookFile ?: throw IllegalStateException("FlexPaginator book file dependency is not set")
-        val context = applicationContext ?: throw IllegalStateException("Offscreen slicing context is not set")
+        val slicerFactory = offscreenSlicingWebViewFactory
+            ?: throw IllegalStateException("Offscreen slicer factory is not set")
         val totalChapters = paginator.getWindowInfo().totalChapters
         val chapterIndices = windowManager.chaptersInWindow(windowIndex, totalChapters)
         val firstChapter = chapterIndices.firstOrNull()
@@ -481,14 +479,14 @@ class ConveyorBeltSystemViewModel(
         val windowData = flex.assembleWindow(windowIndex, firstChapter, lastChapter)
             ?: throw IllegalStateException("FlexPaginator returned null")
         val slicer = offscreenSlicingWebView
-            ?: OffscreenSlicingWebView(context).also { offscreenSlicingWebView = it }
+            ?: slicerFactory().also { offscreenSlicingWebView = it }
         val sliceMetadata = slicer.sliceWindow(windowData.html, windowIndex)
 
         if (!sliceMetadata.isValid()) {
             throw IllegalStateException("Invalid SliceMetadata")
         }
 
-        Log.d(FLEX_TAG, "windowIndex=$windowIndex success pageCount=${sliceMetadata.totalPages}")
+        AppLogger.d(FLEX_TAG, "windowIndex=$windowIndex success pageCount=${sliceMetadata.totalPages}")
         return windowData.copy(sliceMetadata = sliceMetadata)
     }
 

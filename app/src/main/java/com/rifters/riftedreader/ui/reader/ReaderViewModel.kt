@@ -57,7 +57,7 @@ class ReaderViewModel(
     // Expose reader settings as StateFlow for UI consumption
     val readerSettings: StateFlow<ReaderSettings>
         get() = readerPreferences.settings
-    val flexPaginatorEnabled
+    val flexPaginatorEnabledFlow
         get() = readerPreferences.flexPaginatorEnabled
     
     // Table of Contents - list of chapter entries
