@@ -3,7 +3,6 @@ package com.rifters.riftedreader.domain.bookmark
 import com.rifters.riftedreader.data.database.entities.Bookmark
 import com.rifters.riftedreader.data.repository.BookmarkRepository
 import com.rifters.riftedreader.domain.parser.PageContent
-import com.rifters.riftedreader.util.BookmarkPreviewExtractor
 import kotlinx.coroutines.delay
 
 class BookmarkManager(
@@ -19,17 +18,13 @@ class BookmarkManager(
         percentageThrough: Float,
         fontSize: Float
     ): Bookmark {
-        val previewText = BookmarkPreviewExtractor.extractPreview(pageContent, characterOffset)
-            ?: BookmarkPreviewExtractor.extractPreviewFromStart(pageContent)
-            ?: "No preview available"
-
         val bookmark = Bookmark(
             bookId = bookId,
             chapterIndex = chapterIndex,
             charOffset = characterOffset,
             pageIndexHint = inChapterPage,
             nearestAnchorId = "",
-            nearestAnchorText = previewText,
+            nearestAnchorText = "",
             savedAt = System.currentTimeMillis(),
             label = null
         )

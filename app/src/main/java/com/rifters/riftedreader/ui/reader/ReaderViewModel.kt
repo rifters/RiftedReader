@@ -31,14 +31,13 @@ import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -272,12 +271,7 @@ class ReaderViewModel(
         val anchorEntries: List<AnchorEntry>
     )
 
-    private val pageChangedEvents = MutableSharedFlow<PendingBookmarkSave>(
-        replay = 0,
-        // Debounced last-read persistence only needs the newest observed position.
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
+    private val pageChangedEvents = MutableStateFlow<PendingBookmarkSave?>(null)
     
     /**
      * Get the count of visible chapters based on current visibility settings.
@@ -395,6 +389,7 @@ class ReaderViewModel(
     private fun observePageChangedEvents() {
         viewModelScope.launch(Dispatchers.IO) {
             pageChangedEvents
+                .filterNotNull()
                 .debounce(LAST_READ_DEBOUNCE_MS)
                 .collect { pending ->
                     bookmarkRepository.saveLastRead(
@@ -1193,7 +1188,7 @@ class ReaderViewModel(
             pageInWindow = event.pageIndex,
             characterOffset = event.charOffset
         )
-        pageChangedEvents.tryEmit(PendingBookmarkSave(event, anchorEntries))
+        pageChangedEvents.value = PendingBookmarkSave(event, anchorEntries)
     }
 
     fun saveNamedBookmark(
@@ -1212,6 +1207,9 @@ class ReaderViewModel(
         }
     }
 
+    /**
+     * Restores the saved chapter/window and returns the page index the caller should navigate to.
+     */
     suspend fun restoreLastRead(bookId: String): Int? {
         val bookmark = bookmarkRepository.loadLastRead(bookId) ?: return null
         val targetWindow = getWindowIndexForChapterSafe(bookmark.chapterIndex)

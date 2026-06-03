@@ -33,7 +33,7 @@ class BookmarkCreationTest {
     }
 
     @Test
-    fun delete_removesNamedBookmarkOnly() = runBlocking {
+    fun delete_removesMatchingBookmarks() = runBlocking {
         val repository = MockBookmarkRepository()
         val named = bookmark(savedAt = 1_000)
 
@@ -41,7 +41,7 @@ class BookmarkCreationTest {
         repository.saveNamedBookmark(named)
         repository.delete(named)
 
-        assertEquals(named, repository.loadLastRead("book1"))
+        assertNull(repository.loadLastRead("book1"))
         assertEquals(emptyList<Bookmark>(), repository.loadNamedBookmarks("book1"))
     }
 
@@ -87,5 +87,8 @@ private class MockBookmarkRepository : BookmarkRepository {
 
     override suspend fun delete(bookmark: Bookmark) {
         named.remove(bookmark)
+        if (lastRead[bookmark.bookId] == bookmark) {
+            lastRead.remove(bookmark.bookId)
+        }
     }
 }

@@ -28,14 +28,12 @@ interface BookmarkDao {
             AND chapterIndex = :chapterIndex
             AND charOffset = :charOffset
             AND savedAt = :savedAt
-            AND isLastRead = :isLastRead
         """
     )
     suspend fun deleteMatching(
         bookId: String,
         chapterIndex: Int,
         charOffset: Int,
-        savedAt: Long,
-        isLastRead: Boolean
+        savedAt: Long
     )
 }

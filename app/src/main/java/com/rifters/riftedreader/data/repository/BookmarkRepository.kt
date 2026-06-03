@@ -36,8 +36,7 @@ class RoomBookmarkRepository(
             bookId = bookmark.bookId,
             chapterIndex = bookmark.chapterIndex,
             charOffset = bookmark.charOffset,
-            savedAt = bookmark.savedAt,
-            isLastRead = false
+            savedAt = bookmark.savedAt
         )
     }
 }
