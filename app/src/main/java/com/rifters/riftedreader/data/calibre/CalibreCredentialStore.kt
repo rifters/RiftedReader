@@ -25,9 +25,9 @@ class CalibreCredentialStore(context: Context) {
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: GeneralSecurityException) {
-            throw IllegalStateException("Calibre credential keystore initialization failed. Check device lock screen and Android Keystore state.", e)
+            throw IllegalStateException("Unable to securely store Calibre credentials. Ensure the device has secure credential storage available.", e)
         } catch (e: IOException) {
-            throw IllegalStateException("Unable to access encrypted Calibre credential storage.", e)
+            throw IllegalStateException("Unable to access secure Calibre credential storage. Try again or restart the app.", e)
         }
     }
 

@@ -94,6 +94,7 @@ class ReaderSettingsFragment : PreferenceFragmentCompat() {
         val preferredFormat = findPreference<ListPreference>(PREF_PREFERRED_FORMAT)
         val testConnection = findPreference<Preference>(PREF_TEST_CONNECTION)
 
+        // Calibre settings are persisted explicitly through DataStore and EncryptedSharedPreferences.
         listOfNotNull(
             contentEnabled,
             contentUrl,

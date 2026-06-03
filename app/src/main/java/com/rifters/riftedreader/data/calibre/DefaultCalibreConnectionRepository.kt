@@ -14,6 +14,7 @@ import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 private val Context.calibreConnectionDataStore by preferencesDataStore(name = "calibre_connection_preferences")
 
@@ -104,7 +105,11 @@ class DefaultCalibreConnectionRepository(
     companion object {
         private const val HTTP_UNAUTHORIZED = 401
         private const val CONTENT_SERVER_HEALTH_PATH = "/cdb/cmd/list/0"
-        private val DEFAULT_CLIENT = OkHttpClient()
+        private val DEFAULT_CLIENT = OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(10, TimeUnit.SECONDS)
+            .build()
 
         private val KEY_CONTENT_SERVER_URL = stringPreferencesKey("content_server_url")
         private val KEY_CONTENT_SERVER_USERNAME = stringPreferencesKey("content_server_username")
