@@ -111,7 +111,7 @@ function createMockAndroidBridge() {
 /**
  * Helper to create wrapped chapter HTML
  */
-function createWindowRoot(sections, dataWindowIndex = 0) {
+function createWindowRootHTML(sections, dataWindowIndex = 0) {
   return `<div id="window-root" data-window-index="${dataWindowIndex}">${sections}</div>`;
 }
 
@@ -136,7 +136,7 @@ describe('flex_paginator.js', () => {
 
     test('should call AndroidBridge.onSlicingComplete with correct page count', () => {
       const content = 'a'.repeat(160);
-      setupDOM(createWindowRoot(`
+      setupDOM(createWindowRootHTML(`
         <section data-chapter="0">
           <div style="height:48px">${content}</div>
         </section>
@@ -167,7 +167,7 @@ describe('flex_paginator.js', () => {
     });
 
     test('should call AndroidBridge.onSlicingError when FLEX_PAGINATOR globals are not set', () => {
-      setupDOM(createWindowRoot('<section data-chapter="0"><p>Chapter content</p></section>'));
+      setupDOM(createWindowRootHTML('<section data-chapter="0"><p>Chapter content</p></section>'));
       const mockBridge = createMockAndroidBridge();
 
       const paginator = loadPaginator();
@@ -178,7 +178,7 @@ describe('flex_paginator.js', () => {
     });
 
     test('should hard break at chapter section boundaries', () => {
-      setupDOM(createWindowRoot(`
+      setupDOM(createWindowRootHTML(`
         <section data-chapter="0"><p>Chapter zero</p></section>
         <section data-chapter="1"><p>Chapter one</p></section>
       `));
@@ -200,7 +200,7 @@ describe('flex_paginator.js', () => {
   describe('public API', () => {
 
     test('should expose the full flex paginator API surface', () => {
-      setupDOM(createWindowRoot('<section data-chapter="0"><p>Chapter content</p></section>'));
+      setupDOM(createWindowRootHTML('<section data-chapter="0"><p>Chapter content</p></section>'));
       setupFlexGlobals();
       createMockAndroidBridge();
 
@@ -219,7 +219,7 @@ describe('flex_paginator.js', () => {
     });
 
     test('isReady should return true after successful slicing', () => {
-      setupDOM(createWindowRoot('<section data-chapter="0"><p>Chapter content</p></section>'));
+      setupDOM(createWindowRootHTML('<section data-chapter="0"><p>Chapter content</p></section>'));
       setupFlexGlobals();
       createMockAndroidBridge();
 
@@ -229,7 +229,7 @@ describe('flex_paginator.js', () => {
     });
 
     test('getPageCount should match slicing metadata totalPages', () => {
-      setupDOM(createWindowRoot(`
+      setupDOM(createWindowRootHTML(`
         <section data-chapter="0"><p>Chapter zero</p></section>
         <section data-chapter="1"><p>Chapter one</p></section>
       `));
@@ -242,7 +242,7 @@ describe('flex_paginator.js', () => {
     });
 
     test('getCurrentPage should return 0 initially', () => {
-      setupDOM(createWindowRoot('<section data-chapter="0"><p>Chapter content</p></section>'));
+      setupDOM(createWindowRootHTML('<section data-chapter="0"><p>Chapter content</p></section>'));
       setupFlexGlobals();
       createMockAndroidBridge();
 
@@ -252,7 +252,7 @@ describe('flex_paginator.js', () => {
     });
 
     test('getCharacterOffsetForPage should return slice startChar and 0 for missing pages', () => {
-      setupDOM(createWindowRoot('<section data-chapter="0"><p>Chapter content</p></section>'));
+      setupDOM(createWindowRootHTML('<section data-chapter="0"><p>Chapter content</p></section>'));
       setupFlexGlobals();
       const mockBridge = createMockAndroidBridge();
 
@@ -265,7 +265,7 @@ describe('flex_paginator.js', () => {
     });
 
     test('navigateToPage should clamp page index and notify AndroidBridge', () => {
-      setupDOM(createWindowRoot(`
+      setupDOM(createWindowRootHTML(`
         <section data-chapter="0"><p>Chapter zero</p></section>
         <section data-chapter="1"><p>Chapter one</p></section>
       `));
@@ -287,7 +287,7 @@ describe('flex_paginator.js', () => {
     });
 
     test('goToPage should navigate to the requested page', () => {
-      setupDOM(createWindowRoot(`
+      setupDOM(createWindowRootHTML(`
         <section data-chapter="0"><p>Chapter zero</p></section>
         <section data-chapter="1"><p>Chapter one</p></section>
       `));
@@ -301,7 +301,7 @@ describe('flex_paginator.js', () => {
     });
 
     test('nextPage and prevPage should update currentPage', () => {
-      setupDOM(createWindowRoot(`
+      setupDOM(createWindowRootHTML(`
         <section data-chapter="0"><p>Chapter zero</p></section>
         <section data-chapter="1"><p>Chapter one</p></section>
       `));
@@ -318,7 +318,7 @@ describe('flex_paginator.js', () => {
     });
 
     test('jumpToAnchor should navigate to the page containing the anchor', () => {
-      setupDOM(createWindowRoot(`
+      setupDOM(createWindowRootHTML(`
         <section data-chapter="0"><h2 id="chapter-zero">Chapter zero</h2></section>
         <section data-chapter="1"><h2 id="chapter-one">Chapter one</h2></section>
       `));
@@ -332,7 +332,7 @@ describe('flex_paginator.js', () => {
     });
 
     test('jumpToAnchor should return false when the anchor is missing', () => {
-      setupDOM(createWindowRoot('<section data-chapter="0"><p>Chapter content</p></section>'));
+      setupDOM(createWindowRootHTML('<section data-chapter="0"><p>Chapter content</p></section>'));
       setupFlexGlobals();
       createMockAndroidBridge();
 

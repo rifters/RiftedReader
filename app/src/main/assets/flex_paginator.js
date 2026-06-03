@@ -191,7 +191,7 @@
         let accumulatedHeight = 0;
         let currentChapter = null;
         let sliceStartChar = 0;
-        let currentCharOffset = 0;
+        let currentChapterCharOffset = 0;
         
         // Clear document body
         document.body.innerHTML = '';
@@ -218,7 +218,7 @@
                     page: currentPageIndex - 1,
                     chapter: currentChapter,
                     startChar: sliceStartChar,
-                    endChar: currentCharOffset,
+                    endChar: currentChapterCharOffset,
                     heightPx: accumulatedHeight
                 };
                 state.slices.push(slice);
@@ -242,7 +242,7 @@
             flexContainer.appendChild(currentPage);
             
             currentChapter = chapterIndex;
-            sliceStartChar = currentCharOffset;
+            sliceStartChar = currentChapterCharOffset;
             accumulatedHeight = 0;
             currentPageIndex++;
         }
@@ -260,12 +260,12 @@
             startNewPage(chapterIndex);
             // PageSlice start/end offsets are chapter-local; reset at chapter boundaries.
             sliceStartChar = 0;
-            currentCharOffset = 0; // Reset char offset for new chapter
+            currentChapterCharOffset = 0;
             
             // Walk nodes in this section
             walkNodes(section, currentPage, (height, textLength) => {
                 accumulatedHeight += height;
-                currentCharOffset += textLength;
+                currentChapterCharOffset += textLength;
                 
                 // Check if we need to start a new page
                 if (accumulatedHeight >= state.viewportHeight) {
@@ -280,7 +280,7 @@
                 page: currentPageIndex - 1,
                 chapter: currentChapter,
                 startChar: sliceStartChar,
-                endChar: currentCharOffset,
+                endChar: currentChapterCharOffset,
                 heightPx: accumulatedHeight
             };
             state.slices.push(slice);
