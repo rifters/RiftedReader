@@ -105,6 +105,22 @@ Current, finalized documentation for the project:
 - **[SCROLL_GESTURE_TESTING_GUIDE.md](docs/testing/SCROLL_GESTURE_TESTING_GUIDE.md)** - Gesture testing
 - **[EPUB_COVER_DEBUG_GUIDE.md](docs/testing/EPUB_COVER_DEBUG_GUIDE.md)** - Cover image debugging
 
+## Running tests
+
+Install the JavaScript test dependencies before running the JS suite:
+
+```bash
+cd tests/js
+npm install
+npm test
+```
+
+Run Android unit tests from the repository root:
+
+```bash
+./gradlew :app:testDebugUnitTest
+```
+
 ## Key Features (Planned)
 
 ### Format Support

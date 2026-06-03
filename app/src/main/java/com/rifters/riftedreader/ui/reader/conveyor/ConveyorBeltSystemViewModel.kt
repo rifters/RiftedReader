@@ -432,6 +432,12 @@ class ConveyorBeltSystemViewModel(
         return synchronized(windowDataCacheLock) { windowDataCache[windowIndex] }
     }
 
+    fun getCachedWindowDataContainingChapter(chapterIndex: Int): WindowData? {
+        return synchronized(windowDataCacheLock) {
+            windowDataCache.values.firstOrNull { it.containsChapter(chapterIndex) }
+        }
+    }
+
     suspend fun invalidateAndReloadWindow(windowIndex: Int) {
         htmlCache.remove(windowIndex)
         windowDataCache.remove(windowIndex)

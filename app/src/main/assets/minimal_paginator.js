@@ -379,8 +379,16 @@
             behavior: smooth ? 'smooth' : 'auto'
         });
 
-        // High-signal drift check: if something (reflow/layout clamp) forces scrollLeft away
-        // from the requested page after navigation, log it. This is the exact symptom you're seeing.
+        scheduleNavigationDriftCheck(validIndex, smooth);
+        
+        // REMOVED: checkBoundary() call - let scroll listener handle boundary detection
+        // after scroll animation completes and state is properly updated
+        log('NAV', `goToPage(${pageIndex}) -> ${validIndex}, smooth=${smooth}`);
+    }
+
+    function scheduleNavigationDriftCheck(validIndex, smooth) {
+        // High-signal drift check: log if reflow/layout clamping forces scrollLeft
+        // away from the requested page after navigation.
         if (config.enableNavDriftLog) setTimeout(function() {
             try {
                 if (!state.columnContainer || state.appliedColumnWidth <= 0) return;
@@ -393,10 +401,6 @@
                 // ignore
             }
         }, smooth ? 1200 : 200);
-        
-        // REMOVED: checkBoundary() call - let scroll listener handle boundary detection
-        // after scroll animation completes and state is properly updated
-        log('NAV', `goToPage(${pageIndex}) -> ${validIndex}, smooth=${smooth}`);
     }
     
     /**
@@ -746,6 +750,7 @@
         var preservedFontSize = wrapper.style.fontSize;
         
         // Set up column CSS with explicit -webkit prefixes for better Android WebView support
+        // Native snap handles normal touch flings; JS snap corrects stale/resize edge cases.
         wrapper.style.cssText = `
             display: block;
             column-width: ${columnWidth}px;
@@ -755,6 +760,7 @@
             column-fill: auto;
             -webkit-column-fill: auto;
             height: 100%;
+            scroll-snap-align: start;
         `;
         
         // Restore the preserved font size if it existed
@@ -798,9 +804,7 @@
      */
     function applyColumnLayout() {
         // Optional: keep width in sync with the real container size.
-        if (config.enableWidthSync) {
-            updateViewportWidth('APPLY_LAYOUT');
-        }
+        if (config.enableWidthSync) updateViewportWidth('APPLY_LAYOUT');
         applyColumnStylesWithWidth(state.contentWrapper, state.appliedColumnWidth);
     }
     
@@ -945,12 +949,11 @@
             log('DIAGNOSTIC', `Scroll event - scrollLeft=${currentScrollLeft.toFixed(1)}px, appliedColumnWidth=${state.appliedColumnWidth}px`);
             
             // Update current page based on container scroll position
-            const newPage = Math.round(currentScrollLeft / state.appliedColumnWidth);
             const prevPage = state.currentPage;  // ← TRACK PREVIOUS
-            state.currentPage = Math.max(0, Math.min(newPage, state.pageCount - 1));
+            syncPaginationState(currentScrollLeft);
             
             // DIAGNOSTIC: Log page calculation from scroll
-            log('DIAGNOSTIC', `Scroll page calculation: round(${currentScrollLeft.toFixed(1)} / ${state.appliedColumnWidth}) = ${newPage}, clamped to ${state.currentPage}`);
+            log('DIAGNOSTIC', `Scroll page calculation: round(${currentScrollLeft.toFixed(1)} / ${state.appliedColumnWidth}) clamped to ${state.currentPage}`);
             
             // ✅ ADD THIS: Notify Android when page actually changes
             if (state.currentPage !== prevPage) {
@@ -1021,7 +1024,14 @@
         
         // Use columnContainer.scrollLeft instead of window scroll
         const currentScrollLeft = state.columnContainer.scrollLeft;
-        const targetPage = Math.round(currentScrollLeft / state.appliedColumnWidth);
+        /**
+         * This runs after manual scrolls and resize/layout correction. Snap alignment
+         * uses floor() to choose the page containing the current scroll offset. Live
+         * state sync uses round() because it tracks the nearest visible page while
+         * the user scrolls; snapping must not jump forward before the offset actually
+         * crosses into the next page.
+         */
+        const targetPage = Math.floor(currentScrollLeft / state.appliedColumnWidth);
         const clampedPage = Math.max(0, Math.min(targetPage, state.pageCount - 1));
         const targetScrollPos = clampedPage * state.appliedColumnWidth;
         
@@ -1136,6 +1146,24 @@
                 }, 100);
             }
         }
+    }
+
+    /**
+     * Synchronize currentPage with the container's scroll position.
+     *
+     * The caller may pass a known scrollLeft to avoid reading from the DOM twice.
+     * This uses nearest-page rounding for live state, while snapToNearestPage uses
+     * floor() to choose the containing page when aligning to a boundary. Use this
+     * for live/manual scroll state only, not for choosing a snap target.
+     */
+    function syncPaginationState(currentScrollLeft) {
+        if (!state.columnContainer || state.appliedColumnWidth <= 0) return;
+        const scrollLeft = typeof currentScrollLeft === 'number'
+            ? currentScrollLeft
+            : state.columnContainer.scrollLeft;
+        const computedPage = Math.round(scrollLeft / state.appliedColumnWidth);
+        const clampedPage = Math.max(0, Math.min(computedPage, state.pageCount - 1));
+        state.currentPage = clampedPage;
     }
     
     /**

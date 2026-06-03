@@ -1504,7 +1504,9 @@ class ReaderViewModel(
     }
 
     suspend fun restoreBookmark(bookmark: Bookmark): Int? {
-        val targetWindow = getWindowIndexForChapterSafe(bookmark.chapterIndex)
+        val preferredWindow = getWindowIndexForChapterSafe(bookmark.chapterIndex)
+        val foundCachedWindowData = findCachedWindowDataForChapter(preferredWindow, bookmark.chapterIndex)
+        val targetWindow = foundCachedWindowData?.windowIndex ?: preferredWindow
 
         if (isContinuousMode) {
             goToWindow(targetWindow)
@@ -1512,9 +1514,7 @@ class ReaderViewModel(
             _currentPage.value = bookmark.chapterIndex.coerceAtLeast(0)
         }
 
-        val sliceMetadata = conveyorBeltSystem
-            ?.getCachedWindowData(targetWindow)
-            ?.takeIf { it.containsChapter(bookmark.chapterIndex) }
+        val sliceMetadata = foundCachedWindowData
             ?.also { windowData ->
                 if (windowData.isSliceStale && readerPreferences.settings.value.mode == ReaderMode.PAGINATED) {
                     observePreciseRestoreAfterSlice(
@@ -1534,6 +1534,20 @@ class ReaderViewModel(
         return sliceMetadata
             ?.findPageByCharOffset(bookmark.chapterIndex, bookmark.charOffset)
             ?: bookmark.pageIndexHint
+    }
+
+    /**
+     * Finds slice metadata for bookmark restore after window migration.
+     *
+     * The canonical chapter-to-window mapping is tried first, but cached window data may
+     * come from an adjacent/migrated window after conveyor movement, so fall back to
+     * searching all currently cached windows for the target chapter.
+     */
+    private fun findCachedWindowDataForChapter(preferredWindow: Int, chapterIndex: Int): WindowData? {
+        val conveyor = conveyorBeltSystem ?: return null
+        return conveyor.getCachedWindowData(preferredWindow)
+            ?.takeIf { it.containsChapter(chapterIndex) }
+            ?: conveyor.getCachedWindowDataContainingChapter(chapterIndex)
     }
 
     private fun updateHasBookmarkAtCurrentPosition() {
