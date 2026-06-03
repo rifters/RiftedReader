@@ -31,6 +31,7 @@ import com.rifters.riftedreader.pagination.FlexSlicingConfig
 import com.rifters.riftedreader.pagination.OffscreenSlicingWebView
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.databinding.FragmentReaderPageBinding
+import com.rifters.riftedreader.domain.reader.HeadingAnchorSlugger
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.util.AppLoggerBridge
@@ -1558,6 +1559,7 @@ class ReaderPageFragment : Fragment() {
             typography.fontFamily,
             FlexSlicingConfig.DEFAULT_FONT_FAMILY
         )
+        val anchoredContent = HeadingAnchorSlugger.injectHeadingIds(content)
         
         return """
             <!DOCTYPE html>
@@ -1640,11 +1642,24 @@ class ReaderPageFragment : Fragment() {
                 <script src="https://${EpubImageAssetHelper.ASSET_HOST}/assets/minimal_paginator.js"></script>
             </head>
             <body>
-                $content
+                $anchoredContent
             </body>
             </html>
         """.trimIndent()
     }
+
+    private fun String.sanitizeForJs(): String =
+        replace("\\", "\\\\")
+            .replace("'", "\\'")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+            .replace("<", "\\u003C")
+            .replace(">", "\\u003E")
+            .replace("&", "\\u0026")
+            .replace("\u2028", "\\u2028")
+            .replace("\u2029", "\\u2029")
 
     private fun syncSharedTypographyConfig(settings: com.rifters.riftedreader.data.preferences.ReaderSettings) {
         FlexSlicingConfig.setDefaultTypography(
@@ -2551,6 +2566,14 @@ class ReaderPageFragment : Fragment() {
      */
     fun isWebViewReady(): Boolean = isWebViewReady
     fun isPaginatorInitialized(): Boolean = isPaginatorInitialized
+
+    fun jumpToAnchor(anchorId: String) {
+        if (_binding == null) return
+        binding.pageWebView.evaluateJavascript(
+            "window.flexPaginator?.jumpToAnchor('${anchorId.sanitizeForJs()}');",
+            null
+        )
+    }
 
     /**
      * Reset window scroll state when entering a new window.

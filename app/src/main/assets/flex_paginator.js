@@ -331,6 +331,74 @@
         return true;
     }
 
+    function jumpToAnchor(anchorId) {
+        const target = document.getElementById(anchorId);
+        if (!target) {
+            return false;
+        }
+
+        if (document.body.classList.contains('mode-scroll')) {
+            const prefersReducedMotion = window.matchMedia &&
+                window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            target.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'start' });
+            return true;
+        }
+
+        if (!state.isInitialized || state.slices.length === 0) {
+            log('WARN', 'jumpToAnchor: paginator not ready');
+            return false;
+        }
+
+        const targetPage = target.closest('.page');
+        if (!targetPage) {
+            log('WARN', `jumpToAnchor: anchor ${anchorId} is not inside a page`);
+            return false;
+        }
+
+        const targetChapter = parseInt(targetPage.getAttribute('data-chapter'), 10);
+        const targetPageIndex = parseInt(targetPage.getAttribute('data-page'), 10);
+        if (!Number.isInteger(targetChapter) || !Number.isInteger(targetPageIndex)) {
+            log('WARN', `jumpToAnchor: invalid page metadata for anchor ${anchorId}`);
+            return false;
+        }
+
+        const containingSlice = targetPageIndex >= 0 && targetPageIndex < state.slices.length
+            ? state.slices[targetPageIndex]
+            : null;
+        if (!containingSlice) {
+            log('WARN', `jumpToAnchor: no slice found for anchor ${anchorId}`);
+            return false;
+        }
+        if (containingSlice.chapter !== targetChapter || containingSlice.page !== targetPageIndex) {
+            log('WARN', `jumpToAnchor: slice/page mismatch for anchor ${anchorId}`);
+            return false;
+        }
+
+        // Slicing and anchor lookup both count DOM text nodes, so the page slice
+        // start character can be combined with the anchor's in-page text offset.
+        const startChar = getSliceStartChar(containingSlice);
+        const relativeCharOffset = getTextLengthBeforeTarget(targetPage, target);
+        const targetCharOffset = startChar + relativeCharOffset;
+
+        let nearestPageIndex = 0;
+        // Sentinel below any valid slice offset so page 0 can be selected.
+        let nearestStartChar = -1;
+        for (let i = 0; i < state.slices.length; i++) {
+            const slice = state.slices[i];
+            if (!slice) continue;
+            if (Number.isInteger(targetChapter) && slice.chapter !== targetChapter) continue;
+
+            const sliceStartChar = getSliceStartChar(slice);
+            // Find the closest slice that starts before or exactly at the target character offset.
+            if (sliceStartChar <= targetCharOffset && sliceStartChar >= nearestStartChar) {
+                nearestPageIndex = i;
+                nearestStartChar = sliceStartChar;
+            }
+        }
+
+        return navigateToPage(nearestPageIndex);
+    }
+
     function nextPage() {
         return navigateToPage(state.currentPage + 1);
     }
@@ -350,6 +418,49 @@
     function getCharacterOffsetForPage(pageIndex) {
         const slice = state.slices[pageIndex];
         return slice ? slice.startChar : 0;
+    }
+
+    function getSliceStartChar(slice) {
+        if (!slice) return 0;
+        if (typeof slice.charOffset === 'number') return slice.charOffset;
+        if (typeof slice.startChar === 'number') return slice.startChar;
+        return 0;
+    }
+
+    /**
+     * Count text characters from root up to, but not including, target for anchor jumps.
+     *
+     * @param {Node} root The page container that owns the target heading.
+     * @param {Node} target The heading element being navigated to.
+     * @returns {number} Cumulative character count from the start of root up to
+     * the target element, or 0 if target is not found. This selects the closest
+     * precomputed slice whose charOffset/startChar is before the anchor.
+     */
+    function getTextLengthBeforeTarget(root, target) {
+        function walk(node) {
+            if (node === target) {
+                return { found: true, length: 0 };
+            }
+
+            if (node.nodeType === Node.TEXT_NODE) {
+                return { found: false, length: (node.textContent || '').length };
+            }
+
+            let length = 0;
+            for (let i = 0; i < node.childNodes.length; i++) {
+                const child = node.childNodes[i];
+                const result = walk(child);
+                if (result.found) {
+                    return { found: true, length: length + result.length };
+                }
+                length += result.length;
+            }
+
+            return { found: false, length };
+        }
+
+        const result = walk(root);
+        return result.found ? result.length : 0;
     }
 
     function isReady() {
@@ -546,6 +657,7 @@
     window.flexPaginator = {
         navigateToPage,
         goToPage: navigateToPage,
+        jumpToAnchor,
         nextPage,
         prevPage,
         getCurrentPage,
