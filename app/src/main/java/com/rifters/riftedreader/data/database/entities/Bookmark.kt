@@ -6,16 +6,17 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.UUID
 
-/**
- * Entity representing a bookmark in a book.
- * Implements Approach C: Hybrid - Chapter + Page + Character Offset
- * 
- * This approach provides:
- * - Fast restoration when font unchanged (use page number)
- * - Precise restoration when font changed (use character offset)
- * - Human-readable display with preview text
- * - Fallback mechanism if character offset fails
- */
+data class Bookmark(
+    val bookId: String,
+    val chapterIndex: Int,
+    val charOffset: Int,
+    val pageIndexHint: Int,
+    val nearestAnchorId: String,
+    val nearestAnchorText: String,
+    val savedAt: Long,
+    val label: String? = null
+)
+
 @Entity(
     tableName = "bookmarks",
     foreignKeys = [
@@ -28,27 +29,62 @@ import java.util.UUID
     ],
     indices = [
         Index(value = ["bookId"]),
-        Index(value = ["createdAt"])
+        Index(value = ["bookId", "isLastRead"]),
+        Index(value = ["savedAt"])
     ]
 )
-data class Bookmark(
+data class BookmarkEntity(
     @PrimaryKey
     val id: String = UUID.randomUUID().toString(),
-    
-    // Book reference
     val bookId: String,
-    
-    // Position information - hybrid approach
     val chapterIndex: Int,
-    val inChapterPage: Int,           // Quick approximation for when font unchanged
-    val characterOffset: Int,         // Precise position for when font changed
-    
-    // Contextual information
-    val chapterTitle: String,
-    val previewText: String,          // First ~50 chars of visible text
-    val percentageThrough: Float,     // Overall progress in book
-    
-    // Metadata
-    val createdAt: Long = System.currentTimeMillis(),
-    val fontSize: Float               // Font size when bookmark created
-)
+    val charOffset: Int,
+    val pageIndexHint: Int,
+    val nearestAnchorId: String,
+    val nearestAnchorText: String,
+    val savedAt: Long,
+    val label: String? = null,
+    val isLastRead: Boolean = false
+) {
+    fun toBookmark(): Bookmark = Bookmark(
+        bookId = bookId,
+        chapterIndex = chapterIndex,
+        charOffset = charOffset,
+        pageIndexHint = pageIndexHint,
+        nearestAnchorId = nearestAnchorId,
+        nearestAnchorText = nearestAnchorText,
+        savedAt = savedAt,
+        label = label
+    )
+
+    companion object {
+        fun lastRead(bookmark: Bookmark): BookmarkEntity = fromBookmark(
+            bookmark = bookmark,
+            id = "last_read_${bookmark.bookId}",
+            isLastRead = true
+        )
+
+        fun named(bookmark: Bookmark): BookmarkEntity = fromBookmark(
+            bookmark = bookmark,
+            id = UUID.randomUUID().toString(),
+            isLastRead = false
+        )
+
+        fun fromBookmark(
+            bookmark: Bookmark,
+            id: String = UUID.randomUUID().toString(),
+            isLastRead: Boolean
+        ): BookmarkEntity = BookmarkEntity(
+            id = id,
+            bookId = bookmark.bookId,
+            chapterIndex = bookmark.chapterIndex,
+            charOffset = bookmark.charOffset,
+            pageIndexHint = bookmark.pageIndexHint,
+            nearestAnchorId = bookmark.nearestAnchorId,
+            nearestAnchorText = bookmark.nearestAnchorText,
+            savedAt = bookmark.savedAt,
+            label = bookmark.label,
+            isLastRead = isLastRead
+        )
+    }
+}

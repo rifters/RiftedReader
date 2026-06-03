@@ -8,9 +8,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.recyclerview.widget.RecyclerView
+import com.rifters.riftedreader.data.database.entities.Bookmark
 import com.rifters.riftedreader.data.preferences.ChapterVisibilitySettings
 import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
+import com.rifters.riftedreader.data.repository.BookmarkRepository
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.domain.pagination.ChapterIndexProvider
 import com.rifters.riftedreader.domain.pagination.ContinuousPaginator
@@ -20,6 +22,7 @@ import com.rifters.riftedreader.domain.parser.BookParser
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.domain.parser.TocEntry
 import com.rifters.riftedreader.domain.parser.TxtParser
+import com.rifters.riftedreader.domain.reader.AnchorEntry
 import com.rifters.riftedreader.pagination.PaginationModeGuard
 import com.rifters.riftedreader.pagination.SlidingWindowPaginator
 import com.rifters.riftedreader.pagination.WindowData
@@ -27,9 +30,14 @@ import com.rifters.riftedreader.pagination.WindowSyncHelpers
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
 import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -51,6 +59,7 @@ class ReaderViewModel(
     private val bookFile: File,
     private val parser: BookParser,
     private val repository: BookRepository,
+    private val bookmarkRepository: BookmarkRepository,
     private val readerPreferences: ReaderPreferences
 ) : ViewModel() {
 
@@ -254,6 +263,17 @@ class ReaderViewModel(
     val currentPage: StateFlow<Int> = _currentPage.asStateFlow()
     val currentWindowIndex: StateFlow<Int> = _currentWindowIndex.asStateFlow()
     val content: StateFlow<PageContent> = _content.asStateFlow()
+
+    private data class PendingBookmarkSave(
+        val event: PageChangedEvent,
+        val anchorEntries: List<AnchorEntry>
+    )
+
+    private val pageChangedEvents = MutableSharedFlow<PendingBookmarkSave>(
+        replay = 0,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     
     /**
      * Get the count of visible chapters based on current visibility settings.
@@ -348,6 +368,8 @@ class ReaderViewModel(
 
     init {
         AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] init: bookId=$bookId, paginationMode=$paginationMode")
+
+        observePageChangedEvents()
         
         // Initialize content loading based on pagination mode
         if (isContinuousMode) {
@@ -363,6 +385,23 @@ class ReaderViewModel(
         
         // Observe visibility settings changes and update window count accordingly
         observeVisibilitySettingsChanges()
+    }
+
+    @OptIn(FlowPreview::class)
+    private fun observePageChangedEvents() {
+        viewModelScope.launch(Dispatchers.IO) {
+            pageChangedEvents
+                .debounce(2_000)
+                .collect { pending ->
+                    bookmarkRepository.saveLastRead(
+                        createBookmark(
+                            event = pending.event,
+                            anchorEntries = pending.anchorEntries,
+                            label = null
+                        )
+                    )
+                }
+        }
     }
     
     /**
@@ -1143,6 +1182,86 @@ class ReaderViewModel(
         )
     }
 
+    fun onPageChanged(event: PageChangedEvent, anchorEntries: List<AnchorEntry>) {
+        val windowIndex = getWindowIndexForChapterSafe(event.chapterIndex)
+        updateReadingPosition(
+            windowIndex = windowIndex,
+            pageInWindow = event.pageIndex,
+            characterOffset = event.charOffset
+        )
+        pageChangedEvents.tryEmit(PendingBookmarkSave(event, anchorEntries))
+    }
+
+    fun saveNamedBookmark(
+        event: PageChangedEvent,
+        anchorEntries: List<AnchorEntry>,
+        label: String? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            bookmarkRepository.saveNamedBookmark(
+                createBookmark(
+                    event = event,
+                    anchorEntries = anchorEntries,
+                    label = label
+                )
+            )
+        }
+    }
+
+    suspend fun restoreLastRead(bookId: String): Int? {
+        val bookmark = bookmarkRepository.loadLastRead(bookId) ?: return null
+        val targetWindow = getWindowIndexForChapterSafe(bookmark.chapterIndex)
+
+        if (isContinuousMode) {
+            goToWindow(targetWindow)
+        } else {
+            _currentPage.value = bookmark.chapterIndex.coerceAtLeast(0)
+        }
+
+        val sliceMetadata = conveyorBeltSystem
+            ?.getCachedWindowData(targetWindow)
+            ?.takeIf { it.containsChapter(bookmark.chapterIndex) }
+            ?.sliceMetadata
+            ?.takeIf { it.isValid() }
+
+        return sliceMetadata
+            ?.findPageByCharOffset(bookmark.chapterIndex, bookmark.charOffset)
+            ?: bookmark.pageIndexHint
+    }
+
+    private fun createBookmark(
+        event: PageChangedEvent,
+        anchorEntries: List<AnchorEntry>,
+        label: String?
+    ): Bookmark {
+        val nearestAnchor = anchorEntries
+            .asSequence()
+            .filter { it.chapterIndex == null || it.chapterIndex == event.chapterIndex }
+            .filter { it.charOffset <= event.charOffset }
+            .maxByOrNull { it.charOffset }
+
+        return Bookmark(
+            bookId = bookId,
+            chapterIndex = event.chapterIndex,
+            charOffset = event.charOffset,
+            pageIndexHint = event.pageIndex,
+            nearestAnchorId = nearestAnchor?.id.orEmpty(),
+            nearestAnchorText = nearestAnchor?.text.orEmpty(),
+            savedAt = System.currentTimeMillis(),
+            label = label
+        )
+    }
+
+    private fun getWindowIndexForChapterSafe(chapterIndex: Int): Int {
+        val safeChapter = chapterIndex.coerceAtLeast(0)
+        return if (isContinuousMode) {
+            runCatching { slidingWindowPaginator.getWindowForChapter(safeChapter) }
+                .getOrElse { slidingWindowManager.windowForChapter(safeChapter) }
+        } else {
+            safeChapter
+        }
+    }
+
     private suspend fun persistWindowBasedProgress(percentOverride: Float? = null) {
         val totalWindows = _windowCount.value
         if (totalWindows <= 0) return
@@ -1638,12 +1757,13 @@ class ReaderViewModel(
         private val bookFile: File,
         private val parser: BookParser,
         private val repository: BookRepository,
+        private val bookmarkRepository: BookmarkRepository,
         private val readerPreferences: ReaderPreferences
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(ReaderViewModel::class.java)) {
-                return ReaderViewModel(bookId, bookFile, parser, repository, readerPreferences) as T
+                return ReaderViewModel(bookId, bookFile, parser, repository, bookmarkRepository, readerPreferences) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
         }

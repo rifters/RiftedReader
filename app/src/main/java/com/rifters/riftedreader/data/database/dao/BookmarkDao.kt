@@ -1,54 +1,45 @@
 package com.rifters.riftedreader.data.database.dao
 
-import androidx.room.*
-import com.rifters.riftedreader.data.database.entities.Bookmark
-import kotlinx.coroutines.flow.Flow
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import com.rifters.riftedreader.data.database.entities.BookmarkEntity
 
-/**
- * Data Access Object for Bookmark operations
- */
 @Dao
 interface BookmarkDao {
-    
-    @Query("SELECT * FROM bookmarks WHERE bookId = :bookId ORDER BY createdAt DESC")
-    fun getBookmarksForBook(bookId: String): Flow<List<Bookmark>>
-    
-    @Query("SELECT * FROM bookmarks WHERE bookId = :bookId ORDER BY createdAt DESC")
-    suspend fun getBookmarksForBookSnapshot(bookId: String): List<Bookmark>
-    
-    @Query("SELECT * FROM bookmarks WHERE bookId = :bookId ORDER BY chapterIndex ASC, inChapterPage ASC")
-    fun getBookmarksForBookSortedByPosition(bookId: String): Flow<List<Bookmark>>
-    
-    @Query("SELECT * FROM bookmarks WHERE id = :bookmarkId")
-    suspend fun getBookmarkById(bookmarkId: String): Bookmark?
-    
-    @Query("SELECT * FROM bookmarks ORDER BY createdAt DESC LIMIT :limit")
-    fun getRecentBookmarks(limit: Int = 20): Flow<List<Bookmark>>
-    
-    @Query("SELECT * FROM bookmarks ORDER BY createdAt DESC")
-    fun getAllBookmarks(): Flow<List<Bookmark>>
-    
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertBookmark(bookmark: Bookmark)
-    
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertBookmarks(bookmarks: List<Bookmark>)
-    
-    @Update
-    suspend fun updateBookmark(bookmark: Bookmark)
-    
+    suspend fun upsert(bookmark: BookmarkEntity)
+
+    @Query("SELECT * FROM bookmarks WHERE bookId = :bookId AND isLastRead = 1 LIMIT 1")
+    suspend fun loadLastRead(bookId: String): BookmarkEntity?
+
+    @Query("SELECT * FROM bookmarks WHERE bookId = :bookId AND isLastRead = 0 ORDER BY savedAt DESC")
+    suspend fun loadNamedBookmarks(bookId: String): List<BookmarkEntity>
+
     @Delete
-    suspend fun deleteBookmark(bookmark: Bookmark)
-    
-    @Query("DELETE FROM bookmarks WHERE id = :bookmarkId")
-    suspend fun deleteBookmarkById(bookmarkId: String)
-    
-    @Query("DELETE FROM bookmarks WHERE bookId = :bookId")
-    suspend fun deleteAllBookmarksForBook(bookId: String)
-    
-    @Query("DELETE FROM bookmarks")
-    suspend fun deleteAllBookmarks()
-    
-    @Query("SELECT COUNT(*) FROM bookmarks WHERE bookId = :bookId")
-    suspend fun getBookmarkCountForBook(bookId: String): Int
+    suspend fun delete(bookmark: BookmarkEntity)
+
+    @Query(
+        """
+        DELETE FROM bookmarks
+        WHERE bookId = :bookId
+            AND chapterIndex = :chapterIndex
+            AND charOffset = :charOffset
+            AND pageIndexHint = :pageIndexHint
+            AND nearestAnchorId = :nearestAnchorId
+            AND savedAt = :savedAt
+            AND isLastRead = :isLastRead
+        """
+    )
+    suspend fun deleteMatching(
+        bookId: String,
+        chapterIndex: Int,
+        charOffset: Int,
+        pageIndexHint: Int,
+        nearestAnchorId: String,
+        savedAt: Long,
+        isLastRead: Boolean
+    )
 }

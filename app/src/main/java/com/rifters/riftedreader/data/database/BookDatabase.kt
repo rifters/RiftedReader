@@ -11,7 +11,7 @@ import com.rifters.riftedreader.data.database.dao.BookMetaDao
 import com.rifters.riftedreader.data.database.dao.BookmarkDao
 import com.rifters.riftedreader.data.database.dao.CollectionDao
 import com.rifters.riftedreader.data.database.entities.BookMeta
-import com.rifters.riftedreader.data.database.entities.Bookmark
+import com.rifters.riftedreader.data.database.entities.BookmarkEntity
 import com.rifters.riftedreader.data.database.entities.BookCollectionCrossRef
 import com.rifters.riftedreader.data.database.entities.CollectionEntity
 
@@ -19,8 +19,8 @@ import com.rifters.riftedreader.data.database.entities.CollectionEntity
  * Main database for RiftedReader
  */
 @Database(
-    entities = [BookMeta::class, CollectionEntity::class, BookCollectionCrossRef::class, Bookmark::class],
-    version = 6,
+    entities = [BookMeta::class, CollectionEntity::class, BookCollectionCrossRef::class, BookmarkEntity::class],
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -45,6 +45,32 @@ abstract class BookDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE books ADD COLUMN chapterVisibilityIncludeFrontMatter INTEGER DEFAULT NULL")
                 db.execSQL("ALTER TABLE books ADD COLUMN chapterVisibilityIncludeNonLinear INTEGER DEFAULT NULL")
             }
+
+            val MIGRATION_6_7 = object : Migration(6, 7) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("DROP TABLE IF EXISTS bookmarks")
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS bookmarks (
+                            id TEXT NOT NULL PRIMARY KEY,
+                            bookId TEXT NOT NULL,
+                            chapterIndex INTEGER NOT NULL,
+                            charOffset INTEGER NOT NULL,
+                            pageIndexHint INTEGER NOT NULL,
+                            nearestAnchorId TEXT NOT NULL,
+                            nearestAnchorText TEXT NOT NULL,
+                            savedAt INTEGER NOT NULL,
+                            label TEXT,
+                            isLastRead INTEGER NOT NULL,
+                            FOREIGN KEY(bookId) REFERENCES books(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                        )
+                        """.trimIndent()
+                    )
+                    db.execSQL("CREATE INDEX IF NOT EXISTS index_bookmarks_bookId ON bookmarks(bookId)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS index_bookmarks_bookId_isLastRead ON bookmarks(bookId, isLastRead)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS index_bookmarks_savedAt ON bookmarks(savedAt)")
+                }
+            }
         }
         
         fun getDatabase(context: Context): BookDatabase {
@@ -54,7 +80,7 @@ abstract class BookDatabase : RoomDatabase() {
                     BookDatabase::class.java,
                     "rifted_reader_database"
                 )
-                    .addMigrations(MIGRATION_5_6)
+                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
