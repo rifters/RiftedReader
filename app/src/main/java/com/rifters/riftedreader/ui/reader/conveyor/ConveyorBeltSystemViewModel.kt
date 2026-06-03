@@ -471,10 +471,8 @@ class ConveyorBeltSystemViewModel(
         val slicerFactory = offscreenSlicingWebViewFactory
             ?: throw IllegalStateException("Offscreen slicer factory is not set")
         val totalChapters = paginator.getWindowInfo().totalChapters
-        val chapterIndices = windowManager.chaptersInWindow(windowIndex, totalChapters)
-        val firstChapter = chapterIndices.firstOrNull()
+        val (firstChapter, lastChapter) = resolveChapterRange(windowManager, windowIndex, totalChapters)
             ?: throw IllegalStateException("No chapters for window $windowIndex")
-        val lastChapter = chapterIndices.last()
         val flex = flexPaginator ?: FlexPaginator(parser, file).also { flexPaginator = it }
         val windowData = flex.assembleWindow(windowIndex, firstChapter, lastChapter)
             ?: throw IllegalStateException("FlexPaginator returned null")
@@ -499,9 +497,8 @@ class ConveyorBeltSystemViewModel(
         val provider = ContinuousPaginatorWindowHtmlProvider(paginator, windowManager)
         val html = provider.getWindowHtml(bookId, windowIndex) ?: return null
         val totalChapters = paginator.getWindowInfo().totalChapters
-        val chapterIndices = windowManager.chaptersInWindow(windowIndex, totalChapters)
-        val firstChapter = chapterIndices.firstOrNull() ?: windowManager.firstChapterInWindow(windowIndex)
-        val lastChapter = chapterIndices.lastOrNull() ?: windowManager.lastChapterInWindow(windowIndex, totalChapters)
+        val (firstChapter, lastChapter) = resolveChapterRange(windowManager, windowIndex, totalChapters)
+            ?: return null
 
         return WindowData(
             html = html,
@@ -509,6 +506,17 @@ class ConveyorBeltSystemViewModel(
             lastChapter = lastChapter,
             windowIndex = windowIndex
         )
+    }
+
+    private fun resolveChapterRange(
+        windowManager: SlidingWindowManager,
+        windowIndex: Int,
+        totalChapters: Int
+    ): Pair<Int, Int>? {
+        val chapterIndices = windowManager.chaptersInWindow(windowIndex, totalChapters)
+        return chapterIndices.firstOrNull()?.let { firstChapter ->
+            firstChapter to chapterIndices.last()
+        }
     }
     
     /**
@@ -794,6 +802,7 @@ class ConveyorBeltSystemViewModel(
     fun getOffset(): Int = offset
 
     override fun onCleared() {
+        flexPaginator = null
         offscreenSlicingWebView?.destroy()
         offscreenSlicingWebView = null
         super.onCleared()
