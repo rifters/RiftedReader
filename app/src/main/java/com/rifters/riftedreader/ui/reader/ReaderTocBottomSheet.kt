@@ -32,11 +32,6 @@ class ReaderTocBottomSheet : BottomSheetDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        if (entries.isEmpty()) {
-            dismiss()
-            return
-        }
-
         binding.chaptersTitle.setText(R.string.reader_toc)
         binding.chaptersRecyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.chaptersRecyclerView.adapter = ReaderTocAdapter(entries) { entry ->
@@ -71,6 +66,11 @@ private class ReaderTocAdapter(
     private val onEntryClick: (AnchorEntry) -> Unit
 ) : RecyclerView.Adapter<ReaderTocAdapter.TocViewHolder>() {
 
+    private companion object {
+        const val BASE_PADDING_DP = 16
+        const val INDENT_PER_LEVEL_DP = 16
+    }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TocViewHolder {
         val binding = ItemChapterBinding.inflate(
             LayoutInflater.from(parent.context),
@@ -92,11 +92,10 @@ private class ReaderTocAdapter(
         fun bind(entry: AnchorEntry) {
             binding.chapterTitle.text = entry.text
 
-            val basePaddingDp = 16
-            val indentDp = (entry.level - 1).coerceAtLeast(0) * 16
+            val indentDp = (entry.level - 1).coerceAtLeast(0) * INDENT_PER_LEVEL_DP
             val density = binding.root.resources.displayMetrics.density
             binding.chapterTitle.setPadding(
-                ((basePaddingDp + indentDp) * density).toInt(),
+                ((BASE_PADDING_DP + indentDp) * density).toInt(),
                 binding.chapterTitle.paddingTop,
                 binding.chapterTitle.paddingRight,
                 binding.chapterTitle.paddingBottom

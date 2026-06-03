@@ -1372,7 +1372,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             }
             AppLogger.w(
                 "ReaderActivity",
-                "TOC anchor jump timed out waiting for WebView readiness: windowIndex=$windowIndex anchorId=$anchorId"
+                "TOC anchor jump timed out waiting for WebView readiness; attempting fallback jump: windowIndex=$windowIndex anchorId=$anchorId"
             )
             (supportFragmentManager.findFragmentByTag("w$windowIndex") as? ReaderPageFragment)
                 ?.jumpToAnchor(anchorId)

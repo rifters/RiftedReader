@@ -651,7 +651,8 @@ class ReaderViewModel(
     }
 
     private fun String.withChapterSection(chapterIndex: Int): String {
-        return "<section data-chapter=\"$chapterIndex\">$this</section>"
+        val safeChapterIndex = chapterIndex.coerceAtLeast(0)
+        return "<section data-chapter=\"$safeChapterIndex\">$this</section>"
     }
 
     /**
