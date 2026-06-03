@@ -278,7 +278,7 @@ class ReaderViewModel(
     private data class PendingScrollBookmarkSave(
         val event: ScrollPositionEvent,
         val anchorEntries: List<AnchorEntry>,
-        val fallbackChapterIndex: Int
+        val activeChapterIndex: Int
     )
 
     private val pageChangedEvents = MutableStateFlow<PendingBookmarkSave?>(null)
@@ -1223,12 +1223,12 @@ class ReaderViewModel(
     fun onScrollPositionChanged(
         event: ScrollPositionEvent,
         anchorEntries: List<AnchorEntry>,
-        fallbackChapterIndex: Int
+        activeChapterIndex: Int
     ) {
         scrollPositionEvents.value = PendingScrollBookmarkSave(
             event = event,
             anchorEntries = anchorEntries,
-            fallbackChapterIndex = fallbackChapterIndex
+            activeChapterIndex = activeChapterIndex
         )
     }
 
@@ -1337,10 +1337,10 @@ class ReaderViewModel(
         val anchor = pending.anchorEntries.firstOrNull { it.id == pending.event.anchorId }
             ?: pending.anchorEntries
                 .asSequence()
-                .filter { it.chapterIndex == null || it.chapterIndex == pending.fallbackChapterIndex }
+                .filter { it.chapterIndex == null || it.chapterIndex == pending.activeChapterIndex }
                 .filter { it.charOffset <= pending.event.scrollY }
                 .maxByOrNull { it.charOffset }
-        val chapterIndex = anchor?.chapterIndex ?: pending.fallbackChapterIndex
+        val chapterIndex = anchor?.chapterIndex ?: pending.activeChapterIndex
         val charOffset = anchor?.charOffset ?: 0
         val windowIndex = getWindowIndexForChapterSafe(chapterIndex)
         updateReadingPosition(

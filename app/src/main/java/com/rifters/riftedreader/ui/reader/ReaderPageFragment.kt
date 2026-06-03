@@ -45,6 +45,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import kotlin.coroutines.resume
 import kotlin.math.abs
@@ -919,7 +920,7 @@ class ReaderPageFragment : Fragment() {
                         readerViewModel.onScrollPositionChanged(
                             event = event,
                             anchorEntries = latestAnchorEntries,
-                            fallbackChapterIndex = chapterIndex
+                            activeChapterIndex = chapterIndex
                         )
                     }
             }
@@ -1171,12 +1172,13 @@ class ReaderPageFragment : Fragment() {
                 val settings = readerViewModel.readerSettings.value
                 if (settings.mode == ReaderMode.SCROLL) {
                     val bookmark = readerViewModel.loadLastReadBookmark(readerViewModel.bookId)
-                    val anchorId = bookmark?.nearestAnchorId.orEmpty().sanitizeForJs()
+                    val anchorIdJson = JSONObject.quote(bookmark?.nearestAnchorId.orEmpty())
                     val scrollY = bookmark?.pageIndexHint ?: 0
                     binding.pageWebView.evaluateJavascript(
                         """
                         (function() {
-                            var anchor = '$anchorId' ? document.getElementById('$anchorId') : null;
+                            var anchorId = $anchorIdJson;
+                            var anchor = anchorId ? document.getElementById(anchorId) : null;
                             if (anchor) {
                                 anchor.scrollIntoView({ block: 'start' });
                             } else {
@@ -2575,8 +2577,9 @@ class ReaderPageFragment : Fragment() {
 
     fun jumpToAnchor(anchorId: String) {
         if (_binding == null) return
+        val anchorIdJson = JSONObject.quote(anchorId)
         binding.pageWebView.evaluateJavascript(
-            "window.flexPaginator?.jumpToAnchor('${anchorId.sanitizeForJs()}');",
+            "window.flexPaginator?.jumpToAnchor($anchorIdJson);",
             null
         )
     }
