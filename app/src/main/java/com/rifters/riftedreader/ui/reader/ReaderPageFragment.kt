@@ -144,6 +144,7 @@ class ReaderPageFragment : Fragment() {
 
     private var slicingViewportWidthPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_WIDTH_PX
     private var slicingViewportHeightPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_HEIGHT_PX
+    private var hasCapturedSlicingViewport: Boolean = false
     private var viewportLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
 
     override fun onCreateView(
@@ -689,6 +690,12 @@ class ReaderPageFragment : Fragment() {
                 }
             }
             viewportLayoutListener = null
+            if (!hasCapturedSlicingViewport) {
+                com.rifters.riftedreader.util.AppLogger.w(
+                    "ReaderPageFragment",
+                    "[OFFSCREEN_VIEWPORT] No valid measured viewport captured for windowIndex=$windowIndex; using default ${slicingViewportWidthPx}x${slicingViewportHeightPx}"
+                )
+            }
 
             binding.pageWebView.apply {
                 // Stop any loading
@@ -740,9 +747,19 @@ class ReaderPageFragment : Fragment() {
 
             if (usableWidth <= 0 || usableHeight <= 0) return@OnGlobalLayoutListener
 
-            if (usableWidth != slicingViewportWidthPx || usableHeight != slicingViewportHeightPx) {
+            val shouldPublishViewport =
+                !hasCapturedSlicingViewport ||
+                    usableWidth != slicingViewportWidthPx ||
+                    usableHeight != slicingViewportHeightPx
+            hasCapturedSlicingViewport = true
+
+            if (shouldPublishViewport) {
                 slicingViewportWidthPx = usableWidth
                 slicingViewportHeightPx = usableHeight
+                OffscreenSlicingWebView.setDefaultViewportSize(
+                    viewportWidthPx = slicingViewportWidthPx,
+                    viewportHeightPx = slicingViewportHeightPx
+                )
                 com.rifters.riftedreader.util.AppLogger.d(
                     "ReaderPageFragment",
                     "[OFFSCREEN_VIEWPORT] Updated slicing viewport to ${slicingViewportWidthPx}x${slicingViewportHeightPx} for windowIndex=$windowIndex"
@@ -753,14 +770,6 @@ class ReaderPageFragment : Fragment() {
         viewportLayoutListener = listener
         webView.viewTreeObserver.addOnGlobalLayoutListener(listener)
         webView.post { listener.onGlobalLayout() }
-    }
-
-    private fun createOffscreenSlicingWebView(): OffscreenSlicingWebView {
-        return OffscreenSlicingWebView(
-            context = requireContext(),
-            viewportWidthPx = slicingViewportWidthPx,
-            viewportHeightPx = slicingViewportHeightPx
-        )
     }
 
     /**

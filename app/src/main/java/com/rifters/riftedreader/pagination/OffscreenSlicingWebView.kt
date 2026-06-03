@@ -35,13 +35,24 @@ import kotlin.coroutines.resumeWithException
  */
 class OffscreenSlicingWebView(
     context: Context,
-    private val viewportWidthPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_WIDTH_PX,
-    private val viewportHeightPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_HEIGHT_PX
+    private val viewportWidthPx: Int = defaultViewportWidthPx,
+    private val viewportHeightPx: Int = defaultViewportHeightPx
 ) {
     
     companion object {
         private const val TAG = "OffscreenSlicingWebView"
         private const val SLICING_TIMEOUT_MS = 10000L // 10 seconds
+        @Volatile
+        private var defaultViewportWidthPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_WIDTH_PX
+        @Volatile
+        private var defaultViewportHeightPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_HEIGHT_PX
+
+        fun setDefaultViewportSize(viewportWidthPx: Int, viewportHeightPx: Int) {
+            require(viewportWidthPx > 0) { "viewportWidthPx must be > 0" }
+            require(viewportHeightPx > 0) { "viewportHeightPx must be > 0" }
+            defaultViewportWidthPx = viewportWidthPx
+            defaultViewportHeightPx = viewportHeightPx
+        }
     }
 
     init {
