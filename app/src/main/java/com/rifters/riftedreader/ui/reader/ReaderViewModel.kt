@@ -171,7 +171,7 @@ class ReaderViewModel(
     
     // Threshold for triggering buffer shifts (number of pages from window boundary)
     // When user is within this many pages of window edge, trigger preloading of adjacent window
-    private         val bufferShiftThresholdPages: Int = CONVEYOR_SHIFT_THRESHOLD_PAGES
+    private val bufferShiftThresholdPages: Int = CONVEYOR_SHIFT_THRESHOLD_PAGES
 
     // LiveData for window count (compatibility with adapter / UI code)
     val windowCountLiveData = MutableLiveData(0)
