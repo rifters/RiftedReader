@@ -1543,15 +1543,18 @@ class ReaderViewModel(
     }
 
     private fun resolveScrollBookmarkChapter(pending: PendingScrollBookmarkSave): Int {
-        val anchor = pending.anchorEntries.firstOrNull { it.id == pending.event.anchorId }
-            ?: pending.anchorEntries.firstOrNull { it.chapterIndex == pending.activeChapterIndex }
+        val anchor = resolveScrollBookmarkAnchor(pending)
         return anchor?.chapterIndex ?: pending.activeChapterIndex
     }
 
     private fun resolveScrollBookmarkCharOffset(pending: PendingScrollBookmarkSave): Int {
-        val anchor = pending.anchorEntries.firstOrNull { it.id == pending.event.anchorId }
-            ?: pending.anchorEntries.firstOrNull { it.chapterIndex == pending.activeChapterIndex }
+        val anchor = resolveScrollBookmarkAnchor(pending)
         return anchor?.charOffset ?: 0
+    }
+
+    private fun resolveScrollBookmarkAnchor(pending: PendingScrollBookmarkSave): AnchorEntry? {
+        return pending.anchorEntries.firstOrNull { it.id == pending.event.anchorId }
+            ?: pending.anchorEntries.firstOrNull { it.chapterIndex == pending.activeChapterIndex }
     }
 
     private fun observePreciseRestoreAfterSlice(

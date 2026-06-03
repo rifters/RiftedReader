@@ -1336,7 +1336,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
         val inputLayout = TextInputLayout(this).apply {
             hint = getString(R.string.reader_bookmark_note_hint)
             boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
-            setPadding(32, 8, 32, 0)
+            setPadding(
+                resources.getDimensionPixelSize(R.dimen.reader_bookmark_dialog_padding_horizontal),
+                resources.getDimensionPixelSize(R.dimen.reader_bookmark_dialog_padding_top),
+                resources.getDimensionPixelSize(R.dimen.reader_bookmark_dialog_padding_horizontal),
+                0
+            )
         }
         val editText = TextInputEditText(inputLayout.context).apply {
             maxLines = 3
