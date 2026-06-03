@@ -352,6 +352,11 @@
         return state.slices.length;
     }
 
+    function getCharacterOffsetForPage(pageIndex) {
+        const slice = state.slices[pageIndex];
+        return slice ? slice.startChar : 0;
+    }
+
     function isReady() {
         return state.isInitialized && state.slices.length > 0;
     }
@@ -547,6 +552,7 @@
         prevPage,
         getCurrentPage,
         getPageCount,
+        getCharacterOffsetForPage,
         isReady
     };
     

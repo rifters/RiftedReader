@@ -41,6 +41,9 @@ object EpubImageAssetHelper {
     
     /** Full URL for the minimal paginator script */
     const val PAGINATOR_SCRIPT_URL = "https://$ASSET_HOST${ASSETS_PATH}minimal_paginator.js"
+
+    /** Full URL for the flex paginator script */
+    const val FLEX_PAGINATOR_SCRIPT_URL = "https://$ASSET_HOST${ASSETS_PATH}flex_paginator.js"
     
     // ================================================================================
     // Fallback Image Data
