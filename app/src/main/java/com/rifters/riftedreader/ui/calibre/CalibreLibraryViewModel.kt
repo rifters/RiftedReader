@@ -81,21 +81,15 @@ class CalibreLibraryViewModel(
             Log.i(TAG, message)
             AppLogger.event(TAG, message, "ui/calibre/download")
 
-            val request = runCatching {
-                Triple(
-                    contentServerRepository.getDownloadUrl(book, format),
-                    contentServerRepository.getDownloadFilename(book, format),
-                    contentServerRepository.getDownloadHeaders(),
-                )
-            }.getOrElse {
+            val request = buildDownloadRequest(book, format).getOrElse {
                 _downloadEvents.emit(CalibreDownloadEvent.DownloadFailed)
                 return@launch
             }
 
             bookDownloadManager.downloadFromUrl(
-                url = request.first,
-                filename = request.second,
-                headers = request.third,
+                url = request.url,
+                filename = request.filename,
+                headers = request.headers,
             ).fold(
                 onSuccess = { metadata ->
                     _downloadEvents.emit(CalibreDownloadEvent.DownloadSuccess(metadata.title))
@@ -114,6 +108,16 @@ class CalibreLibraryViewModel(
                         }
                         else -> {
                             _downloadEvents.emit(CalibreDownloadEvent.DownloadFailed)
+                        }
+                    }
+
+                    private fun buildDownloadRequest(book: CalibreBook, format: BookFormat): Result<DownloadRequest> {
+                        return runCatching {
+                            DownloadRequest(
+                                url = contentServerRepository.getDownloadUrl(book, format),
+                                filename = contentServerRepository.getDownloadFilename(book, format),
+                                headers = contentServerRepository.getDownloadHeaders(),
+                            )
                         }
                     }
                 }
@@ -226,6 +230,12 @@ fun supportedFormats(book: CalibreBook): List<BookFormat> {
     val available = book.formats.map { it.uppercase() }.toSet()
     return listOf(BookFormat.EPUB, BookFormat.MOBI, BookFormat.PDF).filter { it.name in available }
 }
+
+private data class DownloadRequest(
+    val url: String,
+    val filename: String,
+    val headers: Map<String, String>,
+)
 
 sealed interface CalibreDownloadEvent {
     data class DownloadSuccess(val title: String) : CalibreDownloadEvent

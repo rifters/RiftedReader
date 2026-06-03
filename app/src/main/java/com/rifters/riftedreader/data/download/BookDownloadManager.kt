@@ -96,6 +96,9 @@ class BookDownloadManager(
             if (destination.createNewFile()) {
                 return destination
             }
+            if (!destination.exists()) {
+                throw IOException("Unable to create import file at ${destination.absolutePath}")
+            }
             counter++
         }
         throw IOException("Unable to reserve a unique import filename for $safeName")
@@ -112,8 +115,17 @@ class BookDownloadManager(
     }
 
     private fun sanitizeFileName(name: String): String {
-        return name.replace(UNSAFE_FILENAME_CHARS, "_").trim()
-            .ifEmpty { throw BookDownloadException("Downloaded filename must not be blank") }
+        val sanitized = name.replace(UNSAFE_FILENAME_CHARS, "_").trim()
+            .ifEmpty { FALLBACK_FILENAME }
+        if (sanitized.length <= MAX_FILENAME_LENGTH) {
+            return sanitized
+        }
+
+        val base = sanitized.substringBeforeLast('.', sanitized)
+        val extension = sanitized.substringAfterLast('.', "")
+        val suffix = if (extension.isEmpty()) "" else ".$extension"
+        val maxBaseLength = (MAX_FILENAME_LENGTH - suffix.length).coerceAtLeast(1)
+        return base.take(maxBaseLength) + suffix
     }
 
     companion object {
@@ -131,6 +143,8 @@ class BookDownloadManager(
         // Reuse the library's internal import location so downloaded books survive app restarts.
         private const val IMPORTS_DIRECTORY = "imports"
         private const val MAX_FILENAME_ATTEMPTS = 1_000
+        private const val MAX_FILENAME_LENGTH = 120
+        private const val FALLBACK_FILENAME = "downloaded_book"
         private val UNSAFE_FILENAME_CHARS = Regex("[\\\\/:*?\"<>|]+")
         private val DEFAULT_CLIENT = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
