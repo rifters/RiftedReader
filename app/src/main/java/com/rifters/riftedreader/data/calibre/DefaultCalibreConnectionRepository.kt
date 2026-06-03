@@ -87,7 +87,7 @@ class DefaultCalibreConnectionRepository(
         } catch (e: IOException) {
             ConnectionTestResult.Failed(e.localizedMessage ?: "Connection failed", null)
         } catch (e: IllegalArgumentException) {
-            ConnectionTestResult.Failed(e.localizedMessage ?: "Invalid URL", null)
+            ConnectionTestResult.Failed(e.localizedMessage ?: "Invalid URL format. Check the address and port number.", null)
         }
     }
 

@@ -12,30 +12,30 @@
             android:selectable="false" />
 
         <androidx.preference.SwitchPreferenceCompat
-                android:key="calibre_content_server_enabled"
-                android:title="@string/settings_calibre_content_server_enabled"
-                android:defaultValue="false" />
+            android:key="calibre_content_server_enabled"
+            android:title="@string/settings_calibre_content_server_enabled"
+            android:defaultValue="false" />
 
-            <EditTextPreference
-                android:key="calibre_content_server_url"
-                android:title="@string/settings_calibre_content_server_url"
-                android:dialogTitle="@string/settings_calibre_content_server_url"
-                app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            android:key="calibre_content_server_url"
+            android:title="@string/settings_calibre_content_server_url"
+            android:dialogTitle="@string/settings_calibre_content_server_url"
+            app:useSimpleSummaryProvider="true" />
 
-            <EditTextPreference
-                android:key="calibre_content_server_username"
-                android:title="@string/settings_calibre_content_server_username"
-                android:dialogTitle="@string/settings_calibre_content_server_username"
-                app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            android:key="calibre_content_server_username"
+            android:title="@string/settings_calibre_content_server_username"
+            android:dialogTitle="@string/settings_calibre_content_server_username"
+            app:useSimpleSummaryProvider="true" />
 
-            <EditTextPreference
-                android:key="calibre_content_server_password"
-                android:title="@string/settings_calibre_content_server_password"
-                android:dialogTitle="@string/settings_calibre_content_server_password" />
+        <EditTextPreference
+            android:key="calibre_content_server_password"
+            android:title="@string/settings_calibre_content_server_password"
+            android:dialogTitle="@string/settings_calibre_content_server_password" />
 
-            <Preference
-                android:key="calibre_test_connection"
-                android:title="@string/settings_calibre_test_connection" />
+        <Preference
+            android:key="calibre_test_connection"
+            android:title="@string/settings_calibre_test_connection" />
 
 
         <Preference
@@ -44,15 +44,15 @@
             android:selectable="false" />
 
         <androidx.preference.SwitchPreferenceCompat
-                android:key="calibre_web_enabled"
-                android:title="@string/settings_calibre_web_enabled"
-                android:defaultValue="false" />
+            android:key="calibre_web_enabled"
+            android:title="@string/settings_calibre_web_enabled"
+            android:defaultValue="false" />
 
-            <EditTextPreference
-                android:key="calibre_web_url"
-                android:title="@string/settings_calibre_web_url"
-                android:dialogTitle="@string/settings_calibre_web_url"
-                app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            android:key="calibre_web_url"
+            android:title="@string/settings_calibre_web_url"
+            android:dialogTitle="@string/settings_calibre_web_url"
+            app:useSimpleSummaryProvider="true" />
 
         <Preference
             android:key="calibre_download_directory"

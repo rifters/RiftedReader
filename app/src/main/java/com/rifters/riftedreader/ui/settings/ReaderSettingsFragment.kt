@@ -25,6 +25,7 @@ import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
 import com.rifters.riftedreader.data.preferences.ReaderTheme
 import com.rifters.riftedreader.util.AppLogger
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class ReaderSettingsFragment : PreferenceFragmentCompat() {
@@ -32,6 +33,7 @@ class ReaderSettingsFragment : PreferenceFragmentCompat() {
     private val readerPreferences by lazy { ReaderPreferences(requireContext()) }
     private val calibreRepository by lazy { DefaultCalibreConnectionRepository(requireContext()) }
     private var calibreConfig: CalibreConnectionConfig? = null
+    private var calibreSaveJob: Job? = null
 
     private val folderPickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri ?: return@registerForActivityResult
@@ -199,7 +201,8 @@ class ReaderSettingsFragment : PreferenceFragmentCompat() {
         val updated = transform(current)
         calibreConfig = updated
         renderCalibreConfig(updated)
-        lifecycleScope.launch { calibreRepository.saveConfig(updated) }
+        calibreSaveJob?.cancel()
+        calibreSaveJob = lifecycleScope.launch { calibreRepository.saveConfig(updated) }
     }
 
     private fun renderCalibreConfig(config: CalibreConnectionConfig) {
@@ -236,6 +239,7 @@ class ReaderSettingsFragment : PreferenceFragmentCompat() {
         testPreference.isEnabled = false
 
         lifecycleScope.launch {
+            calibreConfig?.let { calibreRepository.saveConfig(it) }
             val result = calibreRepository.testContentServerConnection()
             testPreference.widgetLayoutResource = 0
             testPreference.isEnabled = calibreConfig?.contentServerEnabled == true
