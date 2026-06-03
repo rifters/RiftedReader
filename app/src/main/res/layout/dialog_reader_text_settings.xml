@@ -56,6 +56,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
                     android:clickable="false"
+                    android:contentDescription="@string/reader_beta_badge_content_description"
                     android:focusable="false"
                     android:minHeight="24dp"
                     android:text="@string/reader_beta_badge" />

@@ -1,5 +1,6 @@
 package com.rifters.riftedreader.ui.reader
 
+import android.content.Context
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -25,10 +26,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
 
     private var _binding: DialogReaderTextSettingsBinding? = null
     private val binding get() = _binding!!
-    private val preferencesOwner: ReaderPreferencesOwner by lazy {
-        requireActivity() as? ReaderPreferencesOwner
-            ?: throw IllegalStateException("Parent activity must implement ReaderPreferencesOwner")
-    }
+    private lateinit var preferencesOwner: ReaderPreferencesOwner
     private val readerPreferences by lazy {
         preferencesOwner.readerPreferences
     }
@@ -39,6 +37,12 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
     private val readerViewModel: ReaderViewModel by activityViewModels()
     private var syncingSettings = false
     private var syncedReaderMode = ReaderMode.PAGINATED
+
+    override fun onAttach(context: Context) {
+        super.onAttach(context)
+        preferencesOwner = context as? ReaderPreferencesOwner
+            ?: throw IllegalStateException("Parent activity must implement ReaderPreferencesOwner")
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -124,7 +128,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
     private fun revertFlexPaginatorSwitch() {
         syncingSettings = true
         try {
-            binding.flexPaginatorSwitch.isChecked = false
+            binding.flexPaginatorSwitch.isChecked = readerPreferences.settings.value.flexPaginatorEnabled
         } finally {
             syncingSettings = false
         }
