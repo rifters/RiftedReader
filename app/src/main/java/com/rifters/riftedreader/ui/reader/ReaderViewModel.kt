@@ -1505,8 +1505,8 @@ class ReaderViewModel(
 
     suspend fun restoreBookmark(bookmark: Bookmark): Int? {
         val preferredWindow = getWindowIndexForChapterSafe(bookmark.chapterIndex)
-        val cachedWindowData = findCachedWindowDataForChapter(preferredWindow, bookmark.chapterIndex)
-        val targetWindow = cachedWindowData?.windowIndex ?: preferredWindow
+        val foundCachedWindowData = findCachedWindowDataForChapter(preferredWindow, bookmark.chapterIndex)
+        val targetWindow = foundCachedWindowData?.windowIndex ?: preferredWindow
 
         if (isContinuousMode) {
             goToWindow(targetWindow)
@@ -1514,7 +1514,7 @@ class ReaderViewModel(
             _currentPage.value = bookmark.chapterIndex.coerceAtLeast(0)
         }
 
-        val sliceMetadata = cachedWindowData
+        val sliceMetadata = foundCachedWindowData
             ?.also { windowData ->
                 if (windowData.isSliceStale && readerPreferences.settings.value.mode == ReaderMode.PAGINATED) {
                     observePreciseRestoreAfterSlice(

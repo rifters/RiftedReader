@@ -759,6 +759,7 @@
             column-fill: auto;
             -webkit-column-fill: auto;
             height: 100%;
+            /* Native snap handles normal touch flings; JS snap corrects stale/resize edge cases. */
             scroll-snap-align: start;
         `;
         
@@ -1023,10 +1024,11 @@
         
         // Use columnContainer.scrollLeft instead of window scroll
         const currentScrollLeft = state.columnContainer.scrollLeft;
-        // Snap alignment uses floor() to choose the page containing the current
-        // scroll offset. Live state sync uses round() because it tracks the nearest
-        // visible page while the user scrolls; snapping must not jump forward before
-        // the offset actually crosses into the next page.
+        // This runs after manual scrolls and resize/layout correction. Snap alignment
+        // uses floor() to choose the page containing the current scroll offset. Live
+        // state sync uses round() because it tracks the nearest visible page while
+        // the user scrolls; snapping must not jump forward before the offset actually
+        // crosses into the next page.
         const targetPage = Math.floor(currentScrollLeft / state.appliedColumnWidth);
         const clampedPage = Math.max(0, Math.min(targetPage, state.pageCount - 1));
         const targetScrollPos = clampedPage * state.appliedColumnWidth;
