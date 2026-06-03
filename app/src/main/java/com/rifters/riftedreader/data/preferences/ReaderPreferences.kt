@@ -6,8 +6,11 @@ import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.ui.reader.ReaderTapAction
 import com.rifters.riftedreader.ui.reader.ReaderTapZone
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 private const val DEFAULT_TEXT_SIZE_SP = 16f
 private const val DEFAULT_LINE_HEIGHT_MULTIPLIER = 1.3f
@@ -38,6 +41,7 @@ data class ReaderSettings(
     val mode: ReaderMode = ReaderMode.PAGE,
     val paginationMode: PaginationMode = PaginationMode.CONTINUOUS,
     val continuousStreamingEnabled: Boolean = true,
+    val flexPaginatorEnabled: Boolean = false,
     val paginationDiagnosticsEnabled: Boolean = false,
     val chapterVisibility: ChapterVisibilitySettings = ChapterVisibilitySettings.DEFAULT,
     /**
@@ -72,6 +76,9 @@ class ReaderPreferences(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val _settings = MutableStateFlow(readSettings())
     val settings: StateFlow<ReaderSettings> = _settings.asStateFlow()
+    val flexPaginatorEnabled: Flow<Boolean> = settings
+        .map { it.flexPaginatorEnabled }
+        .distinctUntilChanged()
 
     private val _tapActions = MutableStateFlow(readTapActions())
     val tapActions: StateFlow<Map<ReaderTapZone, ReaderTapAction>> = _tapActions.asStateFlow()
@@ -94,6 +101,7 @@ class ReaderPreferences(context: Context) {
         val paginationMode = runCatching { PaginationMode.valueOf(paginationModeName) }
             .getOrDefault(PaginationMode.CONTINUOUS)
         val streamingEnabled = prefs.getBoolean(KEY_CONTINUOUS_STREAMING, true)
+        val flexPaginatorEnabled = prefs.getBoolean(KEY_FLEX_PAGINATOR_ENABLED, false)
         val diagnosticsEnabled = prefs.getBoolean(KEY_PAGINATION_DIAGNOSTICS, false)
         val debugWindowRendering = prefs.getBoolean(KEY_DEBUG_WINDOW_RENDERING, false)
         // enableMinimalPaginator removed - minimal paginator is now always used
@@ -115,6 +123,7 @@ class ReaderPreferences(context: Context) {
             mode = mode,
             paginationMode = paginationMode,
             continuousStreamingEnabled = streamingEnabled,
+            flexPaginatorEnabled = flexPaginatorEnabled,
             paginationDiagnosticsEnabled = diagnosticsEnabled,
             chapterVisibility = chapterVisibility,
             debugWindowRenderingEnabled = debugWindowRendering
@@ -129,6 +138,7 @@ class ReaderPreferences(context: Context) {
             putString(KEY_MODE, settings.mode.name)
             putString(KEY_PAGINATION_MODE, settings.paginationMode.name)
             putBoolean(KEY_CONTINUOUS_STREAMING, settings.continuousStreamingEnabled)
+            putBoolean(KEY_FLEX_PAGINATOR_ENABLED, settings.flexPaginatorEnabled)
             putBoolean(KEY_PAGINATION_DIAGNOSTICS, settings.paginationDiagnosticsEnabled)
             putBoolean(KEY_DEBUG_WINDOW_RENDERING, settings.debugWindowRenderingEnabled)
             // enableMinimalPaginator removed - minimal paginator is now always used
@@ -183,6 +193,7 @@ class ReaderPreferences(context: Context) {
         private const val KEY_MODE = "reader_mode"
         private const val KEY_PAGINATION_MODE = "pagination_mode"
         private const val KEY_CONTINUOUS_STREAMING = "continuous_streaming_enabled"
+        private const val KEY_FLEX_PAGINATOR_ENABLED = "flex_paginator_enabled"
         private const val KEY_PAGINATION_DIAGNOSTICS = "pagination_diagnostics_enabled"
         private const val KEY_DEBUG_WINDOW_RENDERING = "debug_window_rendering_enabled"
         // KEY_ENABLE_MINIMAL_PAGINATOR removed - minimal paginator is now always used

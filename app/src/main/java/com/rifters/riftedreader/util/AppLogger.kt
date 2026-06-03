@@ -321,6 +321,19 @@ object AppLogger {
     }
 
     /**
+     * Convenience function for verbose logging with tag.
+     * Outputs to both Logcat and session log file.
+     */
+    fun v(tag: String, message: String) {
+        if (!BuildConfig.DEBUG) return
+
+        if (LoggerConfig.enableLogcat) {
+            Log.v(tag, message)
+        }
+        writeToFile("VERBOSE/$tag: $message")
+    }
+
+    /**
      * Convenience function for info logging with tag.
      * Outputs to both Logcat and session log file.
      */

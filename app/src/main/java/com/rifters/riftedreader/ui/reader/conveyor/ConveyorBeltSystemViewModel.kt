@@ -5,6 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.rifters.riftedreader.domain.pagination.ContinuousPaginator
 import com.rifters.riftedreader.domain.pagination.ContinuousPaginatorWindowHtmlProvider
 import com.rifters.riftedreader.domain.pagination.SlidingWindowManager
+import com.rifters.riftedreader.domain.parser.BookParser
+import com.rifters.riftedreader.pagination.FlexPaginator
+import com.rifters.riftedreader.pagination.OffscreenSlicingWebView
+import com.rifters.riftedreader.pagination.WindowData
 import com.rifters.riftedreader.util.AppLogger
 import com.rifters.riftedreader.util.BufferLogger
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,8 +16,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.ArrayDeque
+import java.io.File
 
-class ConveyorBeltSystemViewModel : ViewModel() {
+class ConveyorBeltSystemViewModel(
+    private val offscreenSlicingWebViewFactory: (() -> OffscreenSlicingWebView)? = null
+) : ViewModel() {
     
     companion object {
         private const val TAG = "ConveyorBeltSystemVM"
@@ -22,12 +29,18 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         private const val CENTER_INDEX = 2
         private const val UNLOCK_WINDOW = 2
         private const val STEADY_TRIGGER_WINDOW = 3
+        private const val FLEX_TAG = "FlexPaginator"
     }
     
     // HTML loading dependencies (set via setHtmlLoadingDependencies)
     private var continuousPaginator: ContinuousPaginator? = null
     private var slidingWindowManager: SlidingWindowManager? = null
     private var bookId: String? = null
+    private var bookParser: BookParser? = null
+    private var bookFile: File? = null
+    private var flexPaginatorEnabledProvider: () -> Boolean = { false }
+    private var flexPaginator: FlexPaginator? = null
+    private var offscreenSlicingWebView: OffscreenSlicingWebView? = null
     
     // ========================================================================
     // CONVEYOR-BELT SLOT-BASED BUFFER ARCHITECTURE
@@ -46,6 +59,7 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     
     // HTML cache for loaded windows (keyed by real window index)
     private val htmlCache = mutableMapOf<Int, String>()
+    private val windowDataCache = mutableMapOf<Int, WindowData>()
     
     // Total window count (set during initialization)
     private var totalWindowCount: Int = 0
@@ -81,7 +95,10 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         val toRemove = htmlCache.keys.filter { it !in allowedWindows }
         if (toRemove.isEmpty()) return
 
-        toRemove.forEach { htmlCache.remove(it) }
+        toRemove.forEach {
+            htmlCache.remove(it)
+            windowDataCache.remove(it)
+        }
         BufferLogger.log(
             event = "CACHE_EVICT",
             message = "reason=$reason",
@@ -345,11 +362,20 @@ class ConveyorBeltSystemViewModel : ViewModel() {
     fun setHtmlLoadingDependencies(
         paginator: ContinuousPaginator,
         windowManager: SlidingWindowManager,
-        bookId: String
+        bookId: String,
+        parser: BookParser? = null,
+        bookFile: File? = null,
+        flexPaginatorEnabledProvider: () -> Boolean = { false }
     ) {
         this.continuousPaginator = paginator
         this.slidingWindowManager = windowManager
         this.bookId = bookId
+        this.bookParser = parser
+        this.bookFile = bookFile
+        this.flexPaginatorEnabledProvider = flexPaginatorEnabledProvider
+        this.flexPaginator = null
+        offscreenSlicingWebView?.destroy()
+        offscreenSlicingWebView = null
         log("INIT", "HTML loading dependencies set: bookId=$bookId")
     }
     
@@ -358,6 +384,10 @@ class ConveyorBeltSystemViewModel : ViewModel() {
      */
     fun getCachedWindowHtml(windowIndex: Int): String? {
         return htmlCache[windowIndex]
+    }
+
+    fun getCachedWindowData(windowIndex: Int): WindowData? {
+        return windowDataCache[windowIndex]
     }
     
     /**
@@ -386,10 +416,9 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         log("HTML_LOAD", "Loading HTML for window $windowIndex (SYNC)")
         
         try {
-            val provider = ContinuousPaginatorWindowHtmlProvider(paginator, windowManager)
-            val html = provider.getWindowHtml(bookId, windowIndex)
+            val windowData = assembleWindowData(paginator, windowManager, bookId, windowIndex)
             
-            if (html != null) {
+            if (windowData != null) {
                 val allowed = getValidBuffer().toSet()
                 if (windowIndex !in allowed) {
                     // Critical cache invariant: cache should reflect the current 5-slot buffer only.
@@ -401,16 +430,96 @@ class ConveyorBeltSystemViewModel : ViewModel() {
                     return
                 }
 
-                htmlCache[windowIndex] = html
+                htmlCache[windowIndex] = windowData.html
+                windowDataCache[windowIndex] = windowData
                 // Enforce cache discipline even if future refactors add other caching paths.
                 evictHtmlCacheToBuffer(allowedWindows = allowed, reason = "htmlLoadComplete")
-                log("HTML_LOAD", "Window $windowIndex loaded: ${html.length} chars")
+                log("HTML_LOAD", "Window $windowIndex loaded: ${windowData.html.length} chars")
             } else {
                 log("HTML_LOAD", "Window $windowIndex: HTML provider returned null")
             }
         } catch (e: Exception) {
             log("HTML_LOAD", "Failed to load window $windowIndex: ${e.message}")
             AppLogger.e(TAG, "Error loading window $windowIndex", e)
+        }
+    }
+
+    private suspend fun assembleWindowData(
+        paginator: ContinuousPaginator,
+        windowManager: SlidingWindowManager,
+        bookId: String,
+        windowIndex: Int
+    ): WindowData? {
+        if (!flexPaginatorEnabledProvider()) {
+            AppLogger.v(FLEX_TAG, "windowIndex=$windowIndex legacy path")
+            return assembleLegacyWindowData(paginator, windowManager, bookId, windowIndex)
+        }
+
+        return try {
+            assembleFlexWindowData(paginator, windowManager, windowIndex)
+        } catch (e: Exception) {
+            AppLogger.d(FLEX_TAG, "windowIndex=$windowIndex fallback: ${e.message}")
+            assembleLegacyWindowData(paginator, windowManager, bookId, windowIndex)
+        }
+    }
+
+    private suspend fun assembleFlexWindowData(
+        paginator: ContinuousPaginator,
+        windowManager: SlidingWindowManager,
+        windowIndex: Int
+    ): WindowData {
+        val parser = bookParser
+            ?: throw IllegalStateException("FlexPaginator enabled but parser was not provided in setHtmlLoadingDependencies")
+        val file = bookFile
+            ?: throw IllegalStateException("FlexPaginator enabled but book file was not provided in setHtmlLoadingDependencies")
+        val slicerFactory = offscreenSlicingWebViewFactory
+            ?: throw IllegalStateException("FlexPaginator enabled but offscreen slicer factory was not provided in constructor")
+        val totalChapters = paginator.getWindowInfo().totalChapters
+        val (firstChapter, lastChapter) = resolveChapterRange(windowManager, windowIndex, totalChapters)
+            ?: throw IllegalStateException("No chapters for window $windowIndex")
+        val flex = flexPaginator ?: FlexPaginator(parser, file).also { flexPaginator = it }
+        val windowData = flex.assembleWindow(windowIndex, firstChapter, lastChapter)
+            ?: throw IllegalStateException("FlexPaginator returned null")
+        val slicer = offscreenSlicingWebView
+            ?: slicerFactory().also { offscreenSlicingWebView = it }
+        val sliceMetadata = slicer.sliceWindow(windowData.html, windowIndex)
+
+        if (!sliceMetadata.isValid()) {
+            throw IllegalStateException("Invalid SliceMetadata")
+        }
+
+        AppLogger.d(FLEX_TAG, "windowIndex=$windowIndex success pageCount=${sliceMetadata.totalPages}")
+        return windowData.copy(sliceMetadata = sliceMetadata)
+    }
+
+    private suspend fun assembleLegacyWindowData(
+        paginator: ContinuousPaginator,
+        windowManager: SlidingWindowManager,
+        bookId: String,
+        windowIndex: Int
+    ): WindowData? {
+        val provider = ContinuousPaginatorWindowHtmlProvider(paginator, windowManager)
+        val html = provider.getWindowHtml(bookId, windowIndex) ?: return null
+        val totalChapters = paginator.getWindowInfo().totalChapters
+        val (firstChapter, lastChapter) = resolveChapterRange(windowManager, windowIndex, totalChapters)
+            ?: return null
+
+        return WindowData(
+            html = html,
+            firstChapter = firstChapter,
+            lastChapter = lastChapter,
+            windowIndex = windowIndex
+        )
+    }
+
+    private fun resolveChapterRange(
+        windowManager: SlidingWindowManager,
+        windowIndex: Int,
+        totalChapters: Int
+    ): Pair<Int, Int>? {
+        val chapterIndices = windowManager.chaptersInWindow(windowIndex, totalChapters)
+        return chapterIndices.firstOrNull()?.let { firstChapter ->
+            firstChapter to chapterIndices.last()
         }
     }
     
@@ -607,6 +716,7 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         // Clear HTML cache on revert since we're going back to initial windows
         htmlCache.clear()
+        windowDataCache.clear()
         log("REVERT", "HTML cache cleared")
         
         // Preload initial windows asynchronously
@@ -645,6 +755,7 @@ class ConveyorBeltSystemViewModel : ViewModel() {
         
         // Clear any existing HTML cache
         htmlCache.clear()
+        windowDataCache.clear()
         
         log("INIT", "Conveyor initialized: windowCount=$totalWindowCount, offset=$offset, " +
             "buffer=${getValidBuffer()}, activeWindow=$clampedStart, isInitialized=true")
@@ -693,6 +804,13 @@ class ConveyorBeltSystemViewModel : ViewModel() {
      * The offset maps slot[0] to the real window index.
      */
     fun getOffset(): Int = offset
+
+    override fun onCleared() {
+        flexPaginator = null
+        offscreenSlicingWebView?.destroy()
+        offscreenSlicingWebView = null
+        super.onCleared()
+    }
     
     private fun log(event: String, message: String) {
         val formattedMessage = "$LOG_PREFIX [$event] $message"

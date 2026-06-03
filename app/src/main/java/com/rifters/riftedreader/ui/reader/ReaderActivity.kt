@@ -33,6 +33,7 @@ import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.databinding.ActivityReaderBinding
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.ParserFactory
+import com.rifters.riftedreader.pagination.OffscreenSlicingWebView
 import com.rifters.riftedreader.domain.tts.TTSConfiguration
 import com.rifters.riftedreader.domain.tts.TTSPlaybackState
 import com.rifters.riftedreader.domain.tts.TTSService
@@ -219,7 +220,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         viewModel = ViewModelProvider(this, factory)[ReaderViewModel::class.java]
         
         // Instantiate and wire ConveyorBeltSystemViewModel for minimal paginator integration
-        conveyorBeltSystem = ConveyorBeltSystemViewModel()
+        conveyorBeltSystem = ConveyorBeltSystemViewModel {
+            OffscreenSlicingWebView(applicationContext)
+        }
         viewModel.setConveyorBeltSystem(conveyorBeltSystem)
         
         // DIAGNOSTICS: Log ConveyorPrimary status at startup
@@ -2108,4 +2111,3 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 }
 
 private val SENTENCE_REGEX = Regex("(?<=[.!?])\\s+")
-
