@@ -1536,6 +1536,13 @@ class ReaderViewModel(
             ?: bookmark.pageIndexHint
     }
 
+    /**
+     * Finds slice metadata for bookmark restore after window migration.
+     *
+     * The canonical chapter-to-window mapping is tried first, but cached window data may
+     * come from an adjacent/migrated window after conveyor movement, so fall back to
+     * searching all currently cached windows for the target chapter.
+     */
     private fun findCachedWindowDataForChapter(preferredWindow: Int, chapterIndex: Int): WindowData? {
         val conveyor = conveyorBeltSystem ?: return null
         return conveyor.getCachedWindowData(preferredWindow)

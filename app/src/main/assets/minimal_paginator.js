@@ -1023,6 +1023,8 @@
         
         // Use columnContainer.scrollLeft instead of window scroll
         const currentScrollLeft = state.columnContainer.scrollLeft;
+        // Snap backward to the page containing the current scroll offset instead of
+        // rounding forward, which can jump ahead before the user crosses a page boundary.
         const targetPage = Math.floor(currentScrollLeft / state.appliedColumnWidth);
         const clampedPage = Math.max(0, Math.min(targetPage, state.pageCount - 1));
         const targetScrollPos = clampedPage * state.appliedColumnWidth;
@@ -1140,6 +1142,13 @@
         }
     }
 
+    /**
+     * Synchronize currentPage with the container's scroll position.
+     *
+     * The caller may pass a known scrollLeft to avoid reading from the DOM twice.
+     * This uses nearest-page rounding for live state, while snapToNearestPage uses
+     * floor() to choose the containing page when aligning to a boundary.
+     */
     function syncPaginationState(currentScrollLeft) {
         if (!state.columnContainer || state.appliedColumnWidth <= 0) return state.currentPage;
         const scrollLeft = typeof currentScrollLeft === 'number'
