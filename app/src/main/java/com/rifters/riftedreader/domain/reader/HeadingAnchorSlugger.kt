@@ -9,7 +9,7 @@ object HeadingAnchorSlugger {
     fun slugify(text: String): String {
         return text
             .lowercase()
-            .replace(Regex("[`\\u2014\\u2013()./]"), "")
+            .replace(Regex("[`;\\u2014\\u2013()./]"), "")
             .replace(Regex("\\s+"), "-")
             .replace(Regex("-+"), "-")
             .trim('-')
