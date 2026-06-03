@@ -339,8 +339,8 @@ class ReaderViewModel(
     private val pageChangedEvents = MutableStateFlow<PendingBookmarkSave?>(null)
     private val scrollPositionEvents = MutableStateFlow<PendingScrollBookmarkSave?>(null)
     private val latestPageChangedEvent = MutableStateFlow<PendingBookmarkSave?>(null)
-    private val latestScrollPositionEvent = MutableStateFlow<PendingScrollBookmarkSave?>(null)
-    private val currentBookmarkPosition = MutableStateFlow<BookmarkPosition?>(null)
+    private val _latestScrollPositionEvent = MutableStateFlow<PendingScrollBookmarkSave?>(null)
+    private val _currentBookmarkPosition = MutableStateFlow<BookmarkPosition?>(null)
     private val _namedBookmarks = MutableStateFlow<List<Bookmark>>(emptyList())
     val namedBookmarks: StateFlow<List<Bookmark>> = _namedBookmarks.asStateFlow()
     private val _hasBookmarkAtCurrentPosition = MutableStateFlow(false)
@@ -1372,7 +1372,7 @@ class ReaderViewModel(
         val pending = PendingBookmarkSave(event, anchorEntries)
         latestPageChangedEvent.value = pending
         pageChangedEvents.value = pending
-        currentBookmarkPosition.value = BookmarkPosition(event.chapterIndex, event.charOffset)
+        _currentBookmarkPosition.value = BookmarkPosition(event.chapterIndex, event.charOffset)
         updateHasBookmarkAtCurrentPosition()
     }
 
@@ -1386,10 +1386,10 @@ class ReaderViewModel(
             anchorEntries = anchorEntries,
             activeChapterIndex = activeChapterIndex
         )
-        latestScrollPositionEvent.value = pending
+        _latestScrollPositionEvent.value = pending
         scrollPositionEvents.value = pending
         val anchor = resolveScrollBookmarkAnchor(pending)
-        currentBookmarkPosition.value = BookmarkPosition(
+        _currentBookmarkPosition.value = BookmarkPosition(
             chapterIndex = anchor?.chapterIndex ?: pending.activeChapterIndex,
             charOffset = anchor?.charOffset ?: 0
         )
@@ -1423,7 +1423,7 @@ class ReaderViewModel(
                 )
             }
             val resolvedBookmark = if (readerPreferences.settings.value.mode == ReaderMode.SCROLL) {
-                latestScrollPositionEvent.value?.let { pending ->
+                _latestScrollPositionEvent.value?.let { pending ->
                     createScrollBookmark(pending).copy(label = normalizedLabel)
                 } ?: fromPage
             } else {
@@ -1536,7 +1536,7 @@ class ReaderViewModel(
     }
 
     private fun updateHasBookmarkAtCurrentPosition() {
-        val position = currentBookmarkPosition.value
+        val position = _currentBookmarkPosition.value
         _hasBookmarkAtCurrentPosition.value = position != null && _namedBookmarks.value.any { bookmark ->
             bookmark.chapterIndex == position.chapterIndex &&
                 kotlin.math.abs(bookmark.charOffset - position.charOffset) <= BOOKMARK_MATCH_CHAR_RADIUS
