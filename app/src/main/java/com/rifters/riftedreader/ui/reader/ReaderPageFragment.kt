@@ -10,6 +10,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -26,6 +27,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.webkit.WebViewAssetLoader
+import com.rifters.riftedreader.pagination.FlexSlicingConfig
+import com.rifters.riftedreader.pagination.OffscreenSlicingWebView
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.databinding.FragmentReaderPageBinding
 import com.rifters.riftedreader.domain.pagination.PaginationMode
@@ -138,6 +141,11 @@ class ReaderPageFragment : Fragment() {
     private var lastHandledBoundaryDirection: BoundaryDirection? = null
     private var lastHandledBoundaryTimestamp: Long = 0L
     private val BOUNDARY_DEDUPE_MS = 1000L
+
+    private var slicingViewportWidthPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_WIDTH_PX
+    private var slicingViewportHeightPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_HEIGHT_PX
+    private var hasCapturedSlicingViewport: Boolean = false
+    private var viewportLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -491,6 +499,8 @@ class ReaderPageFragment : Fragment() {
             // Set up gesture detection for in-page horizontal swipes
             setupWebViewSwipeHandling()
         }
+
+        observeReaderViewportForSlicing()
         
         // Separate content loading based on pagination mode
         if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
@@ -673,6 +683,20 @@ class ReaderPageFragment : Fragment() {
         streamingInFlightDirection = null
         
         try {
+            viewportLayoutListener?.let { listener ->
+                val observer = binding.pageWebView.viewTreeObserver
+                if (observer.isAlive) {
+                    observer.removeOnGlobalLayoutListener(listener)
+                }
+            }
+            viewportLayoutListener = null
+            if (!hasCapturedSlicingViewport) {
+                com.rifters.riftedreader.util.AppLogger.w(
+                    "ReaderPageFragment",
+                    "[OFFSCREEN_VIEWPORT] No valid measured viewport captured for windowIndex=$windowIndex; using default ${slicingViewportWidthPx}x${slicingViewportHeightPx}"
+                )
+            }
+
             binding.pageWebView.apply {
                 // Stop any loading
                 stopLoading()
@@ -709,6 +733,43 @@ class ReaderPageFragment : Fragment() {
             com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "Exception during WebView destruction for page $pageIndex", e)
         }
         _binding = null
+    }
+
+    private fun observeReaderViewportForSlicing() {
+        if (_binding == null) return
+
+        val webView = binding.pageWebView
+        val listener = ViewTreeObserver.OnGlobalLayoutListener {
+            if (_binding == null) return@OnGlobalLayoutListener
+
+            val usableWidth = (webView.width - webView.paddingLeft - webView.paddingRight).coerceAtLeast(0)
+            val usableHeight = (webView.height - webView.paddingTop - webView.paddingBottom).coerceAtLeast(0)
+
+            if (usableWidth <= 0 || usableHeight <= 0) return@OnGlobalLayoutListener
+
+            val shouldPublishViewport =
+                !hasCapturedSlicingViewport ||
+                    usableWidth != slicingViewportWidthPx ||
+                    usableHeight != slicingViewportHeightPx
+            hasCapturedSlicingViewport = true
+
+            if (shouldPublishViewport) {
+                slicingViewportWidthPx = usableWidth
+                slicingViewportHeightPx = usableHeight
+                OffscreenSlicingWebView.setDefaultViewportSize(
+                    viewportWidthPx = slicingViewportWidthPx,
+                    viewportHeightPx = slicingViewportHeightPx
+                )
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "ReaderPageFragment",
+                    "[OFFSCREEN_VIEWPORT] Updated slicing viewport to ${slicingViewportWidthPx}x${slicingViewportHeightPx} for windowIndex=$windowIndex"
+                )
+            }
+        }
+
+        viewportLayoutListener = listener
+        webView.viewTreeObserver.addOnGlobalLayoutListener(listener)
+        webView.post { listener.onGlobalLayout() }
     }
 
     /**
