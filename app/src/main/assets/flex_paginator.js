@@ -79,6 +79,14 @@
         try {
             log('INIT', 'Starting flex paginator initialization');
 
+            const missingGlobals = getMissingRequiredGlobals();
+            if (missingGlobals.length > 0) {
+                const error = `Missing FLEX_PAGINATOR globals: ${missingGlobals.join(', ')}`;
+                log('ERROR', error);
+                callAndroidBridge('onSlicingError', error);
+                return;
+            }
+
             // Apply injected viewport + typography config when provided.
             const injectedHeight = (typeof window.FLEX_VIEWPORT_HEIGHT === 'number') ? window.FLEX_VIEWPORT_HEIGHT : null;
             if (injectedHeight && injectedHeight > 0) {
@@ -248,19 +256,6 @@
             
             // Force hard break: always start a new page at section boundary
             // (unless this is the very first section and we haven't created a page yet)
-            if (currentPage !== null) {
-                // Finalize current page before starting new chapter
-                const slice = {
-                    page: currentPageIndex - 1,
-                    chapter: currentChapter,
-                    startChar: chapterStartChar,
-                    endChar: currentCharOffset,
-                    heightPx: accumulatedHeight
-                };
-                state.slices.push(slice);
-                log('SLICE', `Page ${slice.page}: chapter=${slice.chapter}, chars=${slice.startChar}-${slice.endChar} (end of chapter)`);
-            }
-            
             // Start new page for this chapter
             startNewPage(chapterIndex);
             currentCharOffset = 0; // Reset char offset for new chapter
@@ -638,6 +633,19 @@
         } catch (e) {
             console.error(`[FLEX] Bridge call failed: ${e.message}`);
         }
+    }
+
+    function getMissingRequiredGlobals() {
+        const requiredGlobals = [
+            'FLEX_WINDOW_INDEX',
+            'FLEX_VIEWPORT_WIDTH',
+            'FLEX_VIEWPORT_HEIGHT',
+            'FLEX_FONT_SIZE_PX',
+            'FLEX_LINE_HEIGHT',
+            'FLEX_PAGE_PADDING_PX'
+        ];
+
+        return requiredGlobals.filter(name => typeof window[name] !== 'number');
     }
     
     /**
