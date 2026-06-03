@@ -50,7 +50,7 @@ class CalibreListResponseDeserializer : JsonDeserializer<CalibreListResponse> {
                 val obj = element.asJsonObject
                 obj.entrySet().forEach { (key, value) ->
                     val valueObject = value.asObjectOrNull() ?: return@forEach
-                    val id = key.toIntOrNull() ?: valueObject.firstInt("book_id", "id") ?: return@forEach
+                    val id = extractBookId(key, valueObject) ?: return@forEach
                     result[id] = valueObject.toMetadata(id)
                 }
             }
@@ -64,6 +64,10 @@ class CalibreListResponseDeserializer : JsonDeserializer<CalibreListResponse> {
             }
         }
         return result
+    }
+
+    private fun extractBookId(key: String, valueObject: JsonObject): Int? {
+        return key.toIntOrNull() ?: valueObject.firstInt("book_id", "id")
     }
 
     private fun JsonObject.toMetadata(id: Int): CalibreBookMetadata {

@@ -98,7 +98,7 @@ class CalibreContentServerRepository(
                 currentConfig
             }
             ?: throw IllegalStateException(
-                "Calibre URL generation requires loaded configuration. Call and await getLibrary() or searchBooks() first, or provide a configProvider."
+                "Calibre configuration not available. Ensure Content Server is configured before accessing this resource."
             )
     }
 
@@ -132,7 +132,7 @@ class CalibreContentServerRepository(
         limit: Int,
     ): CalibreLibrary {
         errorMessage?.takeIf { it.isNotBlank() }?.let { error ->
-            throw CalibreApiException(0, error)
+            throw CalibreApiException(CALIBRE_COMMAND_ERROR, error)
         }
         val books = books.map { (id, metadata) ->
             metadata.toBook(id, baseUrl)
@@ -171,7 +171,7 @@ class CalibreContentServerRepository(
             .firstOrNull { it != BookFormat.ANY && it.name in available }
             ?: BookFormat.entries.firstOrNull { it != BookFormat.ANY && it.name in available }
             ?: throw IllegalStateException(
-                "No supported format is available for \"${book.title}\". Available formats: ${book.formats.joinToString()}"
+                "No supported format is available for \"${book.title}\". Available formats: ${book.formats.joinToString(separator = ", ")}"
             )
     }
 
@@ -245,6 +245,7 @@ class CalibreContentServerRepository(
     companion object {
         private const val HTTP_UNAUTHORIZED = 401
         private const val HTTP_NOT_FOUND = 404
+        private const val CALIBRE_COMMAND_ERROR = -1
         private const val VIRTUAL_LIBRARY = ""
         private const val SORT_ASCENDING = false
         private val RESTRICTION: Any? = null
