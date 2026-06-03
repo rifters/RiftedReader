@@ -8,8 +8,10 @@ import android.text.Spanned
 import android.text.style.BackgroundColorSpan
 import android.util.Log
 import android.view.GestureDetector
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import android.content.pm.ApplicationInfo
 import androidx.core.content.ContextCompat
@@ -25,6 +27,11 @@ import com.rifters.riftedreader.data.database.BookDatabase
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
+import com.rifters.riftedreader.data.database.entities.Bookmark
 import com.rifters.riftedreader.data.preferences.ReaderMode
 import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
@@ -58,7 +65,7 @@ import kotlinx.coroutines.withTimeout
 import java.io.File
 import com.rifters.riftedreader.BuildConfig
 
-class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
+class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkListFragment.Listener {
 
     private companion object {
         // 40 attempts × 50ms gives WebView up to 2 seconds to finish loading after TOC navigation.
@@ -87,6 +94,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var isReslicingIndicatorVisible: Boolean = false
     private lateinit var layoutManager: LinearLayoutManager
     private lateinit var snapHelper: PagerSnapHelper
+    private var readerBookmarkMenuItem: MenuItem? = null
     private var currentPagerPosition: Int = 0
     private var isUserScrolling: Boolean = false
     // Flag to prevent circular navigation updates during programmatic scrolls
@@ -415,8 +423,17 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         binding.topBar.title = bookTitle.ifBlank { getString(R.string.reader_title_placeholder) }
         binding.topBar.setNavigationOnClickListener { finish() }
         binding.topBar.inflateMenu(R.menu.reader_toolbar_menu)
+        readerBookmarkMenuItem = binding.topBar.menu.findItem(R.id.action_reader_save_bookmark)
         binding.topBar.setOnMenuItemClickListener {
             when (it.itemId) {
+                R.id.action_reader_save_bookmark -> {
+                    showSaveBookmarkDialog()
+                    true
+                }
+                R.id.action_reader_bookmarks -> {
+                    openBookmarks()
+                    true
+                }
                 R.id.action_reader_chapters -> {
                     openChapters()
                     true
@@ -1105,6 +1122,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 }
 
                 launch {
+                    viewModel.hasBookmarkAtCurrentPosition.collect { hasBookmark ->
+                        updateBookmarkMenuIcon(hasBookmark)
+                    }
+                }
+
+                launch {
                     readerPreferences.tapActions.collect { actions ->
                         tapActions = actions
                     }
@@ -1299,6 +1322,69 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         controlsManager.showControls()
         ReaderTapZonesBottomSheet.show(supportFragmentManager)
     }
+
+    private fun openBookmarks() {
+        controlsManager.showControls()
+        viewModel.refreshNamedBookmarks()
+        if (supportFragmentManager.findFragmentByTag(BookmarkListFragment.TAG) != null) return
+        supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, BookmarkListFragment(), BookmarkListFragment.TAG)
+            .addToBackStack(BookmarkListFragment.TAG)
+            .commit()
+    }
+
+    private fun showSaveBookmarkDialog() {
+        controlsManager.showControls()
+        val inputLayout = TextInputLayout(this).apply {
+            hint = getString(R.string.reader_bookmark_note_hint)
+            boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+            setPadding(
+                resources.getDimensionPixelSize(R.dimen.reader_bookmark_dialog_padding_horizontal),
+                resources.getDimensionPixelSize(R.dimen.reader_bookmark_dialog_padding_top),
+                resources.getDimensionPixelSize(R.dimen.reader_bookmark_dialog_padding_horizontal),
+                0
+            )
+        }
+        val editText = TextInputEditText(inputLayout.context).apply {
+            hint = getString(R.string.reader_bookmark_note_hint)
+            contentDescription = getString(R.string.reader_bookmark_note_hint)
+            maxLines = 3
+        }
+        inputLayout.addView(editText)
+
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.reader_save_bookmark)
+            .setView(inputLayout)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.save, null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val label = editText.text?.toString()
+                lifecycleScope.launch {
+                    val bookmark = viewModel.saveCurrentNamedBookmark(label)
+                    if (bookmark == null) {
+                        Snackbar.make(binding.readerRoot, R.string.reader_bookmark_unavailable, Snackbar.LENGTH_SHORT).show()
+                    } else {
+                        Snackbar.make(binding.readerRoot, R.string.reader_bookmark_saved, Snackbar.LENGTH_LONG)
+                            .setAction(R.string.undo) {
+                                viewModel.deleteBookmark(bookmark)
+                            }
+                            .show()
+                    }
+                }
+                dialog.dismiss()
+            }
+        }
+
+        dialog.show()
+    }
+
+    private fun updateBookmarkMenuIcon(hasBookmark: Boolean) {
+        val iconRes = if (hasBookmark) R.drawable.ic_bookmark_24 else R.drawable.ic_bookmark_border_24
+        readerBookmarkMenuItem?.setIcon(iconRes)
+    }
     
     private fun openChapters() {
         controlsManager.showControls()
@@ -1407,6 +1493,47 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     }
 
     private fun readerFragmentTag(windowIndex: Int): String = "w$windowIndex"
+
+    override fun onBookmarkSelected(bookmark: Bookmark) {
+        supportFragmentManager.popBackStack()
+        lifecycleScope.launch {
+            val pageIndex = viewModel.restoreBookmark(bookmark) ?: bookmark.pageIndexHint
+            val targetWindow = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                viewModel.getWindowIndexForChapter(bookmark.chapterIndex)
+            } else {
+                bookmark.chapterIndex
+            }
+
+            if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+                val adapterPosition = pagerAdapter.getPositionForWindowId(targetWindow)
+                if (adapterPosition >= 0) {
+                    setCurrentItem(adapterPosition, true)
+                }
+            } else {
+                setCurrentItem(bookmark.chapterIndex, true)
+            }
+
+            jumpToBookmarkWhenReady(targetWindow, pageIndex, bookmark)
+        }
+    }
+
+    private fun jumpToBookmarkWhenReady(
+        windowIndex: Int,
+        pageIndex: Int,
+        bookmark: Bookmark
+    ) {
+        lifecycleScope.launch {
+            repeat(TOC_JUMP_MAX_READY_ATTEMPTS) {
+                val fragment = findReaderFragment(windowIndex)
+                if (fragment != null && fragment.isWebViewReady()) {
+                    fragment.jumpToBookmark(pageIndex, bookmark.nearestAnchorId, readerMode == ReaderMode.SCROLL)
+                    return@launch
+                }
+                delay(TOC_JUMP_READY_CHECK_DELAY_MS)
+            }
+            findReaderFragment(windowIndex)?.jumpToBookmark(pageIndex, bookmark.nearestAnchorId, readerMode == ReaderMode.SCROLL)
+        }
+    }
 
     private fun isDebugBuild(): Boolean {
         return (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0

@@ -2655,6 +2655,27 @@ class ReaderPageFragment : Fragment() {
         )
     }
 
+    fun jumpToBookmark(pageIndex: Int, anchorId: String, isScrollMode: Boolean) {
+        if (_binding == null) return
+        val safePageIndex = pageIndex.coerceAtLeast(0)
+        val anchorIdJson = JSONObject.quote(anchorId)
+        val script = if (isScrollMode && anchorId.isNotBlank()) {
+            """
+            (function() {
+                var anchor = document.getElementById($anchorIdJson);
+                if (anchor) {
+                    anchor.scrollIntoView({ block: 'start' });
+                } else {
+                    window.scrollTo(0, 0);
+                }
+            })();
+            """.trimIndent()
+        } else {
+            "if (window.flexPaginator && window.flexPaginator.isReady()) { window.flexPaginator.navigateToPage($safePageIndex); } else if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage($safePageIndex, false); }"
+        }
+        binding.pageWebView.evaluateJavascript(script, null)
+    }
+
     /**
      * Reset window scroll state when entering a new window.
      * This prevents scroll position from the previous window carrying over to the new window.
