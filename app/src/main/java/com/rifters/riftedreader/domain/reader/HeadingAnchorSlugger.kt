@@ -1,17 +1,20 @@
 package com.rifters.riftedreader.domain.reader
 
+import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 
+@Parcelize
 data class AnchorEntry(
     val id: String,
     val text: String,
     val level: Int,
     val charOffset: Int = 0,
     val chapterIndex: Int? = null
-)
+) : Parcelable
 
 object HeadingAnchorSlugger {
 

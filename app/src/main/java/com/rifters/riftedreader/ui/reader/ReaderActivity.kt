@@ -1,6 +1,7 @@
 package com.rifters.riftedreader.ui.reader
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.text.SpannableString
 import android.text.Spanned
@@ -1302,9 +1303,21 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         controlsManager.showControls()
         val tocEntries = viewModel.tocEntries.value
         if (tocEntries.isNotEmpty()) {
-            ReaderTocBottomSheet.show(supportFragmentManager, tocEntries) { entry ->
-                navigateToTocEntry(entry)
+            supportFragmentManager.setFragmentResultListener(
+                ReaderTocBottomSheet.REQUEST_KEY,
+                this
+            ) { _, bundle ->
+                val entry = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    bundle.getParcelable(ReaderTocBottomSheet.RESULT_ENTRY, AnchorEntry::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    bundle.getParcelable(ReaderTocBottomSheet.RESULT_ENTRY)
+                }
+                if (entry != null) {
+                    navigateToTocEntry(entry)
+                }
             }
+            ReaderTocBottomSheet.show(supportFragmentManager, tocEntries)
             return
         }
 
@@ -1336,10 +1349,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     }
 
     private fun navigateToTocEntry(entry: AnchorEntry) {
-        val chapterIndex = entry.chapterIndex ?: if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
-            viewModel.currentWindowIndex.value
-        } else {
-            viewModel.currentPage.value
+        val chapterIndex = entry.chapterIndex ?: run {
+            AppLogger.w(
+                "ReaderActivity",
+                "Skipping TOC anchor without chapter index: anchorId=${entry.id}"
+            )
+            return
         }
         val targetWindow = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
             viewModel.getWindowIndexForChapter(chapterIndex)

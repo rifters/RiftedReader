@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
@@ -17,9 +18,6 @@ class ReaderTocBottomSheet : BottomSheetDialogFragment() {
     private var _binding: DialogChaptersBinding? = null
     private val binding get() = _binding!!
 
-    private var entries: List<AnchorEntry> = emptyList()
-    private var onEntrySelected: ((AnchorEntry) -> Unit)? = null
-
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -32,10 +30,25 @@ class ReaderTocBottomSheet : BottomSheetDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        val entries = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            arguments?.getParcelableArrayList(ARG_ENTRIES, AnchorEntry::class.java).orEmpty()
+        } else {
+            @Suppress("DEPRECATION")
+            arguments?.getParcelableArrayList<AnchorEntry>(ARG_ENTRIES).orEmpty()
+        }
+
+        if (entries.isEmpty()) {
+            dismiss()
+            return
+        }
+
         binding.chaptersTitle.setText(R.string.reader_toc)
         binding.chaptersRecyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.chaptersRecyclerView.adapter = ReaderTocAdapter(entries) { entry ->
-            onEntrySelected?.invoke(entry)
+            parentFragmentManager.setFragmentResult(
+                REQUEST_KEY,
+                bundleOf(RESULT_ENTRY to entry)
+            )
             dismiss()
         }
     }
@@ -46,16 +59,18 @@ class ReaderTocBottomSheet : BottomSheetDialogFragment() {
     }
 
     companion object {
+        const val REQUEST_KEY = "reader_toc_selection"
+        const val RESULT_ENTRY = "reader_toc_entry"
+        private const val ARG_ENTRIES = "arg_toc_entries"
+
         fun show(
             manager: androidx.fragment.app.FragmentManager,
-            entries: List<AnchorEntry>,
-            onEntrySelected: (AnchorEntry) -> Unit
+            entries: List<AnchorEntry>
         ) {
             if (entries.isEmpty()) return
 
             ReaderTocBottomSheet().apply {
-                this.entries = entries
-                this.onEntrySelected = onEntrySelected
+                arguments = bundleOf(ARG_ENTRIES to ArrayList(entries))
             }.show(manager, ReaderTocBottomSheet::class.java.simpleName)
         }
     }
