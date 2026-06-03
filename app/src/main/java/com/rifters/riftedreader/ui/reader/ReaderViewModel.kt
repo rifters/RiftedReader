@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -1539,7 +1540,7 @@ class ReaderViewModel(
         val position = _currentBookmarkPosition.value
         _hasBookmarkAtCurrentPosition.value = position != null && _namedBookmarks.value.any { bookmark ->
             bookmark.chapterIndex == position.chapterIndex &&
-                kotlin.math.abs(bookmark.charOffset - position.charOffset) <= BOOKMARK_MATCH_CHAR_RADIUS
+                abs(bookmark.charOffset - position.charOffset) <= BOOKMARK_MATCH_CHAR_RADIUS
         }
     }
 

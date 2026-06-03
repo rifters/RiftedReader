@@ -1346,6 +1346,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
             )
         }
         val editText = TextInputEditText(inputLayout.context).apply {
+            hint = getString(R.string.reader_bookmark_note_hint)
+            contentDescription = getString(R.string.reader_bookmark_note_hint)
             maxLines = 3
         }
         inputLayout.addView(editText)
