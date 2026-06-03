@@ -14,5 +14,5 @@ data class CalibreBook(
 
 data class CalibreLibrary(
     val books: List<CalibreBook>,
-    val totalCount: Int,
+    val totalCount: Int
 )

@@ -98,7 +98,7 @@ class CalibreContentServerRepository(
                 currentConfig
             }
             ?: throw IllegalStateException(
-                "Calibre Content Server config has not been loaded. Call and await getLibrary() or searchBooks() before accessing generated URLs, or provide a configProvider."
+                "Calibre URL generation requires loaded configuration. Call and await getLibrary() or searchBooks() first, or provide a configProvider."
             )
     }
 
@@ -207,9 +207,19 @@ class CalibreContentServerRepository(
         }
     }
 
-    private fun listRequest(): List<Any?> = listOf("", CALIBRE_FIELDS, "", false, null)
+    private fun listRequest(): List<Any?> = commandRequest(query = "", fields = CALIBRE_FIELDS)
 
-    private fun searchRequest(query: String): List<Any?> = listOf(query, SEARCH_FIELDS, "", false, null)
+    private fun searchRequest(query: String): List<Any?> = commandRequest(query = query, fields = SEARCH_FIELDS)
+
+    private fun commandRequest(query: String, fields: String): List<Any?> {
+        return listOf(
+            query,
+            fields,
+            VIRTUAL_LIBRARY,
+            SORT_ASCENDING,
+            RESTRICTION,
+        )
+    }
 
     private fun retrofitBaseUrl(url: String): String = url.trim().trimEnd('/') + "/"
 
@@ -235,6 +245,11 @@ class CalibreContentServerRepository(
     companion object {
         private const val HTTP_UNAUTHORIZED = 401
         private const val HTTP_NOT_FOUND = 404
+        private const val VIRTUAL_LIBRARY = ""
+        private const val SORT_ASCENDING = false
+        private val RESTRICTION: Any? = null
+        // Search only needs fields shown in search results; list requests fetch the extra
+        // metadata used to populate full library cards and generated cover URLs.
         private const val CALIBRE_FIELDS = "book_id,title,authors,formats,tags,series,series_index,pubdate"
         private const val SEARCH_FIELDS = "book_id,title,authors,formats"
         private val UNSAFE_FILENAME_CHARS = Regex("[\\\\/:*?\"<>|]+")
