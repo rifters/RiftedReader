@@ -362,7 +362,9 @@
             return false;
         }
 
-        const containingSlice = Number.isInteger(targetPageIndex) ? state.slices[targetPageIndex] : null;
+        const containingSlice = targetPageIndex >= 0 && targetPageIndex < state.slices.length
+            ? state.slices[targetPageIndex]
+            : null;
         if (!containingSlice) {
             log('WARN', `jumpToAnchor: no slice found for anchor ${anchorId}`);
             return false;
@@ -372,6 +374,8 @@
             return false;
         }
 
+        // Slicing and anchor lookup both count DOM text nodes, so the page slice
+        // start character can be combined with the anchor's in-page text offset.
         const startChar = getSliceStartChar(containingSlice);
         const relativeCharOffset = getTextLengthBeforeTarget(targetPage, target);
         const targetCharOffset = startChar + relativeCharOffset;

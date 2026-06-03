@@ -1,6 +1,7 @@
 package com.rifters.riftedreader.domain.reader
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -28,6 +29,7 @@ class HeadingAnchorSluggerTest {
         assertTrue(anchoredHtml.contains("""<h1 id="phase-0-viewport-parity">Phase 0 — Viewport parity</h1>"""))
         assertTrue(anchoredHtml.contains("""<h6 id="known-bugslimitations">Known bugs/limitations</h6>"""))
         assertTrue(anchoredHtml.contains("""<h6 id="known-bugslimitations-2">Known bugs/limitations</h6>"""))
+        assertFalse(anchoredHtml.contains("""id="existing""""))
     }
 
     @Test
