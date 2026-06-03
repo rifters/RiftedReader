@@ -9,6 +9,8 @@ import com.rifters.riftedreader.util.EpubImageAssetHelper
 data class ReaderHtmlConfig(
     val textSizePx: Float,
     val lineHeightMultiplier: Float,
+    val fontFamily: String = "serif",
+    val pagePaddingPx: Int = 16,
     val palette: ReaderThemePalette,
     val webViewWidthPx: Int,
     val enableDiagnostics: Boolean = false,
@@ -63,6 +65,7 @@ object ReaderHtmlWrapper {
     fun wrap(contentHtml: String, config: ReaderHtmlConfig): String {
         val backgroundColor = colorToHex(config.palette.backgroundColor)
         val textColor = colorToHex(config.palette.textColor)
+        val sanitizedFontFamily = sanitizeCssFontFamily(config.fontFamily)
         
         // Enable diagnostics in paginator if configured
         val diagnosticsScript = if (config.enableDiagnostics) {
@@ -168,12 +171,16 @@ object ReaderHtmlWrapper {
                         overflow: hidden;
                         background-color: $backgroundColor;
                         color: $textColor;
-                        font-size: ${config.textSizePx}px;
-                        line-height: ${config.lineHeightMultiplier};
-                        font-family: serif;
+                        --flex-font-size: ${config.textSizePx}px;
+                        --flex-line-height: ${config.lineHeightMultiplier};
+                        --flex-font-family: $sanitizedFontFamily;
+                        --flex-page-padding: ${config.pagePaddingPx}px;
+                        font-size: var(--flex-font-size);
+                        line-height: var(--flex-line-height);
+                        font-family: var(--flex-font-family);
                     }
                     body {
-                        padding: 16px;
+                        padding: var(--flex-page-padding);
                         word-wrap: break-word;
                         overflow-wrap: break-word;
                     }
@@ -272,5 +279,17 @@ object ReaderHtmlWrapper {
             </body>
             </html>
         """.trimIndent()
+    }
+
+    private fun sanitizeCssFontFamily(input: String): String {
+        val trimmed = input.trim()
+        if (trimmed.isEmpty()) return "serif"
+        return trimmed
+            .replace("\n", " ")
+            .replace("\r", " ")
+            .replace("\t", " ")
+            .replace("\"", "")
+            .replace("'", "")
+            .replace(";", "")
     }
 }
