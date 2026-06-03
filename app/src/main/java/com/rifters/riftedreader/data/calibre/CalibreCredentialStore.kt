@@ -4,23 +4,31 @@ import android.content.Context
 import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import java.io.IOException
+import java.security.GeneralSecurityException
 
 class CalibreCredentialStore(context: Context) {
 
     private val appContext = context.applicationContext
 
     private val prefs by lazy {
-        val masterKey = MasterKey.Builder(appContext)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
+        try {
+            val masterKey = MasterKey.Builder(appContext)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
 
-        EncryptedSharedPreferences.create(
-            appContext,
-            PREFS_NAME,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+            EncryptedSharedPreferences.create(
+                appContext,
+                PREFS_NAME,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: GeneralSecurityException) {
+            throw IllegalStateException("Calibre credential storage is unavailable", e)
+        } catch (e: IOException) {
+            throw IllegalStateException("Calibre credential storage is unavailable", e)
+        }
     }
 
     fun savePassword(password: String) {

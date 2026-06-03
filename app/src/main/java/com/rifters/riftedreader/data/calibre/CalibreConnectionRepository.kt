@@ -10,7 +10,7 @@ interface CalibreConnectionRepository {
 }
 
 sealed class ConnectionTestResult {
-    data object Success : ConnectionTestResult()
+    object Success : ConnectionTestResult()
     data class AuthRequired(val realm: String) : ConnectionTestResult()
     data class Failed(val message: String, val httpCode: Int?) : ConnectionTestResult()
 }

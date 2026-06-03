@@ -97,12 +97,8 @@ class DefaultCalibreConnectionRepository(
 
     private fun parseRealm(header: String?): String {
         if (header.isNullOrBlank()) return ""
-        val marker = "realm=\""
-        val start = header.indexOf(marker)
-        if (start == -1) return ""
-        val realmStart = start + marker.length
-        val realmEnd = header.indexOf('"', realmStart)
-        return if (realmEnd > realmStart) header.substring(realmStart, realmEnd) else ""
+        val match = Regex("realm=\"([^\"]*)\"|realm=([^,\\s]+)").find(header) ?: return ""
+        return match.groups[1]?.value ?: match.groups[2]?.value.orEmpty()
     }
 
     companion object {
