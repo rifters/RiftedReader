@@ -95,6 +95,8 @@ android {
 }
 
 dependencies {
+    val retrofitVersion = "2.11.0"
+
     // Core Android
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
@@ -145,6 +147,8 @@ dependencies {
     
     // JSON parsing for Room converters
     implementation("com.google.code.gson:gson:2.10.1")
+    implementation("com.squareup.retrofit2:retrofit:$retrofitVersion")
+    implementation("com.squareup.retrofit2:converter-gson:$retrofitVersion")
     
     // Testing
     testImplementation("junit:junit:4.13.2")
