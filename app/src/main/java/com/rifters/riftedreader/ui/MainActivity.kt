@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 class MainActivity : AppCompatActivity() {
     
     private lateinit var binding: ActivityMainBinding
+    private val calibreRepository by lazy { DefaultCalibreConnectionRepository(this) }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,7 +41,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun observeCalibreNavigation() {
-        val calibreRepository = DefaultCalibreConnectionRepository(this)
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 calibreRepository.configFlow().collect { config ->

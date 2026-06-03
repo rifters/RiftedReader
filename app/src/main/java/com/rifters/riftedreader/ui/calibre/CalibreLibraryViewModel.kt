@@ -38,6 +38,7 @@ class CalibreLibraryViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private var preferredFormat: BookFormat = BookFormat.ANY
+    private var latestConfig: CalibreConnectionConfig? = null
     private var isPageLoading = false
 
     init {
@@ -74,6 +75,7 @@ class CalibreLibraryViewModel(
     private fun observeConfig() {
         viewModelScope.launch {
             connectionRepository.configFlow().collect { config ->
+                latestConfig = config
                 preferredFormat = config.preferredFormat
                 if (!config.contentServerEnabled) {
                     _libraryState.value = CalibreLibraryState.Disabled
@@ -99,7 +101,7 @@ class CalibreLibraryViewModel(
     private fun loadPage(offset: Int, append: Boolean, query: String) {
         if (isPageLoading) return
         viewModelScope.launch {
-            val config = connectionRepository.loadConfig()
+            val config = latestConfig ?: connectionRepository.loadConfig().also { latestConfig = it }
             preferredFormat = config.preferredFormat
             if (!config.contentServerEnabled) {
                 _libraryState.value = CalibreLibraryState.Disabled
