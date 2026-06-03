@@ -34,6 +34,7 @@ import com.rifters.riftedreader.data.repository.RoomBookmarkRepository
 import com.rifters.riftedreader.databinding.ActivityReaderBinding
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.ParserFactory
+import com.rifters.riftedreader.domain.reader.AnchorEntry
 import com.rifters.riftedreader.pagination.OffscreenSlicingWebView
 import com.rifters.riftedreader.domain.tts.TTSConfiguration
 import com.rifters.riftedreader.domain.tts.TTSPlaybackState
@@ -1294,6 +1295,14 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     
     private fun openChapters() {
         controlsManager.showControls()
+        val tocEntries = viewModel.tocEntries.value
+        if (tocEntries.isNotEmpty()) {
+            ReaderTocBottomSheet.show(supportFragmentManager, tocEntries) { entry ->
+                navigateToTocEntry(entry)
+            }
+            return
+        }
+
         // Use visibleTableOfContents to filter out hidden chapters based on visibility settings
         val chapters = viewModel.visibleTableOfContents
         if (chapters.isEmpty()) {
@@ -1318,6 +1327,46 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 viewModel.goToPage(chapterIndex)
                 setCurrentItem(chapterIndex, true)
             }
+        }
+    }
+
+    private fun navigateToTocEntry(entry: AnchorEntry) {
+        val chapterIndex = entry.chapterIndex ?: if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            viewModel.currentWindowIndex.value
+        } else {
+            viewModel.currentPage.value
+        }
+        val targetWindow = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            viewModel.getWindowIndexForChapter(chapterIndex)
+        } else {
+            chapterIndex
+        }
+
+        if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            viewModel.goToWindow(targetWindow)
+            val adapterPosition = pagerAdapter.getPositionForWindowId(targetWindow)
+            if (adapterPosition >= 0) {
+                setCurrentItem(adapterPosition, true)
+            }
+        } else {
+            viewModel.goToPage(chapterIndex)
+            setCurrentItem(chapterIndex, true)
+        }
+        jumpToAnchorWhenReady(targetWindow, entry.id)
+    }
+
+    private fun jumpToAnchorWhenReady(windowIndex: Int, anchorId: String) {
+        lifecycleScope.launch {
+            repeat(40) {
+                val fragment = supportFragmentManager.findFragmentByTag("w$windowIndex") as? ReaderPageFragment
+                if (fragment != null && fragment.isWebViewReady()) {
+                    fragment.jumpToAnchor(anchorId)
+                    return@launch
+                }
+                delay(50)
+            }
+            (supportFragmentManager.findFragmentByTag("w$windowIndex") as? ReaderPageFragment)
+                ?.jumpToAnchor(anchorId)
         }
     }
 

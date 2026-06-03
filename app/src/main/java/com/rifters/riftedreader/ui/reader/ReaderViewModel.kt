@@ -26,6 +26,7 @@ import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.domain.parser.TocEntry
 import com.rifters.riftedreader.domain.parser.TxtParser
 import com.rifters.riftedreader.domain.reader.AnchorEntry
+import com.rifters.riftedreader.domain.reader.HeadingAnchorSlugger
 import com.rifters.riftedreader.pagination.PaginationModeGuard
 import com.rifters.riftedreader.pagination.FlexSlicingConfig
 import com.rifters.riftedreader.pagination.SlidingWindowPaginator
@@ -100,6 +101,9 @@ class ReaderViewModel(
     // Table of Contents - list of chapter entries
     private val _tableOfContents = MutableStateFlow<List<TocEntry>>(emptyList())
     val tableOfContents: StateFlow<List<TocEntry>> = _tableOfContents.asStateFlow()
+
+    private val _tocEntries = MutableStateFlow<List<AnchorEntry>>(emptyList())
+    val tocEntries: StateFlow<List<AnchorEntry>> = _tocEntries.asStateFlow()
     
     /**
      * Get the table of contents filtered by current visibility settings.
@@ -437,6 +441,7 @@ class ReaderViewModel(
         
         // Load table of contents
         loadTableOfContents()
+        loadHeadingTocEntries()
         
         // Observe visibility settings changes and update window count accordingly
         observeVisibilitySettingsChanges()
@@ -586,6 +591,67 @@ class ReaderViewModel(
                 _tableOfContents.value = emptyList()
             }
         }
+    }
+
+    private fun loadHeadingTocEntries() {
+        viewModelScope.launch {
+            try {
+                val entries = withContext(Dispatchers.IO) {
+                    val pageCount = parser.getPageCount(bookFile).coerceAtLeast(0)
+                    if (pageCount == 0) {
+                        emptyList()
+                    } else {
+                        val chapterHtml = (0 until pageCount).map { chapterIndex ->
+                            val content = runCatching { parser.getPageContent(bookFile, chapterIndex) }
+                                .getOrDefault(PageContent.EMPTY)
+                            chapterIndex to (content.html ?: wrapPlainTextAsHtml(content.text))
+                        }
+
+                        if (isContinuousMode) {
+                            buildWindowedHeadingToc(chapterHtml)
+                        } else {
+                            buildChapterHeadingToc(chapterHtml)
+                        }
+                    }
+                }
+                _tocEntries.value = entries
+                AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] Loaded heading TOC: ${entries.size} entries")
+            } catch (e: Exception) {
+                AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] Failed to load heading TOC", e)
+                _tocEntries.value = emptyList()
+            }
+        }
+    }
+
+    private fun buildChapterHeadingToc(chapterHtml: List<Pair<Int, String>>): List<AnchorEntry> {
+        return chapterHtml.flatMap { (chapterIndex, html) ->
+            HeadingAnchorSlugger.buildAnchorMap(html.withChapterSection(chapterIndex))
+                .filter { it.text.isNotBlank() }
+                .map { it.copy(chapterIndex = it.chapterIndex ?: chapterIndex) }
+        }
+    }
+
+    private fun buildWindowedHeadingToc(chapterHtml: List<Pair<Int, String>>): List<AnchorEntry> {
+        val byChapter = chapterHtml.toMap()
+        val windowSize = slidingWindowManager.getWindowSize().coerceAtLeast(1)
+        return chapterHtml.indices
+            .step(windowSize)
+            .flatMap { firstChapter ->
+                val lastChapter = (firstChapter + windowSize - 1).coerceAtMost(chapterHtml.lastIndex)
+                val windowHtml = buildString {
+                    append("<div id=\"window-root\">\n")
+                    for (chapterIndex in firstChapter..lastChapter) {
+                        append(byChapter[chapterIndex].orEmpty().withChapterSection(chapterIndex))
+                    }
+                    append("</div>")
+                }
+                HeadingAnchorSlugger.buildAnchorMap(windowHtml)
+                    .filter { it.text.isNotBlank() }
+            }
+    }
+
+    private fun String.withChapterSection(chapterIndex: Int): String {
+        return "<section data-chapter=\"$chapterIndex\">$this</section>"
     }
 
     /**
