@@ -78,7 +78,7 @@ class BookDownloadManager(
     private fun createDestination(filename: String): File {
         val directory = File(appContext.filesDir, IMPORTS_DIRECTORY).apply {
             if (!exists() && !mkdirs()) {
-                throw IOException("Unable to create imports directory")
+                throw IOException("Unable to create imports directory at $absolutePath")
             }
         }
         return File(directory, ensureUniqueName(directory, sanitizeFileName(filename)))
@@ -101,7 +101,8 @@ class BookDownloadManager(
     }
 
     private fun sanitizeFileName(name: String): String {
-        return name.replace(UNSAFE_FILENAME_CHARS, "_").trim().ifEmpty { FALLBACK_FILENAME }
+        return name.replace(UNSAFE_FILENAME_CHARS, "_").trim()
+            .ifEmpty { throw BookDownloadException("Downloaded filename must not be blank") }
     }
 
     companion object {
@@ -109,13 +110,12 @@ class BookDownloadManager(
         private var INSTANCE: BookDownloadManager? = null
 
         fun getInstance(context: Context, bookRepository: BookRepository): BookDownloadManager {
-            return INSTANCE ?: synchronized(this) {
+            return synchronized(this) {
                 INSTANCE ?: BookDownloadManager(context, bookRepository).also { INSTANCE = it }
             }
         }
 
         private const val IMPORTS_DIRECTORY = "imports"
-        private const val FALLBACK_FILENAME = "book"
         private val UNSAFE_FILENAME_CHARS = Regex("[\\\\/:*?\"<>|]+")
         private val DEFAULT_CLIENT = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
