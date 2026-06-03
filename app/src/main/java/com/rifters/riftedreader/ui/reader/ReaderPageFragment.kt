@@ -149,6 +149,7 @@ class ReaderPageFragment : Fragment() {
     private var hasCapturedSlicingViewport: Boolean = false
     private var viewportLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private val readerFontFamily: String = FlexSlicingConfig.READER_FONT_FAMILY_SERIF
+    private var flexPaginatorBridge: FlexPaginatorBridge? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -261,6 +262,54 @@ class ReaderPageFragment : Fragment() {
                 "ReaderPageFragment",
                 "[MIN_PAGINATOR] Registered PaginatorBridge for windowIndex=$windowIndex"
             )
+
+            val flexPaginatorEnabled = readerViewModel.readerSettings.value.flexPaginatorEnabled
+            if (flexPaginatorEnabled) {
+                val bridge = FlexPaginatorBridge(
+                    windowIndex = windowIndex,
+                    onSlicingComplete = { wIdx, metadata ->
+                        isPaginatorInitialized = true
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "FlexPaginator",
+                            "[SLICING_COMPLETE] windowIndex=$wIdx totalPages=${metadata.totalPages}"
+                        )
+                        readerViewModel.onWindowPaginationReady(metadata.windowIndex, metadata.totalPages)
+                    },
+                    onSlicingError = { wIdx, message ->
+                        com.rifters.riftedreader.util.AppLogger.e(
+                            "FlexPaginator",
+                            "[SLICING_ERROR] windowIndex=$wIdx message=$message"
+                        )
+                    },
+                    onPageChanged = { wIdx, event ->
+                        currentInPageIndex = event.pageIndex
+                        resolvedChapterIndex = event.chapterIndex
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "FlexPaginator",
+                            "[PAGE_CHANGED] windowIndex=$wIdx pageIndex=${event.pageIndex} chapterIndex=${event.chapterIndex} charOffset=${event.charOffset}"
+                        )
+                    },
+                    onBoundaryReached = { wIdx, direction ->
+                        val minimalDirection = when (direction.lowercase()) {
+                            "forward" -> "NEXT"
+                            "backward" -> "PREVIOUS"
+                            else -> direction
+                        }
+                        handleMinimalPaginatorBoundary(wIdx, minimalDirection)
+                    }
+                )
+                flexPaginatorBridge = bridge
+                addJavascriptInterface(bridge, "AndroidBridge")
+                com.rifters.riftedreader.util.AppLogger.d(
+                    "FlexPaginator",
+                    "[BRIDGE] Registered FlexPaginatorBridge for windowIndex=$windowIndex"
+                )
+            } else {
+                if (flexPaginatorBridge != null) {
+                    removeJavascriptInterface("AndroidBridge")
+                }
+                flexPaginatorBridge = null
+            }
             
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(
@@ -302,35 +351,42 @@ class ReaderPageFragment : Fragment() {
                         "[WEBVIEW_READY] Window $windowIndex: isWebViewReady set to true"
                     )
                     
-                    // Configure minimal paginator
                     val settings = readerViewModel.readerSettings.value
                     val mode = when (readerViewModel.paginationMode) {
                         PaginationMode.CONTINUOUS -> "window"
                         PaginationMode.CHAPTER_BASED -> "chapter"
                     }
-                    binding.pageWebView.evaluateJavascript(
-                        """
-                        if (window.minimalPaginator) {
-                            window.minimalPaginator.configure({
-                                mode: '$mode',
-                                windowIndex: $windowIndex,
-                                enableWidthSync: ${com.rifters.riftedreader.BuildConfig.MIN_PAGINATOR_ENABLE_WIDTH_SYNC},
-                                enableNavDriftLog: ${com.rifters.riftedreader.BuildConfig.DEBUG}
-                            });
-                        }
-                        """.trimIndent(),
-                        null
-                    )
-                    
-                    // Call window.initPaginator() to initialize the minimal paginator
-                    binding.pageWebView.evaluateJavascript(
-                        "if (window.initPaginator) { window.initPaginator('#window-root'); }",
-                        null
-                    )
-                    com.rifters.riftedreader.util.AppLogger.d(
-                        "ReaderPageFragment",
-                        "[MIN_PAGINATOR] Configured and initialized for windowIndex=$windowIndex, mode=$mode"
-                    )
+                    if (settings.flexPaginatorEnabled) {
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "FlexPaginator",
+                            "[INIT] flex_paginator.js auto-initializes for windowIndex=$windowIndex, mode=$mode"
+                        )
+                    } else {
+                        // Configure minimal paginator
+                        binding.pageWebView.evaluateJavascript(
+                            """
+                            if (window.minimalPaginator) {
+                                window.minimalPaginator.configure({
+                                    mode: '$mode',
+                                    windowIndex: $windowIndex,
+                                    enableWidthSync: ${com.rifters.riftedreader.BuildConfig.MIN_PAGINATOR_ENABLE_WIDTH_SYNC},
+                                    enableNavDriftLog: ${com.rifters.riftedreader.BuildConfig.DEBUG}
+                                });
+                            }
+                            """.trimIndent(),
+                            null
+                        )
+                        
+                        // Call window.initPaginator() to initialize the minimal paginator
+                        binding.pageWebView.evaluateJavascript(
+                            "if (window.initPaginator) { window.initPaginator('#window-root'); }",
+                            null
+                        )
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "[MIN_PAGINATOR] Configured and initialized for windowIndex=$windowIndex, mode=$mode"
+                        )
+                    }
 
                     // Diagnostics: HTML can be non-empty but still render "blank" if:
                     // - WebView size is 0, contentHeight is 0
@@ -393,10 +449,12 @@ class ReaderPageFragment : Fragment() {
                     
                     // Set font size directly via JavaScript
                     com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "[PAGINATION_DEBUG] Setting font size via JS: ${settings.textSizeSp}px")
-                    binding.pageWebView.evaluateJavascript(
-                        "if (window.minimalPaginator) { window.minimalPaginator.setFontSize(${settings.textSizeSp.toInt()}); }",
-                        null
-                    )
+                    if (!settings.flexPaginatorEnabled) {
+                        binding.pageWebView.evaluateJavascript(
+                            "if (window.minimalPaginator) { window.minimalPaginator.setFontSize(${settings.textSizeSp.toInt()}); }",
+                            null
+                        )
+                    }
                     
                     // Position restoration now handled by minimal_paginator.js automatically
                     applyPendingInitialInPage()
@@ -422,10 +480,15 @@ class ReaderPageFragment : Fragment() {
                                 binding.pageWebView.evaluateJavascript(
                                     """
                                     (function() {
-                                        if (window.minimalPaginator && window.minimalPaginator.isReady()) {
-                                            var pageCount = window.minimalPaginator.getPageCount();
+                                        var paginator = (window.flexPaginator && window.flexPaginator.isReady()) ? window.flexPaginator : window.minimalPaginator;
+                                        if (paginator && paginator.isReady()) {
+                                            var pageCount = paginator.getPageCount();
                                             if (pageCount > 0) {
-                                                window.minimalPaginator.goToPage(pageCount - 1, false);
+                                                if (paginator.navigateToPage) {
+                                                    paginator.navigateToPage(pageCount - 1);
+                                                } else {
+                                                    paginator.goToPage(pageCount - 1, false);
+                                                }
                                             }
                                         }
                                     })();
@@ -632,7 +695,7 @@ class ReaderPageFragment : Fragment() {
                             // For HTML content with font size change only, use paginator API
                             // This preserves reading position without reloading
                             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Applying font size change without reload")
-                            if (isWebViewReady && binding.pageWebView.visibility == View.VISIBLE) {
+                            if (!settings.flexPaginatorEnabled && isWebViewReady && binding.pageWebView.visibility == View.VISIBLE) {
                                 // Apply font size change directly via JavaScript
                                 // minimal_paginator.js handles position preservation automatically
                                 launchIfViewAlive("apply_font_size_change_js") {
@@ -721,6 +784,10 @@ class ReaderPageFragment : Fragment() {
                 // Remove JavaScript interfaces to clean up
                 removeJavascriptInterface("AndroidTtsBridge")
                 removeJavascriptInterface("PaginatorBridge")
+                if (flexPaginatorBridge != null) {
+                    removeJavascriptInterface("AndroidBridge")
+                }
+                flexPaginatorBridge = null
                 // Call paginatorStop to cleanup JS state
                 evaluateJavascript("if (window.paginatorStop) { window.paginatorStop(); }", null)
                 // Load blank page to clear memory
@@ -1037,7 +1104,7 @@ class ReaderPageFragment : Fragment() {
             try {
                 kotlinx.coroutines.delay(200) // Wait for paginator initialization
                 binding.pageWebView.evaluateJavascript(
-                    "if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage($target, false); }",
+                    "if (window.flexPaginator && window.flexPaginator.isReady()) { window.flexPaginator.navigateToPage($target); } else if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage($target, false); }",
                     null
                 )
                 currentInPageIndex = target
@@ -1309,6 +1376,7 @@ class ReaderPageFragment : Fragment() {
                         pagePaddingPx = typographyConfig.pagePaddingPx,
                         palette = palette,
                         webViewWidthPx = webViewWidth,
+                        useFlexPaginator = settings.flexPaginatorEnabled,
                         enableDiagnostics = settings.paginationDiagnosticsEnabled,
                         debugWindowInfo = debugWindowInfo
                     )
@@ -1878,11 +1946,11 @@ class ReaderPageFragment : Fragment() {
             }
 
             val pageCount = binding.pageWebView.evaluateJavascriptSuspend(
-                "window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getPageCount() : -1"
+                "window.flexPaginator && window.flexPaginator.isReady() ? window.flexPaginator.getPageCount() : (window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getPageCount() : -1)"
             ).toIntOrNull() ?: -1
 
             val currentPage = binding.pageWebView.evaluateJavascriptSuspend(
-                "window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getCurrentPage() : -1"
+                "window.flexPaginator && window.flexPaginator.isReady() ? window.flexPaginator.getCurrentPage() : (window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getCurrentPage() : -1)"
             ).toIntOrNull() ?: -1
 
             if (pageCount <= 0 || currentPage < 0) {
@@ -2249,11 +2317,11 @@ class ReaderPageFragment : Fragment() {
             // Force a fresh sync from JavaScript to get the most current values
             // This prevents using stale cached values during rapid navigation
             val freshPageCount = binding.pageWebView.evaluateJavascriptSuspend(
-                "window.minimalPaginator ? window.minimalPaginator.getPageCount() : -1"
+                "window.flexPaginator && window.flexPaginator.isReady() ? window.flexPaginator.getPageCount() : (window.minimalPaginator ? window.minimalPaginator.getPageCount() : -1)"
             ).toIntOrNull() ?: -1
             
             val freshCurrentPage = binding.pageWebView.evaluateJavascriptSuspend(
-                "window.minimalPaginator ? window.minimalPaginator.getCurrentPage() : 0"
+                "window.flexPaginator && window.flexPaginator.isReady() ? window.flexPaginator.getCurrentPage() : (window.minimalPaginator ? window.minimalPaginator.getCurrentPage() : 0)"
             ).toIntOrNull() ?: 0
             
             // GUARD: Bail if paginator not ready or page count is invalid
@@ -2286,7 +2354,7 @@ class ReaderPageFragment : Fragment() {
                         "ui/webview/pagination"
                     )
                     binding.pageWebView.evaluateJavascript(
-                        "if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.nextPage(); }",
+                        "if (window.flexPaginator && window.flexPaginator.isReady()) { window.flexPaginator.nextPage(); } else if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.nextPage(); }",
                         null
                     )
                     
@@ -2315,7 +2383,7 @@ class ReaderPageFragment : Fragment() {
                         "ui/webview/pagination"
                     )
                     binding.pageWebView.evaluateJavascript(
-                        "if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.prevPage(); }",
+                        "if (window.flexPaginator && window.flexPaginator.isReady()) { window.flexPaginator.prevPage(); } else if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.prevPage(); }",
                         null
                     )
                     
@@ -2453,7 +2521,7 @@ class ReaderPageFragment : Fragment() {
                 // Query via evaluateJavascript
                 suspendCancellableCoroutine { cont ->
                     binding.pageWebView.evaluateJavascript(
-                        "window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getCurrentPage() : 0"
+                        "window.flexPaginator && window.flexPaginator.isReady() ? window.flexPaginator.getCurrentPage() : (window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getCurrentPage() : 0)"
                     ) { result ->
                         val page = result?.toIntOrNull() ?: 0
                         cont.resume(page)
@@ -2504,7 +2572,7 @@ class ReaderPageFragment : Fragment() {
         currentInPageIndex = 0
         pendingInitialInPageIndex = null
         binding.pageWebView.evaluateJavascript(
-            "if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage(0, false); }",
+            "if (window.flexPaginator && window.flexPaginator.isReady()) { window.flexPaginator.navigateToPage(0); } else if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage(0, false); }",
             null
         )
         
@@ -2527,7 +2595,7 @@ class ReaderPageFragment : Fragment() {
             // Query current page and page count via evaluateJavascript
             val currentPage = suspendCancellableCoroutine { cont ->
                 binding.pageWebView.evaluateJavascript(
-                    "window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getCurrentPage() : 0"
+                    "window.flexPaginator && window.flexPaginator.isReady() ? window.flexPaginator.getCurrentPage() : (window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getCurrentPage() : 0)"
                 ) { result ->
                     cont.resume(result?.toIntOrNull() ?: 0)
                 }
@@ -2535,7 +2603,7 @@ class ReaderPageFragment : Fragment() {
             
             val pageCount = suspendCancellableCoroutine { cont ->
                 binding.pageWebView.evaluateJavascript(
-                    "window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getPageCount() : 0"
+                    "window.flexPaginator && window.flexPaginator.isReady() ? window.flexPaginator.getPageCount() : (window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getPageCount() : 0)"
                 ) { result ->
                     cont.resume(result?.toIntOrNull() ?: 0)
                 }
@@ -2543,7 +2611,7 @@ class ReaderPageFragment : Fragment() {
             
             val characterOffset = suspendCancellableCoroutine { cont ->
                 binding.pageWebView.evaluateJavascript(
-                    "window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getCharacterOffsetForPage($currentPage) : 0"
+                    "window.flexPaginator && window.flexPaginator.isReady() ? window.flexPaginator.getCharacterOffsetForPage($currentPage) : (window.minimalPaginator && window.minimalPaginator.isReady() ? window.minimalPaginator.getCharacterOffsetForPage($currentPage) : 0)"
                 ) { result ->
                     cont.resume(result?.toIntOrNull() ?: 0)
                 }

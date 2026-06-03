@@ -14,6 +14,7 @@ data class ReaderHtmlConfig(
     val pagePaddingPx: Int = 16,
     val palette: ReaderThemePalette,
     val webViewWidthPx: Int,
+    val useFlexPaginator: Boolean = false,
     val enableDiagnostics: Boolean = false,
     /**
      * Debug window rendering configuration.
@@ -157,6 +158,12 @@ object ReaderHtmlWrapper {
             </script>
         """
         
+        val paginatorScriptUrl = if (config.useFlexPaginator) {
+            EpubImageAssetHelper.FLEX_PAGINATOR_SCRIPT_URL
+        } else {
+            EpubImageAssetHelper.PAGINATOR_SCRIPT_URL
+        }
+
         return """
             <!DOCTYPE html>
             <html>
@@ -268,7 +275,7 @@ object ReaderHtmlWrapper {
                         background-color: rgba(255, 213, 79, 0.4) !important;
                     }
                 </style>
-                <script src="${EpubImageAssetHelper.PAGINATOR_SCRIPT_URL}"></script>
+                <script src="$paginatorScriptUrl"></script>
             </head>
             <body>
                 $debugBanner
