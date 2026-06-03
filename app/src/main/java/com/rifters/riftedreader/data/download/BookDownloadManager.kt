@@ -21,6 +21,7 @@ class BookDownloadManager(
     private val client: OkHttpClient = DEFAULT_CLIENT,
 ) {
     private val appContext = context.applicationContext
+    // Serializes metadata insertion so duplicate checks and inserts cannot interleave.
     private val importMutex = Mutex()
 
     suspend fun downloadFromUrl(
@@ -29,14 +30,15 @@ class BookDownloadManager(
         headers: Map<String, String> = emptyMap(),
     ): Result<BookMeta> = withContext(Dispatchers.IO) {
         var downloadedFile: File? = null
-        runCatching {
+        try {
             val destination = createDestination(filename)
             downloadedFile = destination
             downloadToFile(url, headers, destination)
-            importDownloadedBook(destination, filename)
-        }.onFailure { throwable ->
+            Result.success(importDownloadedBook(destination))
+        } catch (throwable: Throwable) {
             if (throwable is CancellationException) throw throwable
             downloadedFile?.delete()
+            Result.failure(throwable)
         }
     }
 
@@ -65,10 +67,10 @@ class BookDownloadManager(
         }
     }
 
-    private suspend fun importDownloadedBook(file: File, filename: String): BookMeta {
+    private suspend fun importDownloadedBook(file: File): BookMeta {
         return importMutex.withLock {
             val parser = ParserFactory.getParser(file)
-                ?: throw UnsupportedBookDownloadException(filename)
+                ?: throw UnsupportedBookDownloadException(file.name)
 
             bookRepository.getBookByPath(file.absolutePath)?.let { existing ->
                 throw DuplicateBookDownloadException(existing)

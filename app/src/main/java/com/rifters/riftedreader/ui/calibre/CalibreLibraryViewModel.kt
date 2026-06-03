@@ -82,15 +82,22 @@ class CalibreLibraryViewModel(
             Log.i(TAG, message)
             AppLogger.event(TAG, message, "ui/calibre/download")
 
-            runCatching {
-                val filename = contentServerRepository.getDownloadFilename(book, format)
-                val result = bookDownloadManager.downloadFromUrl(
-                    url = contentServerRepository.getDownloadUrl(book, format),
-                    filename = filename,
-                    headers = contentServerRepository.getDownloadHeaders(),
+            val request = runCatching {
+                Triple(
+                    contentServerRepository.getDownloadUrl(book, format),
+                    contentServerRepository.getDownloadFilename(book, format),
+                    contentServerRepository.getDownloadHeaders(),
                 )
-                result.getOrThrow()
-            }.fold(
+            }.getOrElse {
+                _downloadEvents.emit(CalibreDownloadEvent.DownloadFailed)
+                return@launch
+            }
+
+            bookDownloadManager.downloadFromUrl(
+                url = request.first,
+                filename = request.second,
+                headers = request.third,
+            ).fold(
                 onSuccess = { metadata ->
                     _downloadEvents.emit(CalibreDownloadEvent.DownloadSuccess(metadata.title))
                 },
