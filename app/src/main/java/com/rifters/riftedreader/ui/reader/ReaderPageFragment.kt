@@ -678,6 +678,7 @@ class ReaderPageFragment : Fragment() {
                     val fontSizeChanged = if (isFirstSettingsEmission) false else previousSettings?.textSizeSp != settings.textSizeSp
                     val lineHeightChanged = if (isFirstSettingsEmission) false else previousSettings?.lineHeightMultiplier != settings.lineHeightMultiplier
                     val modeChanged = if (isFirstSettingsEmission) false else previousSettings?.mode != settings.mode
+                    val flexPaginatorChanged = if (isFirstSettingsEmission) false else previousSettings?.flexPaginatorEnabled != settings.flexPaginatorEnabled
                     
                     // Log settings changes
                     if (previousSettings != null) {
@@ -686,6 +687,7 @@ class ReaderPageFragment : Fragment() {
                         if (fontSizeChanged) changes.add("fontSize=${settings.textSizeSp}px")
                         if (lineHeightChanged) changes.add("lineHeight=${settings.lineHeightMultiplier}")
                         if (modeChanged) changes.add("mode=${settings.mode}")
+                        if (flexPaginatorChanged) changes.add("flexPaginator=${settings.flexPaginatorEnabled}")
                         if (changes.isNotEmpty()) {
                             com.rifters.riftedreader.util.AppLogger.event(
                                 "ReaderPageFragment", 
@@ -744,9 +746,9 @@ class ReaderPageFragment : Fragment() {
                                     }
                                 }
                             }
-                        } else if ((themeChanged || lineHeightChanged || modeChanged) && isActiveReaderWindow()) {
-                            // Theme or line height change requires full reload to update styles
-                            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Reloading content due to theme, line height, or reader mode change")
+                        } else if ((themeChanged || lineHeightChanged || modeChanged || flexPaginatorChanged) && isActiveReaderWindow()) {
+                            // Theme, line height, reader mode, or pagination engine changes require full reload to update styles
+                            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Reloading content due to theme, line height, reader mode, or pagination engine change")
                             if (highlightedRange == null) {
                                 renderBaseContent()
                             } else {

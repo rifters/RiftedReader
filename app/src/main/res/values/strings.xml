@@ -133,6 +133,15 @@ Page %4$d/%5$d (%6$d%%)</string>
     <string name="reader_title_placeholder">RiftedReader</string>
     <string name="reader_tts">Listen</string>
     <string name="reader_text_settings_title">Reading settings</string>
+    <string name="reader_layout_pagination_section">Layout &amp; Pagination</string>
+    <string name="reader_experimental_page_layout_title">Experimental page layout</string>
+    <string name="reader_experimental_page_layout_summary">Uses FlexPaginator for more accurate page counts. May affect performance on long chapters.</string>
+    <string name="reader_flex_paginator_confirm_message">Switching pagination engine will reload the current chapter. Continue?</string>
+    <string name="reader_beta_badge">BETA</string>
+    <string name="reader_beta_badge_content_description">Beta feature, may be unstable</string>
+    <string name="reader_reading_layout_label">Reading layout</string>
+    <string name="reader_reading_layout_pages">Pages</string>
+    <string name="reader_reading_layout_scroll">Scroll</string>
     <string name="reader_text_size_label">Text size</string>
     <string name="reader_text_size_value">%1$d sp</string>
     <string name="reader_text_size_value_default">16 sp</string>
