@@ -136,7 +136,9 @@ class CalibreLibraryFragment : Fragment() {
             }
             is CalibreLibraryState.Error -> {
                 adapter.submitList(emptyList())
-                binding.errorMessage.text = state.exception.localizedMessage ?: getString(R.string.calibre_library_error_generic)
+                binding.errorMessage.text = state.exception.localizedMessage
+                    ?.takeUnless { it.isBlank() }
+                    ?: getString(R.string.calibre_library_error_generic)
             }
             CalibreLibraryState.Disabled -> adapter.submitList(emptyList())
         }
@@ -207,7 +209,7 @@ class CalibreLibraryFragment : Fragment() {
     }
 
     private fun formatSeriesIndex(value: Double): String {
-        return if (value % 1.0 == 0.0) value.toInt().toString() else String.format(Locale.US, "%.1f", value)
+        return if (value % 1.0 == 0.0) value.toInt().toString() else String.format(Locale.getDefault(), "%.1f", value)
     }
 
     override fun onDestroyView() {

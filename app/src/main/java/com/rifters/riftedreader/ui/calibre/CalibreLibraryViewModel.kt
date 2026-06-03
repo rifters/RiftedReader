@@ -151,7 +151,7 @@ class CalibreLibraryViewModel(
     }
 
     private fun Throwable.toCalibreException(): CalibreException {
-        return this as? CalibreException ?: CalibreConfigException(localizedMessage ?: "Unable to load Calibre library", this)
+        return this as? CalibreException ?: CalibreConfigException(localizedMessage.orEmpty(), this)
     }
 
     companion object {
