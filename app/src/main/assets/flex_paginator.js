@@ -258,6 +258,7 @@
             // (unless this is the very first section and we haven't created a page yet)
             // Start new page for this chapter
             startNewPage(chapterIndex);
+            chapterStartChar = 0;
             currentCharOffset = 0; // Reset char offset for new chapter
             
             // Walk nodes in this section
