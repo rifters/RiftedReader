@@ -374,6 +374,8 @@ class ConveyorBeltSystemViewModel(
         this.bookFile = bookFile
         this.flexPaginatorEnabledProvider = flexPaginatorEnabledProvider
         this.flexPaginator = null
+        offscreenSlicingWebView?.destroy()
+        offscreenSlicingWebView = null
         log("INIT", "HTML loading dependencies set: bookId=$bookId")
     }
     
@@ -471,7 +473,7 @@ class ConveyorBeltSystemViewModel(
         val file = bookFile
             ?: throw IllegalStateException("FlexPaginator enabled but book file was not provided in setHtmlLoadingDependencies")
         val slicerFactory = offscreenSlicingWebViewFactory
-            ?: throw IllegalStateException("FlexPaginator enabled but offscreen slicer factory was not provided")
+            ?: throw IllegalStateException("FlexPaginator enabled but offscreen slicer factory was not provided in constructor")
         val totalChapters = paginator.getWindowInfo().totalChapters
         val (firstChapter, lastChapter) = resolveChapterRange(windowManager, windowIndex, totalChapters)
             ?: throw IllegalStateException("No chapters for window $windowIndex")

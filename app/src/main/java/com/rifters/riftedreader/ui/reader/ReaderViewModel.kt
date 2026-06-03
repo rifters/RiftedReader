@@ -733,7 +733,8 @@ class ReaderViewModel(
      * 
      * Returns cached WindowData when the conveyor has already loaded the window,
      * including FlexPaginator slice metadata when the feature flag is enabled and
-     * slicing succeeded.
+     * slicing succeeded. With FlexPaginator disabled, the legacy window data is
+     * returned without slice metadata.
      * 
      * @param windowIndex The window index to look up
      * @return Cached WindowData, or null if unavailable
