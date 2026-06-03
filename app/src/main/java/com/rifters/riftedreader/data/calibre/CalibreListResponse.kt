@@ -126,20 +126,18 @@ class CalibreListResponseDeserializer : JsonDeserializer<CalibreListResponse> {
     }
 
     private fun JsonElement.asStringOrNull(): String? {
-        return runCatching {
-            if (isJsonPrimitive) asString else null
-        }.getOrNull()?.takeIf { it.isNotBlank() }
+        return takeIf { it.isJsonPrimitive }?.asString?.takeIf { it.isNotBlank() }
     }
 
     private fun JsonElement.asIntOrNull(): Int? {
-        return runCatching {
-            if (isJsonPrimitive) asInt else null
-        }.getOrNull()
+        if (!isJsonPrimitive) return null
+        val primitive = asJsonPrimitive
+        return if (primitive.isNumber) primitive.asInt else primitive.asString.toIntOrNull()
     }
 
     private fun JsonElement.asDoubleOrNull(): Double? {
-        return runCatching {
-            if (isJsonPrimitive) asDouble else null
-        }.getOrNull()
+        if (!isJsonPrimitive) return null
+        val primitive = asJsonPrimitive
+        return if (primitive.isNumber) primitive.asDouble else primitive.asString.toDoubleOrNull()
     }
 }

@@ -3,8 +3,8 @@ package com.rifters.riftedreader.data.calibre
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParseException
 import com.google.gson.JsonSyntaxException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit
 class CalibreContentServerRepository(
     private val connectionRepository: CalibreConnectionRepository,
     private val credentialStore: CalibreCredentialStore,
+    private val configProvider: (() -> CalibreConnectionConfig?)? = null,
     okHttpClientBuilder: OkHttpClient.Builder = OkHttpClient.Builder(),
 ) {
     @Volatile
@@ -93,9 +94,9 @@ class CalibreContentServerRepository(
     }
 
     private fun latestConfig(): CalibreConnectionConfig {
-        return runBlocking(Dispatchers.IO) {
-            connectionRepository.loadConfig()
-        }.also { currentConfig = it }
+        return configProvider?.invoke()
+            ?: currentConfig
+            ?: throw IllegalStateException("Calibre Content Server config has not been loaded")
     }
 
     private fun apiFor(config: CalibreConnectionConfig): CalibreApiService {
@@ -168,6 +169,7 @@ class CalibreContentServerRepository(
     private suspend fun <T> runCalibreCall(block: suspend () -> T): Result<T> {
         return withContext(Dispatchers.IO) {
             runCatching { block() }.recoverCatching { throwable ->
+                if (throwable is CancellationException) throw throwable
                 throw mapError(throwable)
             }
         }
@@ -212,7 +214,7 @@ class CalibreContentServerRepository(
 
     private fun downloadFilename(book: CalibreBook, format: BookFormat): String {
         val safeTitle = book.title
-            .replace(Regex("[\\\\/:*?\"<>|]+"), "_")
+            .replace(UNSAFE_FILENAME_CHARS, "_")
             .trim()
             .ifBlank { "book-${book.id}" }
         return "$safeTitle.${format.name.lowercase()}"
@@ -223,5 +225,6 @@ class CalibreContentServerRepository(
         private const val HTTP_NOT_FOUND = 404
         private const val CALIBRE_FIELDS = "book_id,title,authors,formats,tags,series,series_index,pubdate"
         private const val SEARCH_FIELDS = "book_id,title,authors,formats"
+        private val UNSAFE_FILENAME_CHARS = Regex("[\\\\/:*?\"<>|]+")
     }
 }
