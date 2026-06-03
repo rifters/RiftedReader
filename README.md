@@ -3,29 +3,38 @@ A modern ebook reader for Android, inspired by LibreraReader
 
 ## Current Project Status
 
-The project is in an advanced stage, with a focus on finalizing a custom, high-performance reader core and refining key features before moving to cloud integration.
+Current status: the reader, parser, bookmark, TOC, Calibre, and settings flows are implemented. FlexPaginator and vertical scroll mode remain feature-flagged or settings-driven.
 
-### ⭐ **Current Focus: Reader Core**
+## Dependencies
 
-*   **Sliding Window Pagination**: We are actively implementing a custom **sliding window pagination** engine for the reader. This innovative approach replaces standard components like `ViewPager2` to provide a more responsive, memory-efficient, and bug-free reading experience, especially for large documents.
+- Kotlin
+- Coroutines / Flow
+- Room
+- AndroidX Navigation, Lifecycle, Preference, DataStore, WebKit, Security, and Media
+- Material Design 3
+- jsoup, Retrofit, OkHttp, Coil, Zip4j, AndroidPdfViewer
+- No Hilt dependency is declared
 
-### ✅ **Completed & Nearing Completion**
+## What is implemented
 
-*   **Core Architecture**: A modern MVVM architecture using Kotlin, Coroutines, Hilt, and Room is fully implemented.
-*   **Advanced Text-to-Speech (TTS)**: The complete TTS engine is implemented, including the sophisticated text/regex replacement system and background service. *(Needs final testing)*.
-*   **Advanced Library & UI**: The database and UI for managing collections, saved searches, and viewing library statistics are implemented. *(Needs final review and polish)*.
-*   **Core Parsers**: Parsers for **TXT, EPUB, PDF, and HTML** are complete and fully integrated.
-*   **User Interface**: The app uses Material Design 3 and includes a functional library screen and reader framework.
+- FlexPaginator pipeline (feature-flagged, default OFF)
+- Conveyor belt system (5-slot, phase-managed)
+- Shared typography config (FlexSlicingConfig)
+- Bookmark system (Room-backed, charOffset-stable)
+- TOC anchor navigation (HeadingAnchorSlugger + jumpToAnchor)
+- Vertical scroll mode (ReaderMode.PAGINATED / SCROLL)
+- Re-slicing on typography changes (PaginationModeGuard-wrapped)
+- Calibre Content Server integration (browse + download)
+- Calibre-Web in-app browser (WebView + download intercept)
+- Loading overlay, TOC panel, bookmark list, reader settings UI
+- Core parsers for TXT, EPUB, PDF, and HTML
 
-### 🟡 **In Progress / Scaffolding**
+## Known issues
 
-*   **Advanced Parsers**: The application can identify a wide range of formats (MOBI, FB2, CBZ, etc.) via a `FormatCatalog`, but full content extraction is not yet implemented. These are currently handled by a `PreviewParser`.
-
-### 🔜 **Next Major Goals**
-
-*   **Finalize Reader Core**: Complete and integrate the new sliding window paginator.
-*   **Implement Advanced Parsers**: Develop full content extraction for MOBI, FB2, and other planned formats.
-*   **Cloud Sync**: Begin development of cloud provider integrations (Google Drive, Dropbox).
+- FlexPaginator is OFF by default; enable it in Reader Settings > Layout
+- PreviewParser returns placeholder previews for MOBI, FB2, and CBZ
+- JS tests require `cd tests/js && npm install` before the first run
+- `MANAGE_EXTERNAL_STORAGE` permission is being replaced
 
 ## Documentation
 
@@ -170,11 +179,6 @@ Run Android unit tests from the repository root:
 - Page and scroll modes
 - Bookmarks and highlights
 
-### Cloud & Sync (Scaffolding)
-- Cloud provider abstraction matching Google Drive / Dropbox roadmap
-- Stub Google Drive provider for integration testing
-- OPDS client data structures for catalog browsing
-
 ### Modern Architecture
 - Clean Architecture (MVVM)
 - Kotlin Coroutines and Flow
@@ -189,7 +193,7 @@ Run Android unit tests from the repository root:
 - **Target SDK**: 34 (Android 14)
 - **Architecture**: MVVM with Repository pattern
 - **Database**: Room
-- **DI**: Hilt
+- **DI**: manual wiring
 - **Async**: Coroutines + Flow
 - **UI**: Material Design 3 Components
 
@@ -214,4 +218,4 @@ Project is in planning phase. Contributions will be welcome once development beg
 For questions or suggestions, please open an issue.
 
 ---
-*Last Updated: 2025-11-20*
+*Last Updated: 2026-06-03*

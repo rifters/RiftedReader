@@ -1,3 +1,5 @@
+# ⚠️ HISTORICAL — State as of 2026-05-06. See README.md for current status.
+
 # FlexPaginator — Restart Reference (2026)
 
 **Generated**: 2026-05-06  
