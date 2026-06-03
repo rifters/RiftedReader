@@ -18,6 +18,8 @@ class CalibreBooksAdapter(
     private val onLoadMore: () -> Unit,
 ) : ListAdapter<CalibreLibraryItem, RecyclerView.ViewHolder>(CalibreLibraryDiffCallback()) {
 
+    private var lastLoadMoreBookCount = -1
+
     override fun getItemViewType(position: Int): Int {
         return when (getItem(position)) {
             is CalibreLibraryItem.BookItem -> VIEW_TYPE_BOOK
@@ -37,8 +39,15 @@ class CalibreBooksAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val item = getItem(position)) {
             is CalibreLibraryItem.BookItem -> (holder as BookViewHolder).bind(item.book)
-            CalibreLibraryItem.LoadingFooter -> (holder as LoadingViewHolder).bind()
+            CalibreLibraryItem.LoadingFooter -> (holder as LoadingViewHolder).bind(shouldTriggerLoadMore())
         }
+    }
+
+    private fun shouldTriggerLoadMore(): Boolean {
+        val bookCount = currentList.count { it is CalibreLibraryItem.BookItem }
+        if (bookCount == lastLoadMoreBookCount) return false
+        lastLoadMoreBookCount = bookCount
+        return true
     }
 
     class BookViewHolder(
@@ -73,8 +82,10 @@ class CalibreBooksAdapter(
         private val binding: ItemCalibreLoadingBinding,
         private val onLoadMore: () -> Unit,
     ) : RecyclerView.ViewHolder(binding.root) {
-        fun bind() {
-            onLoadMore()
+        fun bind(shouldTriggerLoadMore: Boolean) {
+            if (shouldTriggerLoadMore) {
+                onLoadMore()
+            }
         }
     }
 

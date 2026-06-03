@@ -46,9 +46,9 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 calibreRepository.configFlow().collect { config ->
-                    val shouldShowCalibre = config.contentServerEnabled || config.calibreWebEnabled
-                    binding.bottomNavigation.menu.findItem(R.id.calibreLibraryFragment)?.isVisible = shouldShowCalibre
-                    if (!shouldShowCalibre) {
+                    val shouldShowCalibreNavItem = config.contentServerEnabled || config.calibreWebEnabled
+                    binding.bottomNavigation.menu.findItem(R.id.calibreLibraryFragment)?.isVisible = shouldShowCalibreNavItem
+                    if (!shouldShowCalibreNavItem) {
                         if (navController.currentDestination?.id == R.id.calibreLibraryFragment) {
                             navController.navigate(R.id.libraryFragment)
                         }
