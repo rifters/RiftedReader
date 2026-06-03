@@ -367,12 +367,16 @@
             log('WARN', `jumpToAnchor: no slice found for anchor ${anchorId}`);
             return false;
         }
+        if (containingSlice.chapter !== targetChapter || containingSlice.page !== targetPageIndex) {
+            log('WARN', `jumpToAnchor: slice/page mismatch for anchor ${anchorId}`);
+            return false;
+        }
 
         const startChar = getSliceStartChar(containingSlice);
         const relativeCharOffset = getTextLengthBeforeTarget(targetPage, target);
         const targetCharOffset = startChar + relativeCharOffset;
 
-        let nearestPageIndex = Number.isInteger(targetPageIndex) ? targetPageIndex : 0;
+        let nearestPageIndex = 0;
         // Sentinel below any valid slice offset so page 0 can be selected.
         let nearestStartChar = -1;
         for (let i = 0; i < state.slices.length; i++) {

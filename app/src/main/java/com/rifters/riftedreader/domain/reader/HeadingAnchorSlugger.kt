@@ -38,6 +38,10 @@ object HeadingAnchorSlugger {
     fun buildAnchorMap(html: String): List<AnchorEntry> {
         val document = Jsoup.parseBodyFragment(html)
         val idCounts = mutableMapOf<String, Int>()
+        document.select("h1, h2, h3, h4, h5, h6")
+            .map { it.id() }
+            .filter { it.isNotBlank() }
+            .forEach { id -> idCounts[id] = (idCounts[id] ?: 0) + 1 }
         return document.select("h1, h2, h3, h4, h5, h6").map { heading ->
             val text = heading.text()
             AnchorEntry(

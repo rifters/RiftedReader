@@ -56,13 +56,15 @@ class HeadingAnchorSluggerTest {
         val headingText = """Phase 3 — Write \flex_paginator.test.js\"""
         val html = """
             <h2 id="rendered-id">$headingText</h2>
+            <h3>Rendered ID</h3>
         """.trimIndent()
 
         val anchors = HeadingAnchorSlugger.buildAnchorMap(html)
 
         assertEquals(
             listOf(
-                AnchorEntry(id = "rendered-id", text = headingText, level = 2)
+                AnchorEntry(id = "rendered-id", text = headingText, level = 2),
+                AnchorEntry(id = "rendered-id-2", text = "Rendered ID", level = 3)
             ),
             anchors
         )
