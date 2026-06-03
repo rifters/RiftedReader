@@ -729,12 +729,14 @@ class ReaderViewModel(
     }
     
     /**
-     * Get cached window data from WindowBufferManager.
+     * Get cached window data from ConveyorBeltSystemViewModel.
      * 
-     * DEPRECATED: WindowBufferManager has been removed. Always returns null.
+     * Returns cached WindowData when the conveyor has already loaded the window,
+     * including FlexPaginator slice metadata when the feature flag is enabled and
+     * slicing succeeded.
      * 
      * @param windowIndex The window index to look up
-     * @return Always null (WindowBufferManager is deprecated)
+     * @return Cached WindowData, or null if unavailable
      */
     fun getCachedWindowData(windowIndex: Int): WindowData? {
         return _conveyorBeltSystem?.getCachedWindowData(windowIndex)
