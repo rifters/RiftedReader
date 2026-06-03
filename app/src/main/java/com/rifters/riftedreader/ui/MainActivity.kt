@@ -5,6 +5,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
@@ -17,6 +18,7 @@ import kotlinx.coroutines.launch
 class MainActivity : AppCompatActivity() {
     
     private lateinit var binding: ActivityMainBinding
+    private lateinit var navController: NavController
     private val calibreRepository by lazy { DefaultCalibreConnectionRepository(this) }
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,7 +32,7 @@ class MainActivity : AppCompatActivity() {
         
         val navHostFragment = supportFragmentManager
             .findFragmentById(R.id.nav_host_fragment) as NavHostFragment
-        val navController = navHostFragment.navController
+        navController = navHostFragment.navController
         
         setupActionBarWithNavController(navController)
         binding.bottomNavigation.setupWithNavController(navController)
@@ -47,8 +49,6 @@ class MainActivity : AppCompatActivity() {
                     val shouldShowCalibre = config.contentServerEnabled || config.calibreWebEnabled
                     binding.bottomNavigation.menu.findItem(R.id.calibreLibraryFragment)?.isVisible = shouldShowCalibre
                     if (!shouldShowCalibre) {
-                        val navController = (supportFragmentManager
-                            .findFragmentById(R.id.nav_host_fragment) as NavHostFragment).navController
                         if (navController.currentDestination?.id == R.id.calibreLibraryFragment) {
                             navController.navigate(R.id.libraryFragment)
                         }
@@ -85,9 +85,6 @@ class MainActivity : AppCompatActivity() {
     
     override fun onSupportNavigateUp(): Boolean {
         AppLogger.userAction("MainActivity", "Navigate up pressed", "ui/MainActivity/navigation")
-        val navHostFragment = supportFragmentManager
-            .findFragmentById(R.id.nav_host_fragment) as NavHostFragment
-        val navController = navHostFragment.navController
         return navController.navigateUp() || super.onSupportNavigateUp()
     }
 }

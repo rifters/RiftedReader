@@ -203,7 +203,7 @@ class CalibreLibraryFragment : Fragment() {
     }
 
     private fun buttonStyle(isPreferred: Boolean): Int {
-        return if (isPreferred) com.google.android.material.R.attr.materialButtonStyle else com.google.android.material.R.attr.materialButtonOutlinedStyle
+        return if (isPreferred) FILLED_BUTTON_STYLE else OUTLINED_BUTTON_STYLE
     }
 
     private fun formatSeriesIndex(value: Double): String {
@@ -219,5 +219,7 @@ class CalibreLibraryFragment : Fragment() {
     companion object {
         private const val PHONE_GRID_SPAN = 2
         private const val MAX_VISIBLE_TAGS = 3
+        private val FILLED_BUTTON_STYLE = com.google.android.material.R.attr.materialButtonStyle
+        private val OUTLINED_BUTTON_STYLE = com.google.android.material.R.attr.materialButtonOutlinedStyle
     }
 }
