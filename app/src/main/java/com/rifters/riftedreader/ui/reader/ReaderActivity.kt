@@ -1074,13 +1074,18 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         isReslicingIndicatorVisible = isReslicing
                         if (isReslicing) {
                             showUpdatingIndicatorIfNeeded()
-                        } else if (usingWebViewSlider) {
-                            updatePageIndicatorForWebView(
-                                viewModel.currentWebViewPage.value,
-                                viewModel.totalWebViewPages.value
-                            )
                         } else {
-                            updatePageIndicator(viewModel.currentPage.value)
+                            binding.pageIndicator.post {
+                                if (isReslicingIndicatorVisible) return@post
+                                if (usingWebViewSlider) {
+                                    updatePageIndicatorForWebView(
+                                        viewModel.currentWebViewPage.value,
+                                        viewModel.totalWebViewPages.value
+                                    )
+                                } else {
+                                    updatePageIndicator(viewModel.currentPage.value)
+                                }
+                            }
                         }
                     }
                 }
