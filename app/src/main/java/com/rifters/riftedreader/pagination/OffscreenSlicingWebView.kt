@@ -7,6 +7,7 @@ import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import com.rifters.riftedreader.util.AppLogger
+import com.rifters.riftedreader.util.CssSanitizers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONArray
 import org.json.JSONObject
@@ -174,7 +175,10 @@ class OffscreenSlicingWebView(
         windowIndex: Int,
         config: FlexSlicingConfig
     ): String {
-        val sanitizedFontFamily = sanitizeCssFontFamily(config.fontFamily)
+        val sanitizedFontFamily = CssSanitizers.sanitizeCssFontFamily(
+            config.fontFamily,
+            FlexSlicingConfig.DEFAULT_FONT_FAMILY
+        )
         return buildString {
             append("<!DOCTYPE html>\n")
             append("<html>\n")
@@ -183,8 +187,14 @@ class OffscreenSlicingWebView(
             append("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
             append("  <style>\n")
             append("    * { margin: 0; padding: 0; box-sizing: border-box; }\n")
+            append("    :root {\n")
+            append("      --flex-font-size: ${config.fontSizePx}px;\n")
+            append("      --flex-line-height: ${config.lineHeight};\n")
+            append("      --flex-font-family: $sanitizedFontFamily;\n")
+            append("      --flex-page-padding: ${config.pagePaddingPx}px;\n")
+            append("    }\n")
             append("    html, body { width: 100%; height: 100%; }\n")
-            append("    body { font-family: $sanitizedFontFamily; font-size: ${config.fontSizePx}px; line-height: ${config.lineHeight}; }\n")
+            append("    body { font-family: var(--flex-font-family); font-size: var(--flex-font-size); line-height: var(--flex-line-height); padding: var(--flex-page-padding); }\n")
             append("    section { margin-bottom: 1em; }\n")
             append("  </style>\n")
             append("</head>\n")
@@ -208,19 +218,6 @@ class OffscreenSlicingWebView(
         }
     }
 
-    private fun sanitizeCssFontFamily(input: String): String {
-        val trimmed = input.trim()
-        if (trimmed.isEmpty()) return "sans-serif"
-        // Allow common characters; drop quotes/semicolons/newlines to avoid breaking CSS/JS.
-        return trimmed
-            .replace("\n", " ")
-            .replace("\r", " ")
-            .replace("\t", " ")
-            .replace("\"", "")
-            .replace("'", "")
-            .replace(";", "")
-    }
-    
     /**
      * Clean up WebView resources.
      * 

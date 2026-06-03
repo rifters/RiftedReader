@@ -34,6 +34,7 @@ import com.rifters.riftedreader.databinding.FragmentReaderPageBinding
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.util.AppLoggerBridge
+import com.rifters.riftedreader.util.CssSanitizers
 import com.rifters.riftedreader.util.EpubImageAssetHelper
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -43,6 +44,7 @@ import org.json.JSONArray
 import java.io.File
 import kotlin.coroutines.resume
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 class ReaderPageFragment : Fragment() {
 
@@ -146,6 +148,7 @@ class ReaderPageFragment : Fragment() {
     private var slicingViewportHeightPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_HEIGHT_PX
     private var hasCapturedSlicingViewport: Boolean = false
     private var viewportLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
+    private val readerFontFamily: String = FlexSlicingConfig.READER_FONT_FAMILY_SERIF
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -501,6 +504,7 @@ class ReaderPageFragment : Fragment() {
         }
 
         observeReaderViewportForSlicing()
+        syncSharedTypographyConfig(readerViewModel.readerSettings.value)
         
         // Separate content loading based on pagination mode
         if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
@@ -574,6 +578,7 @@ class ReaderPageFragment : Fragment() {
                     // Always update TextView settings
                     binding.pageTextView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, settings.textSizeSp)
                     binding.pageTextView.setLineSpacing(0f, settings.lineHeightMultiplier)
+                    syncSharedTypographyConfig(settings)
 
                     // IMPORTANT: The first emission after (re)creating the fragment should be treated as
                     // a baseline, not a "change". Otherwise we can trigger an unnecessary WebView reload
@@ -1296,9 +1301,12 @@ class ReaderPageFragment : Fragment() {
                         }
                     }
                     
+                    val typographyConfig = FlexSlicingConfig.getDefaultTypography()
                     val config = com.rifters.riftedreader.domain.reader.ReaderHtmlConfig(
-                        textSizePx = settings.textSizeSp,
-                        lineHeightMultiplier = settings.lineHeightMultiplier,
+                        textSizePx = typographyConfig.fontSizePx.toFloat(),
+                        lineHeightMultiplier = typographyConfig.lineHeight,
+                        fontFamily = typographyConfig.fontFamily,
+                        pagePaddingPx = typographyConfig.pagePaddingPx,
                         palette = palette,
                         webViewWidthPx = webViewWidth,
                         enableDiagnostics = settings.paginationDiagnosticsEnabled,
@@ -1348,7 +1356,11 @@ class ReaderPageFragment : Fragment() {
                 } catch (e: Exception) {
                     com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "[PAGINATION_DEBUG] Error loading window HTML for windowIndex=$windowIndex, using fallback", e)
                     // Fallback to old method if there's any error
-                    val wrappedHtml = wrapHtmlForWebView(html, settings.textSizeSp, settings.lineHeightMultiplier, palette)
+                    val wrappedHtml = wrapHtmlForWebView(
+                        content = html,
+                        typography = FlexSlicingConfig.getDefaultTypography(),
+                        palette = palette
+                    )
                     isWebViewReady = false
                     isPaginatorInitialized = false
                     val baseUrl = "https://${EpubImageAssetHelper.ASSET_HOST}/"
@@ -1469,12 +1481,15 @@ class ReaderPageFragment : Fragment() {
      */
     private fun wrapHtmlForWebView(
         content: String,
-        textSize: Float,
-        lineHeight: Float,
+        typography: FlexSlicingConfig,
         palette: ReaderThemePalette
     ): String {
         val backgroundColor = String.format("#%06X", 0xFFFFFF and palette.backgroundColor)
         val textColor = String.format("#%06X", 0xFFFFFF and palette.textColor)
+        val sanitizedFontFamily = CssSanitizers.sanitizeCssFontFamily(
+            typography.fontFamily,
+            FlexSlicingConfig.DEFAULT_FONT_FAMILY
+        )
         
         return """
             <!DOCTYPE html>
@@ -1488,12 +1503,16 @@ class ReaderPageFragment : Fragment() {
                         padding: 0;
                         background-color: $backgroundColor;
                         color: $textColor;
-                        font-size: ${textSize}px;
-                        line-height: $lineHeight;
-                        font-family: serif;
+                        --flex-font-size: ${typography.fontSizePx}px;
+                        --flex-line-height: ${typography.lineHeight};
+                        --flex-font-family: $sanitizedFontFamily;
+                        --flex-page-padding: ${typography.pagePaddingPx}px;
+                        font-size: var(--flex-font-size);
+                        line-height: var(--flex-line-height);
+                        font-family: var(--flex-font-family);
                     }
                     body {
-                        padding: 16px;
+                        padding: var(--flex-page-padding);
                         word-wrap: break-word;
                         overflow-wrap: break-word;
                     }
@@ -1557,6 +1576,15 @@ class ReaderPageFragment : Fragment() {
             </body>
             </html>
         """.trimIndent()
+    }
+
+    private fun syncSharedTypographyConfig(settings: com.rifters.riftedreader.data.preferences.ReaderSettings) {
+        FlexSlicingConfig.setDefaultTypography(
+            fontSizePx = settings.textSizeSp.roundToInt().coerceAtLeast(FlexSlicingConfig.MIN_FONT_SIZE_PX),
+            lineHeight = settings.lineHeightMultiplier,
+            fontFamily = readerFontFamily,
+            pagePaddingPx = FlexSlicingConfig.DEFAULT_PAGE_PADDING_PX
+        )
     }
     
     /**
