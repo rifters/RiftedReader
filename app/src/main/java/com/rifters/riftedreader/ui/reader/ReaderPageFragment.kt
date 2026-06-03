@@ -305,8 +305,10 @@ class ReaderPageFragment : Fragment() {
                     "[BRIDGE] Registered FlexPaginatorBridge for windowIndex=$windowIndex"
                 )
             } else {
+                if (flexPaginatorBridge != null) {
+                    removeJavascriptInterface("AndroidBridge")
+                }
                 flexPaginatorBridge = null
-                removeJavascriptInterface("AndroidBridge")
             }
             
             webViewClient = object : WebViewClient() {
@@ -782,7 +784,9 @@ class ReaderPageFragment : Fragment() {
                 // Remove JavaScript interfaces to clean up
                 removeJavascriptInterface("AndroidTtsBridge")
                 removeJavascriptInterface("PaginatorBridge")
-                removeJavascriptInterface("AndroidBridge")
+                if (flexPaginatorBridge != null) {
+                    removeJavascriptInterface("AndroidBridge")
+                }
                 flexPaginatorBridge = null
                 // Call paginatorStop to cleanup JS state
                 evaluateJavascript("if (window.paginatorStop) { window.paginatorStop(); }", null)

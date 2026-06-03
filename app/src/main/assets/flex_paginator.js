@@ -371,8 +371,7 @@
     function notifyBoundaryIfNeeded(pageIndex) {
         if (pageIndex === 0) {
             callAndroidBridge('onBoundaryReached', 'backward');
-        }
-        if (pageIndex === state.slices.length - 1) {
+        } else if (pageIndex === state.slices.length - 1) {
             callAndroidBridge('onBoundaryReached', 'forward');
         }
     }
@@ -386,10 +385,14 @@
             }
 
             scrollTimer = setTimeout(function() {
-                const pageIndex = Math.round(flexContainer.scrollLeft / Math.max(1, state.viewportWidth));
+                if (!state.isInitialized || state.viewportWidth <= 0 || state.slices.length === 0) return;
+
+                const pageIndex = Math.round(flexContainer.scrollLeft / state.viewportWidth);
                 const validIndex = Math.max(0, Math.min(pageIndex, state.slices.length - 1));
                 if (validIndex !== state.currentPage) {
-                    navigateToPage(validIndex);
+                    state.currentPage = validIndex;
+                    notifyPageChanged(validIndex);
+                    notifyBoundaryIfNeeded(validIndex);
                 }
             }, 100);
         });

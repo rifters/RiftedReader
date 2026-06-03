@@ -141,7 +141,9 @@ class FlexPaginatorBridge(
         )
 
         if (!metadata.isValid()) {
-            throw IllegalStateException("Invalid metadata: totalPages=$totalPages, slices=${slices.size}")
+            throw IllegalStateException(
+                "Invalid metadata: totalPages must be > 0 and equal slices.size (totalPages=$totalPages, slices=${slices.size})"
+            )
         }
 
         return metadata
