@@ -29,7 +29,7 @@
     <ListPreference
         android:key="reader_mode"
         android:title="@string/settings_reader_mode"
-        android:defaultValue="SCROLL"
+        android:defaultValue="PAGINATED"
         app:entries="@array/reader_mode_entries"
         app:entryValues="@array/reader_mode_values"
         app:useSimpleSummaryProvider="true" />

@@ -28,39 +28,13 @@ class ReaderSettingsViewModel(
     
     fun updateMode(mode: com.rifters.riftedreader.data.preferences.ReaderMode) {
         readerPreferences.updateSettings { current -> 
-            // If switching to SCROLL mode, disable continuous pagination
-            if (mode == com.rifters.riftedreader.data.preferences.ReaderMode.SCROLL && 
-                current.paginationMode == PaginationMode.CONTINUOUS) {
-                com.rifters.riftedreader.util.AppLogger.d(
-                    "ReaderSettingsViewModel",
-                    "Switching to SCROLL mode - disabling continuous pagination"
-                )
-                current.copy(
-                    mode = mode, 
-                    paginationMode = PaginationMode.CHAPTER_BASED
-                )
-            } else {
-                current.copy(mode = mode)
-            }
+            current.copy(mode = mode)
         }
     }
 
     fun updatePaginationMode(mode: PaginationMode) {
         readerPreferences.updateSettings { current -> 
-            // If enabling continuous pagination, enforce PAGE mode
-            if (mode == PaginationMode.CONTINUOUS && 
-                current.mode == com.rifters.riftedreader.data.preferences.ReaderMode.SCROLL) {
-                com.rifters.riftedreader.util.AppLogger.d(
-                    "ReaderSettingsViewModel",
-                    "Enabling continuous pagination - switching to PAGE mode"
-                )
-                current.copy(
-                    paginationMode = mode,
-                    mode = com.rifters.riftedreader.data.preferences.ReaderMode.PAGE
-                )
-            } else {
-                current.copy(paginationMode = mode)
-            }
+            current.copy(paginationMode = mode)
         }
     }
 

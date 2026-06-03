@@ -72,7 +72,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private var sentenceBoundaries: List<IntRange> = emptyList()
     private var highlightedSentenceIndex: Int = -1
     private var currentHighlightRange: IntRange? = null
-    internal var readerMode: ReaderMode = ReaderMode.SCROLL
+    internal var readerMode: ReaderMode = ReaderMode.PAGINATED
     private var autoContinueTts: Boolean = false
     private var pendingTtsResume: Boolean = false
     private var usingWebViewSlider: Boolean = false
@@ -95,7 +95,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
     private fun queuePagedNavigationUntilReady(windowId: Int, isNext: Boolean, source: String): Boolean {
         if (viewModel.paginationMode != PaginationMode.CONTINUOUS) return false
-        if (readerMode != ReaderMode.PAGE) return false
+        if (readerMode != ReaderMode.PAGINATED) return false
 
         val fragTag = "w$windowId"
         val frag = supportFragmentManager.findFragmentByTag(fragTag) as? ReaderPageFragment
@@ -154,7 +154,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     }
 
     private fun syncRecyclerViewToWindowId(windowId: Int, reason: String) {
-        if (readerMode != ReaderMode.PAGE || viewModel.paginationMode != PaginationMode.CONTINUOUS) return
+        if (readerMode != ReaderMode.PAGINATED || viewModel.paginationMode != PaginationMode.CONTINUOUS) return
 
         val position = pagerAdapter.getPositionForWindowId(windowId)
         if (position >= 0) {
@@ -280,7 +280,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             ): Boolean {
                 // In continuous PAGE mode, swipes should behave like hardware page keys:
                 // advance within the current window; only at edges should windows change.
-                if (readerMode != ReaderMode.PAGE || viewModel.paginationMode != PaginationMode.CONTINUOUS) {
+                if (readerMode != ReaderMode.PAGINATED || viewModel.paginationMode != PaginationMode.CONTINUOUS) {
                     return false
                 }
 
@@ -385,7 +385,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
             // In continuous PAGE mode, consume touch so RecyclerView cannot scroll windows directly.
             // Navigation is driven by WebView paginator; edges trigger window changes.
-            if (readerMode == ReaderMode.PAGE && viewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            if (readerMode == ReaderMode.PAGINATED && viewModel.paginationMode == PaginationMode.CONTINUOUS) {
                 true
             } else {
                 // Don't consume the event - let RecyclerView handle paging
@@ -593,7 +593,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                             // Only update ViewModel if position changed AND not during programmatic scroll
                             // (programmatic scrolls already updated ViewModel before scrolling)
                             if (
-                                readerMode == ReaderMode.PAGE &&
+                                readerMode == ReaderMode.PAGINATED &&
                                 currentWindowId != -1 &&
                                 viewModel.currentWindowIndex.value != currentWindowId &&
                                 !wasProgrammatic
@@ -665,7 +665,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 shouldUseWebViewSlider() && usingWebViewSlider -> {
                     navigateToWebViewPage(target)
                 }
-                readerMode == ReaderMode.PAGE -> {
+                readerMode == ReaderMode.PAGINATED -> {
                     viewModel.goToPage(target)
                     setCurrentItem(target, true)
                 }
@@ -979,7 +979,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         updatePageIndicator(page)
                         // For chapter-based mode, sync RecyclerView with page
                         // For continuous mode, RecyclerView is synced via currentWindowIndex
-                        if (readerMode == ReaderMode.PAGE && viewModel.paginationMode == PaginationMode.CHAPTER_BASED) {
+                        if (readerMode == ReaderMode.PAGINATED && viewModel.paginationMode == PaginationMode.CHAPTER_BASED) {
                             if (currentPagerPosition != page) {
                                 setCurrentItem(page, false)
                             }
@@ -1140,7 +1140,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
         // Handle hardware volume keys for page navigation in PAGE mode
         // Also enabled for SCROLL mode when using CONTINUOUS pagination (window-based navigation)
-        val enableVolumeKeys = readerMode == ReaderMode.PAGE || 
+        val enableVolumeKeys = readerMode == ReaderMode.PAGINATED || 
                               (readerMode == ReaderMode.SCROLL && viewModel.paginationMode == PaginationMode.CONTINUOUS)
         
         if (enableVolumeKeys) {
@@ -1162,7 +1162,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
                     // Only delegate to the fragment in PAGE mode. In SCROLL mode we want window-based
                     // navigation and should not trigger in-window horizontal paging.
-                    if (readerMode == ReaderMode.PAGE) {
+                    if (readerMode == ReaderMode.PAGINATED) {
                         if (frag?.handleHardwarePageKey(isNext = true) == true) {
                             return true
                         }
@@ -1204,7 +1204,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         "VOLUME_UP pressed: paginationMode=${viewModel.paginationMode}, windowId=$windowId, fragTag=$fragTag, fragFound=${frag != null} [HARDWARE_KEY_NAV]"
                     )
 
-                    if (readerMode == ReaderMode.PAGE) {
+                    if (readerMode == ReaderMode.PAGINATED) {
                         if (frag?.handleHardwarePageKey(isNext = false) == true) {
                             return true
                         }
@@ -1304,7 +1304,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             ReaderTapAction.TOGGLE_CONTROLS -> controlsManager.toggleControls()
             ReaderTapAction.NEXT_PAGE -> {
                 // In PAGE mode with CONTINUOUS pagination, delegate to fragment for edge-aware navigation
-                if (readerMode == ReaderMode.PAGE) {
+                if (readerMode == ReaderMode.PAGINATED) {
                     val windowId = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
                         viewModel.currentWindowIndex.value
                     } else {
@@ -1340,7 +1340,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             }
             ReaderTapAction.PREVIOUS_PAGE -> {
                 // In PAGE mode with CONTINUOUS pagination, delegate to fragment for edge-aware navigation
-                if (readerMode == ReaderMode.PAGE) {
+                if (readerMode == ReaderMode.PAGINATED) {
                     val windowId = if (viewModel.paginationMode == PaginationMode.CONTINUOUS) {
                         viewModel.currentWindowIndex.value
                     } else {
@@ -1481,7 +1481,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         "[PAGE_SWITCH_REASON:USER_TAP_OR_BUTTON]"
             )
             val moved = viewModel.goToPage(nextIndex)
-            if (readerMode == ReaderMode.PAGE && moved) {
+            if (readerMode == ReaderMode.PAGINATED && moved) {
                 AppLogger.d(
                     "ReaderActivity",
                     "Programmatically setting RecyclerView to page $nextIndex (user navigation) [PROGRAMMATIC_PAGE_CHANGE]"
@@ -1560,7 +1560,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         "[PAGE_SWITCH_REASON:USER_TAP_OR_BUTTON]"
             )
             val moved = viewModel.goToPage(previousIndex)
-            if (readerMode == ReaderMode.PAGE && moved) {
+            if (readerMode == ReaderMode.PAGINATED && moved) {
                 AppLogger.d(
                     "ReaderActivity",
                     "Programmatically setting RecyclerView to page $previousIndex (user navigation) [PROGRAMMATIC_PAGE_CHANGE]"
@@ -1618,7 +1618,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                         "[PAGE_SWITCH_REASON:BACKWARD_CHAPTER_NAVIGATION]"
             )
             val moved = viewModel.previousChapterToLastPage()
-            if (readerMode == ReaderMode.PAGE && moved) {
+            if (readerMode == ReaderMode.PAGINATED && moved) {
                 AppLogger.d(
                     "ReaderActivity",
                     "Programmatically setting RecyclerView to page $previousIndex with jump-to-last-page flag [PROGRAMMATIC_PAGE_CHANGE]"
@@ -1736,7 +1736,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         binding.root.post {
             // In CONTINUOUS pagination mode, always use RecyclerView (for sliding windows)
             // In CHAPTER_BASED mode, use RecyclerView in PAGE mode, ScrollView in SCROLL mode
-            val useRecyclerView = viewModel.paginationMode == PaginationMode.CONTINUOUS || readerMode == ReaderMode.PAGE
+            val useRecyclerView = viewModel.paginationMode == PaginationMode.CONTINUOUS || readerMode == ReaderMode.PAGINATED
             
             if (useRecyclerView) {
                 binding.contentScrollView.isVisible = false
@@ -1767,7 +1767,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
             return
         }
 
-        if (targetIndex == highlightedSentenceIndex && readerMode != ReaderMode.PAGE) {
+        if (targetIndex == highlightedSentenceIndex && readerMode != ReaderMode.PAGINATED) {
             return
         }
 
@@ -1779,7 +1779,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
         }
 
         val range = sentenceBoundaries[targetIndex]
-        if (readerMode == ReaderMode.PAGE) {
+        if (readerMode == ReaderMode.PAGINATED) {
             if (currentHighlightRange != range || highlightedSentenceIndex != targetIndex) {
                 currentHighlightRange = range
                 highlightedSentenceIndex = targetIndex
@@ -2034,7 +2034,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     }
 
     private fun shouldUseWebViewSlider(): Boolean {
-        return readerMode == ReaderMode.PAGE && viewModel.paginationMode == PaginationMode.CHAPTER_BASED
+        return readerMode == ReaderMode.PAGINATED && viewModel.paginationMode == PaginationMode.CHAPTER_BASED
     }
     
     /**

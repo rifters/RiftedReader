@@ -389,6 +389,14 @@ class ConveyorBeltSystemViewModel(
     fun getCachedWindowData(windowIndex: Int): WindowData? {
         return windowDataCache[windowIndex]
     }
+
+    suspend fun invalidateAndReloadWindow(windowIndex: Int) {
+        htmlCache.remove(windowIndex)
+        windowDataCache.remove(windowIndex)
+        if (windowIndex in getValidBuffer()) {
+            loadWindowHtmlSync(windowIndex)
+        }
+    }
     
     /**
      * Load HTML for a window and cache it synchronously.
