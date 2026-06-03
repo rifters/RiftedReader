@@ -67,18 +67,18 @@ object HeadingAnchorSlugger {
 
     private fun textOffsetBefore(root: Element, target: Element): Int {
         var offset = 0
-        var found = false
 
-        fun visit(node: Node) {
-            if (found) return
+        fun visit(node: Node): Boolean {
             if (node === target) {
-                found = true
-                return
+                return true
             }
             if (node is TextNode) {
                 offset += node.wholeText.length
             }
-            node.childNodes().forEach { visit(it) }
+            for (child in node.childNodes()) {
+                if (visit(child)) return true
+            }
+            return false
         }
 
         visit(root)

@@ -49,7 +49,7 @@ abstract class BookDatabase : RoomDatabase() {
 
         val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("DROP TABLE IF EXISTS bookmarks")
+                db.execSQL("ALTER TABLE bookmarks RENAME TO bookmarks_old")
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS bookmarks (
@@ -70,6 +70,38 @@ abstract class BookDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_bookmarks_bookId ON bookmarks(bookId)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_bookmarks_bookId_isLastRead ON bookmarks(bookId, isLastRead)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_bookmarks_savedAt ON bookmarks(savedAt)")
+                db.execSQL(
+                    """
+                    INSERT INTO bookmarks (
+                        id,
+                        bookId,
+                        chapterIndex,
+                        charOffset,
+                        pageIndexHint,
+                        nearestAnchorId,
+                        nearestAnchorText,
+                        savedAt,
+                        label,
+                        isLastRead
+                    )
+                    SELECT
+                        id,
+                        bookId,
+                        chapterIndex,
+                        characterOffset,
+                        inChapterPage,
+                        '',
+                        CASE
+                            WHEN chapterTitle IS NOT NULL AND chapterTitle != '' THEN chapterTitle
+                            ELSE previewText
+                        END,
+                        createdAt,
+                        NULL,
+                        0
+                    FROM bookmarks_old
+                    """.trimIndent()
+                )
+                db.execSQL("DROP TABLE bookmarks_old")
             }
         }
         

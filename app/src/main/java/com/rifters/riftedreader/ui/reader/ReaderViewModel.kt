@@ -1227,6 +1227,8 @@ class ReaderViewModel(
             ?.sliceMetadata
             ?.takeIf { it.isValid() }
 
+        // If the conveyor has not cached slice metadata for this chapter yet, use the
+        // saved page hint as the required legacy/not-yet-sliced fallback.
         return sliceMetadata
             ?.findPageByCharOffset(bookmark.chapterIndex, bookmark.charOffset)
             ?: bookmark.pageIndexHint

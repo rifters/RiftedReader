@@ -27,8 +27,6 @@ interface BookmarkDao {
         WHERE bookId = :bookId
             AND chapterIndex = :chapterIndex
             AND charOffset = :charOffset
-            AND pageIndexHint = :pageIndexHint
-            AND nearestAnchorId = :nearestAnchorId
             AND savedAt = :savedAt
             AND isLastRead = :isLastRead
         """
@@ -37,8 +35,6 @@ interface BookmarkDao {
         bookId: String,
         chapterIndex: Int,
         charOffset: Int,
-        pageIndexHint: Int,
-        nearestAnchorId: String,
         savedAt: Long,
         isLastRead: Boolean
     )
