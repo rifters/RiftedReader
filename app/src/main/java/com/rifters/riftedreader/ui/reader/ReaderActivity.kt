@@ -61,6 +61,7 @@ import com.rifters.riftedreader.BuildConfig
 class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
     private companion object {
+        // 40 attempts × 50ms gives WebView up to 2 seconds to finish loading after TOC navigation.
         const val TOC_JUMP_MAX_READY_ATTEMPTS = 40
         const val TOC_JUMP_READY_CHECK_DELAY_MS = 50L
     }
@@ -1378,7 +1379,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
     private fun jumpToAnchorWhenReady(windowIndex: Int, anchorId: String) {
         lifecycleScope.launch {
             repeat(TOC_JUMP_MAX_READY_ATTEMPTS) {
-                val fragment = supportFragmentManager.findFragmentByTag(readerFragmentTag(windowIndex)) as? ReaderPageFragment
+                val fragment = findReaderFragment(windowIndex)
                 if (fragment != null && fragment.isWebViewReady()) {
                     fragment.jumpToAnchor(anchorId)
                     return@launch
@@ -1389,7 +1390,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 "ReaderActivity",
                 "TOC anchor jump timed out waiting for WebView readiness; attempting fallback jump: windowIndex=$windowIndex anchorId=$anchorId"
             )
-            val fallbackFragment = supportFragmentManager.findFragmentByTag(readerFragmentTag(windowIndex)) as? ReaderPageFragment
+            val fallbackFragment = findReaderFragment(windowIndex)
             if (fallbackFragment == null) {
                 AppLogger.w(
                     "ReaderActivity",
@@ -1399,6 +1400,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
                 fallbackFragment.jumpToAnchor(anchorId)
             }
         }
+    }
+
+    private fun findReaderFragment(windowIndex: Int): ReaderPageFragment? {
+        return supportFragmentManager.findFragmentByTag(readerFragmentTag(windowIndex)) as? ReaderPageFragment
     }
 
     private fun readerFragmentTag(windowIndex: Int): String = "w$windowIndex"

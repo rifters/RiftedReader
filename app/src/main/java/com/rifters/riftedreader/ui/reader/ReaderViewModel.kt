@@ -102,6 +102,8 @@ class ReaderViewModel(
     private val _tableOfContents = MutableStateFlow<List<TocEntry>>(emptyList())
     val tableOfContents: StateFlow<List<TocEntry>> = _tableOfContents.asStateFlow()
 
+    // Heading-based TOC entries used by the reader panel.
+    // Keep the public name `tocEntries` for the reader TOC contract.
     private val _tocEntries = MutableStateFlow<List<AnchorEntry>>(emptyList())
     val tocEntries: StateFlow<List<AnchorEntry>> = _tocEntries.asStateFlow()
     
@@ -647,10 +649,15 @@ class ReaderViewModel(
 
     private fun buildWindowedHeadingToc(chapterHtml: List<Pair<Int, String>>): List<AnchorEntry> {
         val byChapter = chapterHtml.toMap()
-        val windowSize = slidingWindowManager.getWindowSize()
-        if (windowSize <= 0) {
-            AppLogger.e("ReaderViewModel", "[PAGINATION_DEBUG] Invalid TOC window size: $windowSize")
-            return emptyList()
+        val configuredWindowSize = slidingWindowManager.getWindowSize()
+        val windowSize = if (configuredWindowSize > 0) {
+            configuredWindowSize
+        } else {
+            AppLogger.e(
+                "ReaderViewModel",
+                "[PAGINATION_DEBUG] Invalid TOC window size: $configuredWindowSize; falling back to chaptersPerWindow=$chaptersPerWindow"
+            )
+            chaptersPerWindow.coerceAtLeast(1)
         }
         return chapterHtml.indices
             .step(windowSize)
