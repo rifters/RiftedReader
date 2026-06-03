@@ -31,6 +31,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import com.rifters.riftedreader.data.database.entities.Bookmark
 import com.rifters.riftedreader.data.preferences.ReaderMode
 import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
@@ -1491,7 +1492,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
 
     private fun readerFragmentTag(windowIndex: Int): String = "w$windowIndex"
 
-    override fun onBookmarkSelected(bookmark: com.rifters.riftedreader.data.database.entities.Bookmark) {
+    override fun onBookmarkSelected(bookmark: Bookmark) {
         supportFragmentManager.popBackStack()
         lifecycleScope.launch {
             val pageIndex = viewModel.restoreBookmark(bookmark) ?: bookmark.pageIndexHint
@@ -1517,7 +1518,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
     private fun jumpToBookmarkWhenReady(
         windowIndex: Int,
         pageIndex: Int,
-        bookmark: com.rifters.riftedreader.data.database.entities.Bookmark
+        bookmark: Bookmark
     ) {
         lifecycleScope.launch {
             repeat(TOC_JUMP_MAX_READY_ATTEMPTS) {
