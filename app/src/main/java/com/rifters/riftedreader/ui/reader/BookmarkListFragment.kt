@@ -67,7 +67,7 @@ class BookmarkListFragment : Fragment() {
             ): Boolean = false
 
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-                val bookmark = listAdapter.bookmarkAt(viewHolder.bindingAdapterPosition) ?: return
+                val bookmark = listAdapter.bookmarkAt(viewHolder.adapterPosition) ?: return
                 readerViewModel.deleteBookmark(bookmark)
                 Snackbar.make(binding.root, R.string.reader_bookmark_deleted, Snackbar.LENGTH_LONG)
                     .setAction(R.string.undo) {
