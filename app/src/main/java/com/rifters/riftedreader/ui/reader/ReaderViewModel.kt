@@ -64,6 +64,7 @@ class ReaderViewModel(
 ) : ViewModel() {
     companion object {
         private const val LAST_READ_DEBOUNCE_MS = 2_000L
+        private const val MODE_SWITCH_BOOKMARK_LABEL = "_mode_switch"
         const val SCROLL_POSITION_DEBOUNCE_MS = 500L
     }
 
@@ -1255,7 +1256,7 @@ class ReaderViewModel(
                     createBookmark(
                         event = pending.event,
                         anchorEntries = pending.anchorEntries,
-                        label = "_mode_switch"
+                        label = MODE_SWITCH_BOOKMARK_LABEL
                     )
                 )
             }

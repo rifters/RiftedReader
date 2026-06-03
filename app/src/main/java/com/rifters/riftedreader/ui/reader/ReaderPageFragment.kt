@@ -707,7 +707,7 @@ class ReaderPageFragment : Fragment() {
                     
                     // Handle WebView content updates based on what changed
                     if (latestPageText.isNotEmpty() || !latestPageHtml.isNullOrEmpty()) {
-                        if (!latestPageHtml.isNullOrEmpty() && fontSizeChanged && !themeChanged && !lineHeightChanged && !modeChanged) {
+                        if (!latestPageHtml.isNullOrEmpty() && isFontOnlyChange(fontSizeChanged, themeChanged, lineHeightChanged, modeChanged)) {
                             // For HTML content with font size change only, use paginator API
                             // This preserves reading position without reloading
                             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Applying font size change without reload")
@@ -860,6 +860,10 @@ class ReaderPageFragment : Fragment() {
         webView.post { listener.onGlobalLayout() }
     }
 
+    /**
+     * Returns true for the fragment that currently owns visible reader content.
+     * Continuous pagination tracks active windows, while chapter-based pagination tracks pages.
+     */
     private fun isActiveReaderWindow(): Boolean {
         return if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
             readerViewModel.currentWindowIndex.value == windowIndex
@@ -867,6 +871,13 @@ class ReaderPageFragment : Fragment() {
             readerViewModel.currentPage.value == pageIndex
         }
     }
+
+    private fun isFontOnlyChange(
+        fontSizeChanged: Boolean,
+        themeChanged: Boolean,
+        lineHeightChanged: Boolean,
+        modeChanged: Boolean
+    ): Boolean = fontSizeChanged && !themeChanged && !lineHeightChanged && !modeChanged
 
     /**
      * Set up chapter-based content observer.
