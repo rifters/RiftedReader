@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.recyclerview.widget.RecyclerView
 import com.rifters.riftedreader.data.database.entities.Bookmark
 import com.rifters.riftedreader.data.preferences.ChapterVisibilitySettings
+import com.rifters.riftedreader.data.preferences.ReaderMode
 import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
 import com.rifters.riftedreader.data.repository.BookmarkRepository
@@ -63,6 +64,7 @@ class ReaderViewModel(
 ) : ViewModel() {
     private companion object {
         const val LAST_READ_DEBOUNCE_MS = 2_000L
+        const val SCROLL_POSITION_DEBOUNCE_MS = 500L
     }
 
     // Expose reader settings as StateFlow for UI consumption
@@ -70,6 +72,8 @@ class ReaderViewModel(
         get() = readerPreferences.settings
     val flexPaginatorEnabledFlow
         get() = readerPreferences.flexPaginatorEnabled
+    val readerModeFlow
+        get() = readerPreferences.readerMode
     
     // Table of Contents - list of chapter entries
     private val _tableOfContents = MutableStateFlow<List<TocEntry>>(emptyList())
@@ -271,7 +275,17 @@ class ReaderViewModel(
         val anchorEntries: List<AnchorEntry>
     )
 
+    private data class PendingScrollBookmarkSave(
+        val event: ScrollPositionEvent,
+        val anchorEntries: List<AnchorEntry>,
+        val fallbackChapterIndex: Int
+    )
+
     private val pageChangedEvents = MutableStateFlow<PendingBookmarkSave?>(null)
+    private val scrollPositionEvents = MutableStateFlow<PendingScrollBookmarkSave?>(null)
+    private var latestPageChangedEvent: PendingBookmarkSave? = null
+    @Volatile
+    private var modeSwitchRestorePending: Boolean = false
     
     /**
      * Get the count of visible chapters based on current visibility settings.
@@ -368,6 +382,7 @@ class ReaderViewModel(
         AppLogger.d("ReaderViewModel", "[PAGINATION_DEBUG] init: bookId=$bookId, paginationMode=$paginationMode")
 
         observePageChangedEvents()
+        observeScrollPositionEvents()
         
         // Initialize content loading based on pagination mode
         if (isContinuousMode) {
@@ -399,6 +414,18 @@ class ReaderViewModel(
                             label = null
                         )
                     )
+                }
+        }
+    }
+
+    @OptIn(FlowPreview::class)
+    private fun observeScrollPositionEvents() {
+        viewModelScope.launch(Dispatchers.IO) {
+            scrollPositionEvents
+                .filterNotNull()
+                .debounce(SCROLL_POSITION_DEBOUNCE_MS)
+                .collect { pending ->
+                    bookmarkRepository.saveLastRead(createScrollBookmark(pending))
                 }
         }
     }
@@ -1188,7 +1215,21 @@ class ReaderViewModel(
             pageInWindow = event.pageIndex,
             characterOffset = event.charOffset
         )
-        pageChangedEvents.value = PendingBookmarkSave(event, anchorEntries)
+        val pending = PendingBookmarkSave(event, anchorEntries)
+        latestPageChangedEvent = pending
+        pageChangedEvents.value = pending
+    }
+
+    fun onScrollPositionChanged(
+        event: ScrollPositionEvent,
+        anchorEntries: List<AnchorEntry>,
+        fallbackChapterIndex: Int
+    ) {
+        scrollPositionEvents.value = PendingScrollBookmarkSave(
+            event = event,
+            anchorEntries = anchorEntries,
+            fallbackChapterIndex = fallbackChapterIndex
+        )
     }
 
     fun saveNamedBookmark(
@@ -1205,6 +1246,39 @@ class ReaderViewModel(
                 )
             )
         }
+    }
+
+    fun toggleReaderMode() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val currentMode = readerPreferences.settings.value.mode
+            latestPageChangedEvent?.let { pending ->
+                bookmarkRepository.saveNamedBookmark(
+                    createBookmark(
+                        event = pending.event,
+                        anchorEntries = pending.anchorEntries,
+                        label = "_mode_switch"
+                    )
+                )
+            }
+
+            val nextMode = when (currentMode) {
+                ReaderMode.PAGINATED -> ReaderMode.SCROLL
+                ReaderMode.SCROLL -> ReaderMode.PAGINATED
+            }
+            modeSwitchRestorePending = true
+            readerPreferences.updateSettings { current -> current.copy(mode = nextMode) }
+            invalidateActiveSlot()
+        }
+    }
+
+    fun consumeModeSwitchRestorePending(): Boolean {
+        if (!modeSwitchRestorePending) return false
+        modeSwitchRestorePending = false
+        return true
+    }
+
+    suspend fun loadLastReadBookmark(bookId: String): Bookmark? {
+        return bookmarkRepository.loadLastRead(bookId)
     }
 
     /**
@@ -1257,6 +1331,39 @@ class ReaderViewModel(
             savedAt = System.currentTimeMillis(),
             label = label
         )
+    }
+
+    private fun createScrollBookmark(pending: PendingScrollBookmarkSave): Bookmark {
+        val anchor = pending.anchorEntries.firstOrNull { it.id == pending.event.anchorId }
+            ?: pending.anchorEntries
+                .asSequence()
+                .filter { it.chapterIndex == null || it.chapterIndex == pending.fallbackChapterIndex }
+                .filter { it.charOffset <= pending.event.scrollY }
+                .maxByOrNull { it.charOffset }
+        val chapterIndex = anchor?.chapterIndex ?: pending.fallbackChapterIndex
+        val charOffset = anchor?.charOffset ?: 0
+        val windowIndex = getWindowIndexForChapterSafe(chapterIndex)
+        updateReadingPosition(
+            windowIndex = windowIndex,
+            pageInWindow = pending.event.scrollY,
+            characterOffset = charOffset
+        )
+        return Bookmark(
+            bookId = bookId,
+            chapterIndex = chapterIndex,
+            charOffset = charOffset,
+            pageIndexHint = pending.event.scrollY,
+            nearestAnchorId = anchor?.id.orEmpty(),
+            nearestAnchorText = anchor?.text.orEmpty(),
+            savedAt = System.currentTimeMillis(),
+            label = null
+        )
+    }
+
+    private suspend fun invalidateActiveSlot() {
+        val windowIndex = _currentWindowIndex.value
+        preWrappedHtmlCache.remove(windowIndex)
+        conveyorBeltSystem?.invalidateAndReloadWindow(windowIndex)
     }
 
     private fun getWindowIndexForChapterSafe(chapterIndex: Int): Int {

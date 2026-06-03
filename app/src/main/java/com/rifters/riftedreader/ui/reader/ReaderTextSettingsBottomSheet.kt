@@ -114,7 +114,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
         }
 
         binding.modeChipScroll.tag = com.rifters.riftedreader.data.preferences.ReaderMode.SCROLL
-        binding.modeChipPage.tag = com.rifters.riftedreader.data.preferences.ReaderMode.PAGE
+        binding.modeChipPage.tag = com.rifters.riftedreader.data.preferences.ReaderMode.PAGINATED
     }
 
     private fun setupPaginationChips() {
@@ -149,7 +149,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
     private fun selectModeChip(mode: com.rifters.riftedreader.data.preferences.ReaderMode) {
         val targetId = when (mode) {
             com.rifters.riftedreader.data.preferences.ReaderMode.SCROLL -> binding.modeChipScroll.id
-            com.rifters.riftedreader.data.preferences.ReaderMode.PAGE -> binding.modeChipPage.id
+            com.rifters.riftedreader.data.preferences.ReaderMode.PAGINATED -> binding.modeChipPage.id
         }
         if (binding.modeChipGroup.checkedChipId != targetId) {
             binding.modeChipGroup.check(targetId)

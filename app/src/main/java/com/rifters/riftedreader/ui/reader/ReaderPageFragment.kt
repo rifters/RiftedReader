@@ -30,16 +30,18 @@ import androidx.webkit.WebViewAssetLoader
 import com.rifters.riftedreader.pagination.FlexSlicingConfig
 import com.rifters.riftedreader.pagination.OffscreenSlicingWebView
 import com.rifters.riftedreader.R
+import com.rifters.riftedreader.data.preferences.ReaderMode
 import com.rifters.riftedreader.databinding.FragmentReaderPageBinding
 import com.rifters.riftedreader.domain.reader.HeadingAnchorSlugger
 import com.rifters.riftedreader.domain.reader.AnchorEntry
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.util.AppLoggerBridge
-import com.rifters.riftedreader.util.CssSanitizers
 import com.rifters.riftedreader.util.EpubImageAssetHelper
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONArray
@@ -267,7 +269,8 @@ class ReaderPageFragment : Fragment() {
             )
 
             val flexPaginatorEnabled = readerViewModel.readerSettings.value.flexPaginatorEnabled
-            if (flexPaginatorEnabled) {
+            val readerMode = readerViewModel.readerSettings.value.mode
+            if (flexPaginatorEnabled || readerMode == ReaderMode.SCROLL) {
                 val bridge = FlexPaginatorBridge(
                     windowIndex = windowIndex,
                     onSlicingComplete = { wIdx, metadata ->
@@ -304,9 +307,10 @@ class ReaderPageFragment : Fragment() {
                 )
                 flexPaginatorBridge = bridge
                 addJavascriptInterface(bridge, "AndroidBridge")
+                observeScrollPositionEvents(bridge)
                 com.rifters.riftedreader.util.AppLogger.d(
                     "FlexPaginator",
-                    "[BRIDGE] Registered FlexPaginatorBridge for windowIndex=$windowIndex"
+                    "[BRIDGE] Registered FlexPaginatorBridge for windowIndex=$windowIndex mode=$readerMode flex=$flexPaginatorEnabled"
                 )
             } else {
                 if (flexPaginatorBridge != null) {
@@ -360,7 +364,13 @@ class ReaderPageFragment : Fragment() {
                         PaginationMode.CONTINUOUS -> "window"
                         PaginationMode.CHAPTER_BASED -> "chapter"
                     }
-                    if (settings.flexPaginatorEnabled) {
+                    if (settings.mode == ReaderMode.SCROLL) {
+                        isPaginatorInitialized = false
+                        com.rifters.riftedreader.util.AppLogger.d(
+                            "ReaderPageFragment",
+                            "[SCROLL_MODE] Natural WebView scrolling active for windowIndex=$windowIndex"
+                        )
+                    } else if (settings.flexPaginatorEnabled) {
                         com.rifters.riftedreader.util.AppLogger.d(
                             "FlexPaginator",
                             "[INIT] flex_paginator.js auto-initializes for windowIndex=$windowIndex, mode=$mode"
@@ -453,13 +463,14 @@ class ReaderPageFragment : Fragment() {
                     
                     // Set font size directly via JavaScript
                     com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "[PAGINATION_DEBUG] Setting font size via JS: ${settings.textSizeSp}px")
-                    if (!settings.flexPaginatorEnabled) {
+                    if (settings.mode != ReaderMode.SCROLL && !settings.flexPaginatorEnabled) {
                         binding.pageWebView.evaluateJavascript(
                             "if (window.minimalPaginator) { window.minimalPaginator.setFontSize(${settings.textSizeSp.toInt()}); }",
                             null
                         )
                     }
                     
+                    restoreAfterModeSwitchIfNeeded()
                     // Position restoration now handled by minimal_paginator.js automatically
                     applyPendingInitialInPage()
                     
@@ -695,11 +706,11 @@ class ReaderPageFragment : Fragment() {
                     
                     // Handle WebView content updates based on what changed
                     if (latestPageText.isNotEmpty() || !latestPageHtml.isNullOrEmpty()) {
-                        if (!latestPageHtml.isNullOrEmpty() && fontSizeChanged && !themeChanged && !lineHeightChanged) {
+                        if (!latestPageHtml.isNullOrEmpty() && fontSizeChanged && !themeChanged && !lineHeightChanged && !modeChanged) {
                             // For HTML content with font size change only, use paginator API
                             // This preserves reading position without reloading
                             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Applying font size change without reload")
-                            if (!settings.flexPaginatorEnabled && isWebViewReady && binding.pageWebView.visibility == View.VISIBLE) {
+                            if (settings.mode != ReaderMode.SCROLL && !settings.flexPaginatorEnabled && isWebViewReady && binding.pageWebView.visibility == View.VISIBLE) {
                                 // Apply font size change directly via JavaScript
                                 // minimal_paginator.js handles position preservation automatically
                                 launchIfViewAlive("apply_font_size_change_js") {
@@ -723,9 +734,9 @@ class ReaderPageFragment : Fragment() {
                                     }
                                 }
                             }
-                        } else if (themeChanged || lineHeightChanged) {
+                        } else if ((themeChanged || lineHeightChanged || modeChanged) && isActiveReaderWindow()) {
                             // Theme or line height change requires full reload to update styles
-                            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Reloading content due to theme or line height change")
+                            com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Reloading content due to theme, line height, or reader mode change")
                             if (highlightedRange == null) {
                                 renderBaseContent()
                             } else {
@@ -848,6 +859,14 @@ class ReaderPageFragment : Fragment() {
         webView.post { listener.onGlobalLayout() }
     }
 
+    private fun isActiveReaderWindow(): Boolean {
+        return if (readerViewModel.paginationMode == PaginationMode.CONTINUOUS) {
+            readerViewModel.currentWindowIndex.value == windowIndex
+        } else {
+            readerViewModel.currentPage.value == pageIndex
+        }
+    }
+
     /**
      * Set up chapter-based content observer.
      * Used in chapter-based pagination mode where each fragment corresponds to a single chapter.
@@ -884,6 +903,25 @@ class ReaderPageFragment : Fragment() {
                         applyHighlight(highlightedRange)
                     }
                 }
+            }
+        }
+    }
+
+    @OptIn(FlowPreview::class)
+    private fun observeScrollPositionEvents(bridge: FlexPaginatorBridge) {
+        launchIfViewAlive("scroll_position_observer") {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                bridge.scrollPositionEvents
+                    .debounce(500L)
+                    .collect { event ->
+                        if (readerViewModel.readerSettings.value.mode != ReaderMode.SCROLL) return@collect
+                        val chapterIndex = resolvedChapterIndex ?: windowIndex
+                        readerViewModel.onScrollPositionChanged(
+                            event = event,
+                            anchorEntries = latestAnchorEntries,
+                            fallbackChapterIndex = chapterIndex
+                        )
+                    }
             }
         }
     }
@@ -1117,6 +1155,47 @@ class ReaderPageFragment : Fragment() {
                 com.rifters.riftedreader.util.AppLogger.e(
                     "ReaderPageFragment",
                     "Error applying initial in-page index",
+                    e
+                )
+            }
+        }
+    }
+
+    private fun restoreAfterModeSwitchIfNeeded() {
+        if (_binding == null || !isWebViewReady || !isActiveReaderWindow()) return
+        if (!readerViewModel.consumeModeSwitchRestorePending()) return
+
+        launchIfViewAlive("restore_after_mode_switch") {
+            try {
+                val pageIndex = readerViewModel.restoreLastRead(readerViewModel.bookId)
+                val settings = readerViewModel.readerSettings.value
+                if (settings.mode == ReaderMode.SCROLL) {
+                    val bookmark = readerViewModel.loadLastReadBookmark(readerViewModel.bookId)
+                    val anchorId = bookmark?.nearestAnchorId.orEmpty().sanitizeForJs()
+                    val scrollY = bookmark?.pageIndexHint ?: 0
+                    binding.pageWebView.evaluateJavascript(
+                        """
+                        (function() {
+                            var anchor = '$anchorId' ? document.getElementById('$anchorId') : null;
+                            if (anchor) {
+                                anchor.scrollIntoView({ block: 'start' });
+                            } else {
+                                window.scrollTo(0, $scrollY);
+                            }
+                        })();
+                        """.trimIndent(),
+                        null
+                    )
+                } else if (pageIndex != null) {
+                    binding.pageWebView.evaluateJavascript(
+                        "if (window.flexPaginator && window.flexPaginator.isReady()) { window.flexPaginator.navigateToPage($pageIndex); } else if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage($pageIndex, false); }",
+                        null
+                    )
+                }
+            } catch (e: Exception) {
+                com.rifters.riftedreader.util.AppLogger.e(
+                    "ReaderPageFragment",
+                    "[MODE_SWITCH] Failed to restore after mode switch",
                     e
                 )
             }
@@ -1383,6 +1462,7 @@ class ReaderPageFragment : Fragment() {
                         palette = palette,
                         webViewWidthPx = webViewWidth,
                         useFlexPaginator = settings.flexPaginatorEnabled,
+                        readerMode = settings.mode,
                         enableDiagnostics = settings.paginationDiagnosticsEnabled,
                         debugWindowInfo = debugWindowInfo
                     )
@@ -1558,99 +1638,20 @@ class ReaderPageFragment : Fragment() {
         typography: FlexSlicingConfig,
         palette: ReaderThemePalette
     ): String {
-        val backgroundColor = String.format("#%06X", 0xFFFFFF and palette.backgroundColor)
-        val textColor = String.format("#%06X", 0xFFFFFF and palette.textColor)
-        val sanitizedFontFamily = CssSanitizers.sanitizeCssFontFamily(
-            typography.fontFamily,
-            FlexSlicingConfig.DEFAULT_FONT_FAMILY
+        return com.rifters.riftedreader.domain.reader.ReaderHtmlWrapper.wrap(
+            contentHtml = content,
+            config = com.rifters.riftedreader.domain.reader.ReaderHtmlConfig(
+                textSizePx = typography.fontSizePx.toFloat(),
+                lineHeightMultiplier = typography.lineHeight,
+                fontFamily = typography.fontFamily,
+                pagePaddingPx = typography.pagePaddingPx,
+                palette = palette,
+                webViewWidthPx = binding.pageWebView.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels,
+                useFlexPaginator = readerViewModel.readerSettings.value.flexPaginatorEnabled,
+                readerMode = readerViewModel.readerSettings.value.mode,
+                enableDiagnostics = readerViewModel.readerSettings.value.paginationDiagnosticsEnabled
+            )
         )
-        val anchoredContent = HeadingAnchorSlugger.injectHeadingIds(content)
-        
-        return """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="utf-8"/>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
-                <style>
-                    html, body {
-                        margin: 0;
-                        padding: 0;
-                        background-color: $backgroundColor;
-                        color: $textColor;
-                        --flex-font-size: ${typography.fontSizePx}px;
-                        --flex-line-height: ${typography.lineHeight};
-                        --flex-font-family: $sanitizedFontFamily;
-                        --flex-page-padding: ${typography.pagePaddingPx}px;
-                        font-size: var(--flex-font-size);
-                        line-height: var(--flex-line-height);
-                        font-family: var(--flex-font-family);
-                    }
-                    body {
-                        padding: var(--flex-page-padding);
-                        word-wrap: break-word;
-                        overflow-wrap: break-word;
-                    }
-                    /* Preserve formatting for all block elements */
-                    p, div, section, article {
-                        margin: 0.8em 0;
-                    }
-                    h1, h2, h3, h4, h5, h6 {
-                        margin: 1em 0 0.5em 0;
-                        font-weight: bold;
-                        line-height: 1.3;
-                    }
-                    h1 { font-size: 2em; }
-                    h2 { font-size: 1.75em; }
-                    h3 { font-size: 1.5em; }
-                    h4 { font-size: 1.25em; }
-                    h5 { font-size: 1.1em; }
-                    h6 { font-size: 1em; }
-                    blockquote {
-                        margin: 1em 0;
-                        padding-left: 1em;
-                        border-left: 3px solid $textColor;
-                        font-style: italic;
-                    }
-                    ul, ol {
-                        margin: 0.5em 0;
-                        padding-left: 2em;
-                    }
-                    li {
-                        margin: 0.3em 0;
-                    }
-                    img {
-                        max-width: 100% !important;
-                        height: auto !important;
-                        display: block;
-                        margin: 1em auto;
-                    }
-                    pre, code {
-                        font-family: monospace;
-                        background-color: rgba(128, 128, 128, 0.1);
-                        padding: 0.2em 0.4em;
-                        border-radius: 3px;
-                    }
-                    pre {
-                        padding: 1em;
-                        overflow-x: auto;
-                    }
-                    /* TTS highlighting */
-                    [data-tts-chunk] {
-                        cursor: pointer;
-                        transition: background-color 0.2s ease-in-out;
-                    }
-                    .tts-highlight {
-                        background-color: rgba(255, 213, 79, 0.4) !important;
-                    }
-                </style>
-                <script src="https://${EpubImageAssetHelper.ASSET_HOST}/assets/minimal_paginator.js"></script>
-            </head>
-            <body>
-                $anchoredContent
-            </body>
-            </html>
-        """.trimIndent()
     }
 
     private fun String.sanitizeForJs(): String =

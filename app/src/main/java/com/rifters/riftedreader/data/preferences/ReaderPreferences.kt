@@ -38,7 +38,7 @@ data class ReaderSettings(
     val textSizeSp: Float = DEFAULT_TEXT_SIZE_SP,
     val lineHeightMultiplier: Float = DEFAULT_LINE_HEIGHT_MULTIPLIER,
     val theme: ReaderTheme = ReaderTheme.LIGHT,
-    val mode: ReaderMode = ReaderMode.PAGE,
+    val mode: ReaderMode = ReaderMode.PAGINATED,
     val paginationMode: PaginationMode = PaginationMode.CONTINUOUS,
     val continuousStreamingEnabled: Boolean = true,
     val flexPaginatorEnabled: Boolean = false,
@@ -67,8 +67,8 @@ enum class ReaderTheme {
 }
 
 enum class ReaderMode {
-    SCROLL,
-    PAGE
+    PAGINATED,
+    SCROLL
 }
 
 class ReaderPreferences(context: Context) {
@@ -78,6 +78,9 @@ class ReaderPreferences(context: Context) {
     val settings: StateFlow<ReaderSettings> = _settings.asStateFlow()
     val flexPaginatorEnabled: Flow<Boolean> = settings
         .map { it.flexPaginatorEnabled }
+        .distinctUntilChanged()
+    val readerMode: Flow<ReaderMode> = settings
+        .map { it.mode }
         .distinctUntilChanged()
 
     private val _tapActions = MutableStateFlow(readTapActions())
@@ -94,8 +97,8 @@ class ReaderPreferences(context: Context) {
         val lineHeight = prefs.getFloat(KEY_LINE_HEIGHT, DEFAULT_LINE_HEIGHT_MULTIPLIER)
         val themeName = prefs.getString(KEY_THEME, ReaderTheme.LIGHT.name) ?: ReaderTheme.LIGHT.name
         val theme = runCatching { ReaderTheme.valueOf(themeName) }.getOrDefault(ReaderTheme.LIGHT)
-        val modeName = prefs.getString(KEY_MODE, ReaderMode.PAGE.name) ?: ReaderMode.PAGE.name
-        val mode = runCatching { ReaderMode.valueOf(modeName) }.getOrDefault(ReaderMode.PAGE)
+        val modeName = prefs.getString(KEY_MODE, ReaderMode.PAGINATED.name) ?: ReaderMode.PAGINATED.name
+        val mode = parseReaderMode(modeName)
         val paginationModeName = prefs.getString(KEY_PAGINATION_MODE, PaginationMode.CONTINUOUS.name) 
             ?: PaginationMode.CONTINUOUS.name
         val paginationMode = runCatching { PaginationMode.valueOf(paginationModeName) }
@@ -206,6 +209,11 @@ class ReaderPreferences(context: Context) {
 
         private const val ENTRY_SEPARATOR = "|"
         private const val VALUE_SEPARATOR = ":"
+
+        private fun parseReaderMode(modeName: String): ReaderMode {
+            if (modeName == "PAGE") return ReaderMode.PAGINATED
+            return runCatching { ReaderMode.valueOf(modeName) }.getOrDefault(ReaderMode.PAGINATED)
+        }
 
         fun defaultTapActions(): Map<ReaderTapZone, ReaderTapAction> = mapOf(
             ReaderTapZone.TOP_LEFT to ReaderTapAction.BACK,

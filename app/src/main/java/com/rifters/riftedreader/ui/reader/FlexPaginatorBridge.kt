@@ -6,12 +6,20 @@ import android.webkit.JavascriptInterface
 import com.rifters.riftedreader.pagination.PageSlice
 import com.rifters.riftedreader.pagination.SliceMetadata
 import com.rifters.riftedreader.util.AppLogger
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import org.json.JSONObject
 
 data class PageChangedEvent(
     val pageIndex: Int,
     val chapterIndex: Int,
     val charOffset: Int
+)
+
+data class ScrollPositionEvent(
+    val anchorId: String,
+    val scrollY: Int
 )
 
 /**
@@ -30,6 +38,10 @@ class FlexPaginatorBridge(
 ) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val _scrollPositionEvents = MutableSharedFlow<ScrollPositionEvent>(
+        extraBufferCapacity = 16
+    )
+    val scrollPositionEvents: SharedFlow<ScrollPositionEvent> = _scrollPositionEvents.asSharedFlow()
 
     /**
      * Called by flex_paginator.js when slicing is complete.
@@ -111,6 +123,14 @@ class FlexPaginatorBridge(
 
         mainHandler.post {
             onBoundaryReached(windowIndex, direction)
+        }
+    }
+
+    @JavascriptInterface
+    fun onScrollPositionChanged(anchorId: String, scrollY: Int) {
+        val event = ScrollPositionEvent(anchorId = anchorId, scrollY = scrollY)
+        mainHandler.post {
+            _scrollPositionEvents.tryEmit(event)
         }
     }
 

@@ -1,6 +1,7 @@
 package com.rifters.riftedreader.domain.reader
 
 import com.rifters.riftedreader.ui.reader.ReaderThemePalette
+import com.rifters.riftedreader.data.preferences.ReaderMode
 import com.rifters.riftedreader.util.CssSanitizers
 import com.rifters.riftedreader.util.EpubImageAssetHelper
 
@@ -15,6 +16,7 @@ data class ReaderHtmlConfig(
     val palette: ReaderThemePalette,
     val webViewWidthPx: Int,
     val useFlexPaginator: Boolean = false,
+    val readerMode: ReaderMode = ReaderMode.PAGINATED,
     val enableDiagnostics: Boolean = false,
     /**
      * Debug window rendering configuration.
@@ -71,7 +73,8 @@ object ReaderHtmlWrapper {
         val anchoredContentHtml = HeadingAnchorSlugger.injectHeadingIds(contentHtml)
         
         // Enable diagnostics in paginator if configured
-        val diagnosticsScript = if (config.enableDiagnostics) {
+        val isScrollMode = config.readerMode == ReaderMode.SCROLL
+        val diagnosticsScript = if (config.enableDiagnostics && !isScrollMode) {
             """
             <script>
                 // Enable pagination diagnostics logging
@@ -95,6 +98,12 @@ object ReaderHtmlWrapper {
         // TTS initialization script - ensures #tts-root exists and emits ttsReady event
         // ISSUE 2 FIX: Create #tts-root immediately on DOMContentLoaded, NOT after paginator readiness
         // This prevents race condition where prepareTtsChunks runs before #tts-root exists
+        val ttsReadyScript = if (isScrollMode) {
+            "emitTtsReady();"
+        } else {
+            "waitForPaginatorThenEmitReady();"
+        }
+
         val ttsInitScript = """
             <script>
                 // TTS DOM initialization guard - create container if missing
@@ -145,8 +154,7 @@ object ReaderHtmlWrapper {
                     function onDomReady() {
                         // Create #tts-root immediately - this happens before prepareTtsChunks
                         ensureTtsRoot();
-                        // Then wait for paginator to emit ttsReady
-                        waitForPaginatorThenEmitReady();
+                        $ttsReadyScript
                     }
                     
                     // Start waiting for DOM to be ready
@@ -159,11 +167,64 @@ object ReaderHtmlWrapper {
             </script>
         """
         
-        val paginatorScriptUrl = if (config.useFlexPaginator) {
-            EpubImageAssetHelper.FLEX_PAGINATOR_SCRIPT_URL
+        val paginatorScriptTag = if (isScrollMode) {
+            ""
         } else {
-            EpubImageAssetHelper.PAGINATOR_SCRIPT_URL
+            val paginatorScriptUrl = if (config.useFlexPaginator) {
+                EpubImageAssetHelper.FLEX_PAGINATOR_SCRIPT_URL
+            } else {
+                EpubImageAssetHelper.PAGINATOR_SCRIPT_URL
+            }
+            """<script src="$paginatorScriptUrl"></script>"""
         }
+
+        val modeBodyClass = if (isScrollMode) "mode-scroll" else "mode-paginated"
+        val scrollModeCss = if (isScrollMode) {
+            """
+                    .mode-scroll {
+                        overflow-y: auto;
+                        height: auto;
+                        column-count: unset;
+                        column-width: unset;
+                    }
+            """.trimIndent()
+        } else ""
+        val scrollPositionScript = if (isScrollMode) {
+            """
+            <script>
+                (function() {
+                    'use strict';
+                    function notifyScrollPosition() {
+                        if (!window.AndroidBridge || !window.AndroidBridge.onScrollPositionChanged) {
+                            return;
+                        }
+                        var headings = Array.prototype.slice.call(document.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+                        var nearestAbove = null;
+                        var firstVisible = null;
+                        for (var i = 0; i < headings.length; i++) {
+                            var heading = headings[i];
+                            var rect = heading.getBoundingClientRect();
+                            if (rect.top <= 0) {
+                                nearestAbove = heading;
+                            }
+                            if (!firstVisible && rect.top >= 0) {
+                                firstVisible = heading;
+                            }
+                        }
+                        var anchor = nearestAbove || firstVisible;
+                        var anchorId = anchor && anchor.id ? anchor.id : '';
+                        window.AndroidBridge.onScrollPositionChanged(anchorId, Math.round(window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0));
+                    }
+                    window.addEventListener('scroll', notifyScrollPosition, { passive: true });
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', notifyScrollPosition);
+                    } else {
+                        notifyScrollPosition();
+                    }
+                })();
+            </script>
+            """.trimIndent()
+        } else ""
 
         return """
             <!DOCTYPE html>
@@ -193,6 +254,7 @@ object ReaderHtmlWrapper {
                         word-wrap: break-word;
                         overflow-wrap: break-word;
                     }
+                    $scrollModeCss
                     /* TTS root container - hidden but accessible */
                     #tts-root {
                         position: absolute;
@@ -276,15 +338,16 @@ object ReaderHtmlWrapper {
                         background-color: rgba(255, 213, 79, 0.4) !important;
                     }
                 </style>
-                <script src="$paginatorScriptUrl"></script>
+                $paginatorScriptTag
             </head>
-            <body>
+            <body class="$modeBodyClass">
                 $debugBanner
                 <!-- TTS root container for TTS DOM operations -->
                 <div id="tts-root" aria-hidden="true"></div>
                 $anchoredContentHtml
                 $diagnosticsScript
                 $ttsInitScript
+                $scrollPositionScript
             </body>
             </html>
         """.trimIndent()
