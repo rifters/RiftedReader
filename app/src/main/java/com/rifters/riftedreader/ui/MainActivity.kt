@@ -2,11 +2,17 @@ package com.rifters.riftedreader.ui
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupActionBarWithNavController
+import androidx.navigation.ui.setupWithNavController
 import com.rifters.riftedreader.R
+import com.rifters.riftedreader.data.calibre.DefaultCalibreConnectionRepository
 import com.rifters.riftedreader.databinding.ActivityMainBinding
 import com.rifters.riftedreader.util.AppLogger
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     
@@ -26,8 +32,29 @@ class MainActivity : AppCompatActivity() {
         val navController = navHostFragment.navController
         
         setupActionBarWithNavController(navController)
+        binding.bottomNavigation.setupWithNavController(navController)
+        observeCalibreNavigation()
         
         AppLogger.event("MainActivity", "onCreate completed", "ui/MainActivity/lifecycle")
+    }
+
+    private fun observeCalibreNavigation() {
+        val calibreRepository = DefaultCalibreConnectionRepository(this)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                calibreRepository.configFlow().collect { config ->
+                    val shouldShowCalibre = config.contentServerEnabled || config.calibreWebEnabled
+                    binding.bottomNavigation.menu.findItem(R.id.calibreLibraryFragment)?.isVisible = shouldShowCalibre
+                    if (!shouldShowCalibre) {
+                        val navController = (supportFragmentManager
+                            .findFragmentById(R.id.nav_host_fragment) as NavHostFragment).navController
+                        if (navController.currentDestination?.id == R.id.calibreLibraryFragment) {
+                            navController.navigate(R.id.libraryFragment)
+                        }
+                    }
+                }
+            }
+        }
     }
     
     override fun onStart() {
