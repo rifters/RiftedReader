@@ -16,6 +16,8 @@ import com.rifters.riftedreader.util.BufferLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,6 +48,7 @@ class ConveyorBeltSystemViewModel(
         private const val UNLOCK_WINDOW = 2
         private const val STEADY_TRIGGER_WINDOW = 3
         private const val FLEX_TAG = "FlexPaginator"
+        private const val SLICE_EVENT_BUFFER_CAPACITY = BUFFER_SIZE
     }
     
     // HTML loading dependencies (set via setHtmlLoadingDependencies)
@@ -61,6 +64,7 @@ class ConveyorBeltSystemViewModel(
     private var typographyObserverJob: Job? = null
     private var resliceJob: Job? = null
     private val pendingPriorityReslices = mutableListOf<Int>()
+    private val windowDataCacheLock = Any()
     
     // ========================================================================
     // CONVEYOR-BELT SLOT-BASED BUFFER ARCHITECTURE
@@ -109,7 +113,7 @@ class ConveyorBeltSystemViewModel(
     val isReslicing: StateFlow<Boolean> = _isReslicing.asStateFlow()
 
     private val _sliceInvalidatedEvents = MutableSharedFlow<SliceInvalidatedEvent>(
-        extraBufferCapacity = BUFFER_SIZE
+        extraBufferCapacity = SLICE_EVENT_BUFFER_CAPACITY
     )
     val sliceInvalidatedEvents: SharedFlow<SliceInvalidatedEvent> = _sliceInvalidatedEvents.asSharedFlow()
     
@@ -419,7 +423,7 @@ class ConveyorBeltSystemViewModel(
     }
 
     fun getCachedWindowData(windowIndex: Int): WindowData? {
-        return windowDataCache[windowIndex]
+        return synchronized(windowDataCacheLock) { windowDataCache[windowIndex] }
     }
 
     suspend fun invalidateAndReloadWindow(windowIndex: Int) {
@@ -583,10 +587,11 @@ class ConveyorBeltSystemViewModel(
 
                 if (!processed.add(windowIndex)) continue
                 if (windowIndex !in getValidBuffer()) continue
-                val windowData = windowDataCache[windowIndex] ?: continue
+                val windowData = synchronized(windowDataCacheLock) { windowDataCache[windowIndex] } ?: continue
                 if (!windowData.isPreSliced) continue
 
                 resliceWindow(windowIndex, windowData)
+                currentCoroutineContext().ensureActive()
             }
         } finally {
             _isReslicing.value = false
@@ -597,7 +602,9 @@ class ConveyorBeltSystemViewModel(
     private fun prioritizedCachedPreSlicedWindows(): List<Int> {
         val active = _activeWindow.value
         return getValidBuffer()
-            .filter { windowDataCache[it]?.isPreSliced == true }
+            .filter { windowIndex ->
+                synchronized(windowDataCacheLock) { windowDataCache[windowIndex]?.isPreSliced == true }
+            }
             .sortedWith(
                 compareBy<Int> {
                     when {
@@ -623,7 +630,7 @@ class ConveyorBeltSystemViewModel(
             val index = pendingPriorityReslices.indexOfFirst { windowIndex ->
                 windowIndex !in processed &&
                     windowIndex in getValidBuffer() &&
-                    windowDataCache[windowIndex]?.isPreSliced == true
+                    synchronized(windowDataCacheLock) { windowDataCache[windowIndex]?.isPreSliced == true }
             }
             if (index == -1) return null
             return pendingPriorityReslices.removeAt(index)
@@ -631,7 +638,9 @@ class ConveyorBeltSystemViewModel(
     }
 
     private suspend fun resliceWindow(windowIndex: Int, windowData: WindowData) {
-        windowDataCache[windowIndex] = windowData.copy(isSliceStale = true)
+        synchronized(windowDataCacheLock) {
+            windowDataCache[windowIndex] = windowData.copy(isSliceStale = true)
+        }
 
         try {
             val slicer = offscreenSlicingWebView
@@ -647,17 +656,21 @@ class ConveyorBeltSystemViewModel(
                 throw IllegalStateException("Invalid SliceMetadata")
             }
 
-            val latest = windowDataCache[windowIndex] ?: windowData
-            windowDataCache[windowIndex] = latest.copy(
-                sliceMetadata = sliceMetadata,
-                isSliceStale = false
-            )
+            synchronized(windowDataCacheLock) {
+                val latest = windowDataCache[windowIndex] ?: windowData
+                windowDataCache[windowIndex] = latest.copy(
+                    sliceMetadata = sliceMetadata,
+                    isSliceStale = false
+                )
+            }
             _sliceInvalidatedEvents.emit(SliceInvalidatedEvent(windowIndex, isSliceStale = false))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            val latest = windowDataCache[windowIndex] ?: windowData
-            windowDataCache[windowIndex] = latest.copy(isSliceStale = true)
+            synchronized(windowDataCacheLock) {
+                val latest = windowDataCache[windowIndex] ?: windowData
+                windowDataCache[windowIndex] = latest.copy(isSliceStale = true)
+            }
             AppLogger.e(FLEX_TAG, "Failed to re-slice window $windowIndex", e)
             _sliceInvalidatedEvents.emit(SliceInvalidatedEvent(windowIndex, isSliceStale = true))
         }

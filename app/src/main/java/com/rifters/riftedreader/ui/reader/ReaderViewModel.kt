@@ -34,6 +34,7 @@ import com.rifters.riftedreader.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -1363,8 +1364,9 @@ class ReaderViewModel(
         fallbackPageIndex: Int
     ) {
         val conveyor = conveyorBeltSystem ?: return
-        sliceRestoreCorrectionJob?.cancel()
+        val previousJob = sliceRestoreCorrectionJob
         sliceRestoreCorrectionJob = viewModelScope.launch {
+            previousJob?.cancelAndJoin()
             conveyor.sliceInvalidatedEvents
                 .filter { event -> event.windowIndex == windowIndex && !event.isSliceStale }
                 .first()

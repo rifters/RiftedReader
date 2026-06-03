@@ -947,11 +947,12 @@ class ReaderPageFragment : Fragment() {
                     if (!isWebViewReady || !isActiveReaderWindow()) return@collect
                     if (currentInPageIndex != correction.fallbackPageIndex) return@collect
 
+                    val pageIndex = correction.pageIndex.coerceAtLeast(0)
                     binding.pageWebView.evaluateJavascript(
-                        "if (window.flexPaginator && window.flexPaginator.isReady()) { window.flexPaginator.navigateToPage(${correction.pageIndex}); } else if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage(${correction.pageIndex}, false); }",
+                        "if (window.flexPaginator && window.flexPaginator.isReady()) { window.flexPaginator.navigateToPage($pageIndex); } else if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage($pageIndex, false); }",
                         null
                     )
-                    currentInPageIndex = correction.pageIndex
+                    currentInPageIndex = pageIndex
                 }
             }
         }
