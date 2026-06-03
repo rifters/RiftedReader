@@ -194,11 +194,14 @@ object ReaderHtmlWrapper {
             <script>
                 (function() {
                     'use strict';
+                    var headings = [];
+                    function refreshHeadings() {
+                        headings = Array.prototype.slice.call(document.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+                    }
                     function notifyScrollPosition() {
                         if (!window.AndroidBridge || !window.AndroidBridge.onScrollPositionChanged) {
                             return;
                         }
-                        var headings = Array.prototype.slice.call(document.querySelectorAll('h1, h2, h3, h4, h5, h6'));
                         var nearestAbove = null;
                         var firstVisible = null;
                         for (var i = 0; i < headings.length; i++) {
@@ -215,9 +218,13 @@ object ReaderHtmlWrapper {
                         var anchorId = anchor && anchor.id ? anchor.id : '';
                         window.AndroidBridge.onScrollPositionChanged(anchorId, Math.round(window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0));
                     }
+                    refreshHeadings();
                     window.addEventListener('scroll', notifyScrollPosition, { passive: true });
                     if (document.readyState === 'loading') {
-                        document.addEventListener('DOMContentLoaded', notifyScrollPosition);
+                        document.addEventListener('DOMContentLoaded', function() {
+                            refreshHeadings();
+                            notifyScrollPosition();
+                        });
                     } else {
                         notifyScrollPosition();
                     }

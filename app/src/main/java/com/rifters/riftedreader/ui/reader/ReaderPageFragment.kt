@@ -1173,7 +1173,6 @@ class ReaderPageFragment : Fragment() {
                 if (settings.mode == ReaderMode.SCROLL) {
                     val bookmark = readerViewModel.loadLastReadBookmark(readerViewModel.bookId)
                     val anchorIdJson = JSONObject.quote(bookmark?.nearestAnchorId.orEmpty())
-                    val scrollY = bookmark?.pageIndexHint ?: 0
                     binding.pageWebView.evaluateJavascript(
                         """
                         (function() {
@@ -1182,7 +1181,7 @@ class ReaderPageFragment : Fragment() {
                             if (anchor) {
                                 anchor.scrollIntoView({ block: 'start' });
                             } else {
-                                window.scrollTo(0, $scrollY);
+                                window.scrollTo(0, 0);
                             }
                         })();
                         """.trimIndent(),
