@@ -1122,6 +1122,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner {
 
         if (viewModel.paginationMode == PaginationMode.CONTINUOUS && safeTotal > 0) {
             lifecycleScope.launch {
+                if (showUpdatingIndicatorIfNeeded()) return@launch
                 val location = viewModel.getPageLocation(page)
                 // Reslicing may start while getPageLocation suspends; don't overwrite the updating state.
                 if (showUpdatingIndicatorIfNeeded()) return@launch
