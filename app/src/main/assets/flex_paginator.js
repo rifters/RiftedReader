@@ -190,7 +190,7 @@
         let currentPageIndex = 0;
         let accumulatedHeight = 0;
         let currentChapter = null;
-        let pageStartChar = 0;
+        let sliceStartChar = 0;
         let currentCharOffset = 0;
         
         // Clear document body
@@ -217,7 +217,7 @@
                 const slice = {
                     page: currentPageIndex - 1,
                     chapter: currentChapter,
-                    startChar: pageStartChar,
+                    startChar: sliceStartChar,
                     endChar: currentCharOffset,
                     heightPx: accumulatedHeight
                 };
@@ -242,7 +242,7 @@
             flexContainer.appendChild(currentPage);
             
             currentChapter = chapterIndex;
-            pageStartChar = currentCharOffset;
+            sliceStartChar = currentCharOffset;
             accumulatedHeight = 0;
             currentPageIndex++;
         }
@@ -258,7 +258,8 @@
             // (unless this is the very first section and we haven't created a page yet)
             // Start new page for this chapter
             startNewPage(chapterIndex);
-            pageStartChar = 0;
+            // PageSlice start/end offsets are chapter-local; reset at chapter boundaries.
+            sliceStartChar = 0;
             currentCharOffset = 0; // Reset char offset for new chapter
             
             // Walk nodes in this section
@@ -278,7 +279,7 @@
             const slice = {
                 page: currentPageIndex - 1,
                 chapter: currentChapter,
-                startChar: pageStartChar,
+                startChar: sliceStartChar,
                 endChar: currentCharOffset,
                 heightPx: accumulatedHeight
             };
