@@ -1,5 +1,7 @@
 package com.rifters.riftedreader.domain.pagination
 
+import com.rifters.riftedreader.util.ReaderConstants.DEFAULT_PAGINATION_WINDOW_SIZE
+
 /**
  * Stateless helper for chapter-to-window index mapping in sliding-window pagination.
  * 
@@ -102,6 +104,6 @@ class SlidingWindowManager(private val windowSize: Int = DEFAULT_WINDOW_SIZE) {
     fun getWindowSize(): Int = windowSize
     
     companion object {
-        const val DEFAULT_WINDOW_SIZE = 5
+        const val DEFAULT_WINDOW_SIZE = DEFAULT_PAGINATION_WINDOW_SIZE
     }
 }

@@ -38,6 +38,21 @@ import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.util.AppLoggerBridge
 import com.rifters.riftedreader.util.EpubImageAssetHelper
+import com.rifters.riftedreader.util.ReaderConstants.BOUNDARY_DEDUPE_MS
+import com.rifters.riftedreader.util.ReaderConstants.CONTENT_RELOAD_FADE_DURATION_MS
+import com.rifters.riftedreader.util.ReaderConstants.CONVEYOR_READY_TIMEOUT_MS
+import com.rifters.riftedreader.util.ReaderConstants.MIN_HORIZONTAL_FLING_VELOCITY_PX_PER_SEC
+import com.rifters.riftedreader.util.ReaderConstants.NAVIGATION_COOLDOWN_MS
+import com.rifters.riftedreader.util.ReaderConstants.PAGINATOR_INITIALIZATION_DELAY_MS
+import com.rifters.riftedreader.util.ReaderConstants.SCROLL_AUTOSAVE_DEBOUNCE_MS
+import com.rifters.riftedreader.util.ReaderConstants.SCROLL_DISTANCE_THRESHOLD_RATIO
+import com.rifters.riftedreader.util.ReaderConstants.STREAMING_FAILURE_TOAST_COOLDOWN_MS
+import com.rifters.riftedreader.util.ReaderConstants.STREAMING_RETRY_DELAY_MS
+import com.rifters.riftedreader.util.ReaderConstants.STREAMING_RETRY_MAX_ATTEMPTS
+import com.rifters.riftedreader.util.ReaderConstants.TTS_PREP_MAX_ATTEMPTS
+import com.rifters.riftedreader.util.ReaderConstants.TTS_PREP_RETRY_DELAY_MS
+import com.rifters.riftedreader.util.ReaderConstants.WEBVIEW_MEASURED_LOAD_MAX_ATTEMPTS
+import com.rifters.riftedreader.util.ReaderConstants.WEBVIEW_MEASURED_LOAD_RETRY_DELAY_MS
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -104,7 +119,6 @@ class ReaderPageFragment : Fragment() {
     // When entering a new window at page 0 via forward navigation, we should NOT shift backward
     private var lastKnownWindowIndex: Int? = null
     private var windowTransitionTimestamp: Long = 0
-    private val WINDOW_TRANSITION_COOLDOWN_MS = 300L
     
     // Track if paginator has completed initialization (onPaginationReady callback received)
     // This prevents navigation logic from using stale/default values before paginator is ready
@@ -141,14 +155,12 @@ class ReaderPageFragment : Fragment() {
     // Navigation direction tracking to prevent spurious boundary triggers
     private var lastNavigationDirection: BoundaryDirection? = null
     private var lastNavigationTimestamp: Long = 0L
-    private val NAVIGATION_COOLDOWN_MS = 500L // Time to ignore spurious boundaries after navigation
 
     // Boundary dedupe: prevents duplicate boundary events (often from the previous window) from
     // being handled twice and skipping a window (e.g., w12 -> w13 -> w14).
     private var lastHandledBoundaryWindowIndex: Int? = null
     private var lastHandledBoundaryDirection: BoundaryDirection? = null
     private var lastHandledBoundaryTimestamp: Long = 0L
-    private val BOUNDARY_DEDUPE_MS = 1000L
 
     private var slicingViewportWidthPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_WIDTH_PX
     private var slicingViewportHeightPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_HEIGHT_PX
@@ -250,7 +262,7 @@ class ReaderPageFragment : Fragment() {
 
                         if (shouldRestore && pendingInitialInPageIndex == null) {
                             launchIfViewAlive("pagination_ready_restore_position") {
-                                kotlinx.coroutines.delay(50)
+                                kotlinx.coroutines.delay(PAGINATOR_INITIALIZATION_DELAY_MS)
                                 restorePositionWithCharacterOffset()
                             }
                         }
@@ -491,7 +503,7 @@ class ReaderPageFragment : Fragment() {
                         // The minimal_paginator will call onPaginationReady when ready
                         // At that point we can jump to the last page
                         launchIfViewAlive("jump_to_last_page_after_pagination") {
-                            kotlinx.coroutines.delay(200) // Wait for paginator initialization
+                            kotlinx.coroutines.delay(PAGINATOR_INITIALIZATION_DELAY_MS) // Wait for paginator initialization
                             try {
                                 binding.pageWebView.evaluateJavascript(
                                     """
@@ -605,7 +617,7 @@ class ReaderPageFragment : Fragment() {
                 // Wait for conveyor readiness just once - but do not block forever.
                 // If it doesn't become ready, render anyway (will fall back to generating HTML).
                 val ready = try {
-                    kotlinx.coroutines.withTimeout(10_000) {
+                    kotlinx.coroutines.withTimeout(CONVEYOR_READY_TIMEOUT_MS) {
                         readerViewModel.isConveyorReady.filter { it }.first()
                         true
                     }
@@ -774,12 +786,12 @@ class ReaderPageFragment : Fragment() {
                 progressBar.alpha = 0f
                 progressBar.visibility = View.VISIBLE
             }
-            progressBar.animate().alpha(1f).setDuration(150L).start()
+            progressBar.animate().alpha(1f).setDuration(CONTENT_RELOAD_FADE_DURATION_MS).start()
         } else {
             if (progressBar.visibility != View.VISIBLE) return
             progressBar.animate()
                 .alpha(0f)
-                .setDuration(150L)
+                .setDuration(CONTENT_RELOAD_FADE_DURATION_MS)
                 .withEndAction {
                     progressBar.visibility = View.GONE
                     progressBar.alpha = 1f
@@ -958,7 +970,7 @@ class ReaderPageFragment : Fragment() {
         launchIfViewAlive("scroll_position_observer") {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 bridge.scrollPositionEvents
-                    .debounce(ReaderViewModel.SCROLL_POSITION_DEBOUNCE_MS)
+                    .debounce(SCROLL_AUTOSAVE_DEBOUNCE_MS)
                     .collect { event ->
                         if (readerViewModel.readerSettings.value.mode != ReaderMode.SCROLL) return@collect
                         val chapterIndex = resolvedChapterIndex ?: windowIndex
@@ -1113,10 +1125,10 @@ class ReaderPageFragment : Fragment() {
                     }
                     
                     // Check if this is a horizontal fling (not vertical scroll)
-                    if (abs(velocityX) > abs(velocityY) && abs(velocityX) > FLING_THRESHOLD) {
+                    if (abs(velocityX) > abs(velocityY) && abs(velocityX) > MIN_HORIZONTAL_FLING_VELOCITY_PX_PER_SEC) {
                         com.rifters.riftedreader.util.AppLogger.d(
                             "ReaderPageFragment",
-                            "Detected horizontal fling: page=$pageIndex vx=$velocityX (threshold=$FLING_THRESHOLD)"
+                            "Detected horizontal fling: page=$pageIndex vx=$velocityX (threshold=$MIN_HORIZONTAL_FLING_VELOCITY_PX_PER_SEC)"
                         )
                         
                         // Determine direction: negative velocityX means fling left (next page)
@@ -1219,7 +1231,7 @@ class ReaderPageFragment : Fragment() {
         if (_binding == null || !isWebViewReady) return
         launchIfViewAlive("apply_pending_initial_in_page") {
             try {
-                kotlinx.coroutines.delay(200) // Wait for paginator initialization
+                kotlinx.coroutines.delay(PAGINATOR_INITIALIZATION_DELAY_MS) // Wait for paginator initialization
                 binding.pageWebView.evaluateJavascript(
                     "if (window.flexPaginator && window.flexPaginator.isReady()) { window.flexPaginator.navigateToPage($target); } else if (window.minimalPaginator && window.minimalPaginator.isReady()) { window.minimalPaginator.goToPage($target, false); }",
                     null
@@ -1629,8 +1641,8 @@ class ReaderPageFragment : Fragment() {
 
         // Token to avoid cross-calls if a new render starts before this one completes.
         val attemptWindowIndex = windowIndex
-        val maxAttempts = 40 // ~2s at 50ms
-        val delayMs = 50L
+        val maxAttempts = WEBVIEW_MEASURED_LOAD_MAX_ATTEMPTS // ~2s at 50ms
+        val delayMs = WEBVIEW_MEASURED_LOAD_RETRY_DELAY_MS
 
         fun attemptLoad(attempt: Int) {
             if (_binding == null || !isAdded || view == null) return
@@ -1771,8 +1783,8 @@ class ReaderPageFragment : Fragment() {
             (function() {
                 // ISSUE 2 FIX: Wait for element with retry logic
                 // Max 5 attempts with 50ms delay before executing TTS chunk preparation
-                var MAX_ATTEMPTS = 5;
-                var RETRY_DELAY_MS = 50;
+                var MAX_ATTEMPTS = ${TTS_PREP_MAX_ATTEMPTS};
+                var RETRY_DELAY_MS = ${TTS_PREP_RETRY_DELAY_MS};
                 var attempt = 0;
                 
                 function waitForBodyAndExecute() {
@@ -2195,13 +2207,13 @@ class ReaderPageFragment : Fragment() {
                 "ui/webview/streaming"
             )
             val sessionStartMs = SystemClock.elapsedRealtime()
-            val maxAttempts = 2
+            val maxAttempts = STREAMING_RETRY_MAX_ATTEMPTS
             var attempt = 0
             var result: StreamingAttemptResult? = null
             while (attempt < maxAttempts && result == null) {
                 result = streamChapter(direction, targetGlobalIndex, attempt + 1)
                 if (result == null && attempt + 1 < maxAttempts) {
-                    kotlinx.coroutines.delay(120)
+                    kotlinx.coroutines.delay(STREAMING_RETRY_DELAY_MS)
                 }
                 attempt++
             }
@@ -2293,7 +2305,7 @@ class ReaderPageFragment : Fragment() {
 
     private fun showStreamingFailureToast() {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastStreamingFailureToastAt < 3000) {
+        if (now - lastStreamingFailureToastAt < STREAMING_FAILURE_TOAST_COOLDOWN_MS) {
             return
         }
         val appContext = context?.applicationContext ?: return
@@ -2876,9 +2888,6 @@ class ReaderPageFragment : Fragment() {
 
     companion object {
         private const val ARG_PAGE_INDEX = "arg_page_index" // This is window index in continuous mode
-        private const val FLING_THRESHOLD = 1000f // Minimum velocity for horizontal fling detection
-        private const val SCROLL_DISTANCE_THRESHOLD_RATIO = 0.25f // 25% of viewport width triggers in-page navigation
-
         /**
          * Create a new ReaderPageFragment for the given window/page index.
          * 

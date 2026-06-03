@@ -1,6 +1,7 @@
 package com.rifters.riftedreader.pagination
 
 import com.rifters.riftedreader.util.AppLogger
+import com.rifters.riftedreader.util.ReaderConstants.DEFAULT_PAGINATION_WINDOW_SIZE
 
 /**
  * Deterministic sliding-window paginator for chapter-to-window grouping.
@@ -46,7 +47,7 @@ class SlidingWindowPaginator(
 ) {
     
     companion object {
-        const val DEFAULT_CHAPTERS_PER_WINDOW = 5
+        const val DEFAULT_CHAPTERS_PER_WINDOW = DEFAULT_PAGINATION_WINDOW_SIZE
         private const val TAG = "SlidingWindowPaginator"
     }
     

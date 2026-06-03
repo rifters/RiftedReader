@@ -2,6 +2,8 @@ package com.rifters.riftedreader.ui.reader
 
 import android.view.View
 import androidx.core.view.isVisible
+import com.rifters.riftedreader.util.ReaderConstants.CONTROLS_ANIMATION_DURATION_MS
+import com.rifters.riftedreader.util.ReaderConstants.CONTROLS_AUTO_HIDE_MS
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -14,7 +16,7 @@ import kotlinx.coroutines.launch
 class ReaderControlsManager(
     private val controlsContainer: View,
     private val scope: CoroutineScope,
-    private val autoHideMillis: Long = DEFAULT_AUTO_HIDE_MS
+    private val autoHideMillis: Long = CONTROLS_AUTO_HIDE_MS
 ) {
 
     private var hideJob: Job? = null
@@ -27,7 +29,7 @@ class ReaderControlsManager(
             controlsContainer.post {
                 controlsContainer.alpha = 0f
                 controlsContainer.isVisible = true
-                controlsContainer.animate().alpha(1f).setDuration(ANIMATION_DURATION_MS).start()
+                controlsContainer.animate().alpha(1f).setDuration(CONTROLS_ANIMATION_DURATION_MS).start()
             }
         }
         scheduleAutoHide()
@@ -38,7 +40,7 @@ class ReaderControlsManager(
         if (controlsContainer.isVisible) {
             controlsContainer.animate()
                 .alpha(0f)
-                .setDuration(ANIMATION_DURATION_MS)
+                .setDuration(CONTROLS_ANIMATION_DURATION_MS)
                 .withEndAction {
                     controlsContainer.isVisible = false
                     controlsContainer.alpha = 1f
@@ -82,7 +84,5 @@ class ReaderControlsManager(
     }
 
     companion object {
-        private const val DEFAULT_AUTO_HIDE_MS = 3_500L
-        private const val ANIMATION_DURATION_MS = 180L
     }
 }

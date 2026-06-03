@@ -14,6 +14,10 @@ import okhttp3.Request
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import com.rifters.riftedreader.util.ReaderConstants.DOWNLOAD_CONNECT_TIMEOUT_SECONDS
+import com.rifters.riftedreader.util.ReaderConstants.DOWNLOAD_FILENAME_MAX_ATTEMPTS
+import com.rifters.riftedreader.util.ReaderConstants.DOWNLOAD_READ_TIMEOUT_SECONDS
+import com.rifters.riftedreader.util.ReaderConstants.DOWNLOAD_WRITE_TIMEOUT_SECONDS
 
 class BookDownloadManager(
     context: Context,
@@ -90,7 +94,7 @@ class BookDownloadManager(
         }
         val safeName = sanitizeFileName(filename)
         var counter = 0
-        while (counter < MAX_FILENAME_ATTEMPTS) {
+        while (counter < DOWNLOAD_FILENAME_MAX_ATTEMPTS) {
             val candidate = if (counter == 0) safeName else uniqueName(safeName, counter)
             val destination = File(directory, candidate)
             if (destination.createNewFile()) {
@@ -142,14 +146,13 @@ class BookDownloadManager(
 
         // Reuse the library's internal import location so downloaded books survive app restarts.
         private const val IMPORTS_DIRECTORY = "imports"
-        private const val MAX_FILENAME_ATTEMPTS = 1_000
         private const val MAX_FILENAME_LENGTH = 120
         private const val FALLBACK_FILENAME = "downloaded_book"
         private val UNSAFE_FILENAME_CHARS = Regex("[\\\\/:*?\"<>|]+")
         private val DEFAULT_CLIENT = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(10, TimeUnit.SECONDS)
+            .connectTimeout(DOWNLOAD_CONNECT_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
+            .readTimeout(DOWNLOAD_READ_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
+            .writeTimeout(DOWNLOAD_WRITE_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
             .build()
     }
 }

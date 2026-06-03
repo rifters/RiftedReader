@@ -8,6 +8,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import com.rifters.riftedreader.util.AppLogger
 import com.rifters.riftedreader.util.CssSanitizers
+import com.rifters.riftedreader.util.ReaderConstants.OFFSCREEN_SLICE_TIMEOUT_MS
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONArray
 import org.json.JSONObject
@@ -42,7 +43,6 @@ class OffscreenSlicingWebView(
     
     companion object {
         private const val TAG = "OffscreenSlicingWebView"
-        private const val SLICING_TIMEOUT_MS = 10000L // 10 seconds
         @Volatile
         private var defaultViewportWidthPx: Int = FlexSlicingConfig.DEFAULT_VIEWPORT_WIDTH_PX
         @Volatile
@@ -121,11 +121,11 @@ class OffscreenSlicingWebView(
             val timeoutRunnable = Runnable {
                 val cb = currentCallback
                 if (cb != null && !cb.isCompleted) {
-                    cb.onError("Slicing timeout after ${SLICING_TIMEOUT_MS}ms")
+                    cb.onError("Slicing timeout after ${OFFSCREEN_SLICE_TIMEOUT_MS}ms")
                     currentCallback = null
                 }
             }
-            mainHandler.postDelayed(timeoutRunnable, SLICING_TIMEOUT_MS)
+            mainHandler.postDelayed(timeoutRunnable, OFFSCREEN_SLICE_TIMEOUT_MS)
             
             // Cancel timeout on coroutine cancellation
             continuation.invokeOnCancellation {

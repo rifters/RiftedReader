@@ -3,6 +3,8 @@ package com.rifters.riftedreader.domain.pagination
 import com.rifters.riftedreader.domain.parser.BookParser
 import com.rifters.riftedreader.domain.parser.PageContent
 import com.rifters.riftedreader.util.AppLogger
+import com.rifters.riftedreader.util.ReaderConstants.DEFAULT_PAGINATION_WINDOW_SIZE
+import com.rifters.riftedreader.util.ReaderConstants.SLIDING_WINDOW_BUFFER_WINDOW_COUNT
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -393,7 +395,7 @@ class ContinuousPaginator(
         
         // SAFETY CHECK: Only unload if we have more than 5 windows worth of chapters loaded
         // This prevents premature unloading during STARTUP phase when buffer is being assembled
-        val safeToUnload = loadedChapters.size > (windowSize * 5)
+        val safeToUnload = loadedChapters.size > (windowSize * SLIDING_WINDOW_BUFFER_WINDOW_COUNT)
         
         if (safeToUnload && toUnload.isNotEmpty()) {
             AppLogger.d(TAG, "Unloading ${toUnload.size} chapters (protected range: [$protectedStart, $protectedEnd], loaded: ${loadedChapters.size})")
@@ -403,7 +405,7 @@ class ContinuousPaginator(
             }
         } else {
             if (!safeToUnload) {
-                AppLogger.d(TAG, "Skipping unload: loadedChapters.size=${loadedChapters.size} <= ${windowSize * 5}")
+                AppLogger.d(TAG, "Skipping unload: loadedChapters.size=${loadedChapters.size} <= ${windowSize * SLIDING_WINDOW_BUFFER_WINDOW_COUNT}")
             }
             if (toUnload.isEmpty()) {
                 AppLogger.d(TAG, "Skipping unload: no chapters to unload (all are in active window or protected range [$protectedStart, $protectedEnd])")
@@ -560,7 +562,7 @@ class ContinuousPaginator(
     
     companion object {
         private const val TAG = "ContinuousPaginator"
-        private const val DEFAULT_WINDOW_SIZE = 5
+        private const val DEFAULT_WINDOW_SIZE = DEFAULT_PAGINATION_WINDOW_SIZE
     }
 }
 
