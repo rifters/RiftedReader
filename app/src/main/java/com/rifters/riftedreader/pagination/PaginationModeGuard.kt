@@ -98,8 +98,9 @@ class PaginationModeGuard(
             buildNestingLevel--
             
             if (buildNestingLevel < 0) {
+                val invalidNestingLevel = buildNestingLevel
                 buildNestingLevel = 0
-                AppLogger.w(TAG, "[PAGINATION_DEBUG] endWindowBuild called but no build in progress (nestingLevel=$buildNestingLevel)")
+                AppLogger.w(TAG, "[PAGINATION_DEBUG] endWindowBuild called but no build in progress (nestingLevel=$invalidNestingLevel)")
                 return true
             }
             
@@ -126,7 +127,7 @@ class PaginationModeGuard(
                 modeAtBuildStart = null
             }
             
-            return modeStable && !_isBuilding
+            return modeStable && buildNestingLevel == 0
         }
     }
     

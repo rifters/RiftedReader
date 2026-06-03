@@ -202,7 +202,7 @@ class SlidingWindowPaginator(
             val firstChapter = windowIndex * chaptersPerWindow
             val lastChapter = minOf(firstChapter + chaptersPerWindow - 1, cachedTotalChapters - 1)
             val chaptersInWindow = lastChapter - firstChapter + 1
-            sb.append("W$windowIndex=[${firstChapter}-${lastChapter}]($chaptersInWindow ch)")
+            sb.append("W$windowIndex=[${firstChapter}-${lastChapter}]($chaptersInWindow chapters)")
             if (windowIndex < cachedWindowCount - 1) sb.append(", ")
         }
         
