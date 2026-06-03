@@ -5,10 +5,12 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.activityViewModels
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.android.material.chip.Chip
 import com.google.android.material.slider.Slider
 import com.rifters.riftedreader.R
+import com.rifters.riftedreader.data.preferences.ReaderMode
 import com.rifters.riftedreader.data.preferences.ReaderTheme
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.databinding.DialogReaderTextSettingsBinding
@@ -29,6 +31,11 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
             ?: throw IllegalStateException("Parent activity must implement ReaderPreferencesOwner")
         ReaderSettingsViewModel.Factory(owner.readerPreferences)
     }
+    private val readerViewModel: ReaderViewModel by activityViewModels()
+    private val readerPreferences
+        get() = (requireActivity() as? ReaderPreferencesOwner)?.readerPreferences
+            ?: throw IllegalStateException("Parent activity must implement ReaderPreferencesOwner")
+    private var syncingSettings = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -42,26 +49,80 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        setupFlexPaginatorSwitch()
         setupTextSizeSlider()
         setupLineHeightSlider()
         setupThemeChips()
         setupModeChips()
         setupPaginationChips()
 
-        settingsViewModel.settings.collectWhileStarted(viewLifecycleOwner) { settings ->
-            if (binding.textSizeSlider.value.roundToInt() != settings.textSizeSp.roundToInt()) {
-                binding.textSizeSlider.value = settings.textSizeSp
+        readerViewModel.readerSettings.collectWhileStarted(viewLifecycleOwner) { settings ->
+            syncingSettings = true
+            try {
+                if (binding.flexPaginatorSwitch.isChecked != settings.flexPaginatorEnabled) {
+                    binding.flexPaginatorSwitch.isChecked = settings.flexPaginatorEnabled
+                }
+                if (binding.textSizeSlider.value.roundToInt() != settings.textSizeSp.roundToInt()) {
+                    binding.textSizeSlider.value = settings.textSizeSp
+                }
+                // Convert float line height (1.0-2.0) to integer slider value (10-20)
+                val sliderValue = (settings.lineHeightMultiplier * 10).roundToInt().toFloat()
+                if (binding.lineHeightSlider.value.roundToInt() != sliderValue.roundToInt()) {
+                    binding.lineHeightSlider.value = sliderValue
+                }
+                selectThemeChip(settings.theme)
+                selectModeChip(settings.mode)
+                selectPaginationChip(settings.paginationMode)
+                binding.textSizeValue.text = getString(R.string.reader_text_size_value, settings.textSizeSp.roundToInt())
+                binding.lineHeightValue.text = getString(R.string.reader_line_height_value, settings.lineHeightMultiplier)
+            } finally {
+                syncingSettings = false
             }
-            // Convert float line height (1.0-2.0) to integer slider value (10-20)
-            val sliderValue = (settings.lineHeightMultiplier * 10).roundToInt().toFloat()
-            if (binding.lineHeightSlider.value.roundToInt() != sliderValue.roundToInt()) {
-                binding.lineHeightSlider.value = sliderValue
+        }
+    }
+
+    private fun setupFlexPaginatorSwitch() {
+        binding.flexPaginatorSwitch.setOnCheckedChangeListener { _, isChecked ->
+            if (syncingSettings) return@setOnCheckedChangeListener
+            if (isChecked) {
+                showFlexPaginatorConfirmation()
+            } else {
+                com.rifters.riftedreader.util.AppLogger.userAction(
+                    "ReaderTextSettingsBottomSheet",
+                    "Experimental page layout disabled",
+                    "ui/settings/change"
+                )
+                readerPreferences.updateSettings { current -> current.copy(flexPaginatorEnabled = false) }
             }
-            selectThemeChip(settings.theme)
-            selectModeChip(settings.mode)
-            selectPaginationChip(settings.paginationMode)
-            binding.textSizeValue.text = getString(R.string.reader_text_size_value, settings.textSizeSp.roundToInt())
-            binding.lineHeightValue.text = getString(R.string.reader_line_height_value, settings.lineHeightMultiplier)
+        }
+    }
+
+    private fun showFlexPaginatorConfirmation() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setMessage(R.string.reader_flex_paginator_confirm_message)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                com.rifters.riftedreader.util.AppLogger.userAction(
+                    "ReaderTextSettingsBottomSheet",
+                    "Experimental page layout enabled",
+                    "ui/settings/change"
+                )
+                readerPreferences.updateSettings { current -> current.copy(flexPaginatorEnabled = true) }
+            }
+            .setNegativeButton(android.R.string.cancel) { _, _ ->
+                revertFlexPaginatorSwitch()
+            }
+            .setOnCancelListener {
+                revertFlexPaginatorSwitch()
+            }
+            .show()
+    }
+
+    private fun revertFlexPaginatorSwitch() {
+        syncingSettings = true
+        try {
+            binding.flexPaginatorSwitch.isChecked = false
+        } finally {
+            syncingSettings = false
         }
     }
 
@@ -91,6 +152,7 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
 
     private fun setupThemeChips() {
         binding.themeChipGroup.setOnCheckedStateChangeListener { group, checkedIds ->
+            if (syncingSettings) return@setOnCheckedStateChangeListener
             val id = checkedIds.firstOrNull() ?: return@setOnCheckedStateChangeListener
             val chip = group.findViewById<Chip>(id)
             val theme = chip?.tag as? ReaderTheme ?: return@setOnCheckedStateChangeListener
@@ -106,19 +168,22 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
     
     private fun setupModeChips() {
         binding.modeChipGroup.setOnCheckedStateChangeListener { group, checkedIds ->
+            if (syncingSettings) return@setOnCheckedStateChangeListener
             val id = checkedIds.firstOrNull() ?: return@setOnCheckedStateChangeListener
             val chip = group.findViewById<Chip>(id)
-            val mode = chip?.tag as? com.rifters.riftedreader.data.preferences.ReaderMode ?: return@setOnCheckedStateChangeListener
+            val mode = chip?.tag as? ReaderMode ?: return@setOnCheckedStateChangeListener
+            if (readerViewModel.readerSettings.value.mode == mode) return@setOnCheckedStateChangeListener
             com.rifters.riftedreader.util.AppLogger.userAction("ReaderTextSettingsBottomSheet", "Reader mode changed to $mode", "ui/settings/change")
-            settingsViewModel.updateMode(mode)
+            readerViewModel.toggleReaderMode()
         }
 
-        binding.modeChipScroll.tag = com.rifters.riftedreader.data.preferences.ReaderMode.SCROLL
-        binding.modeChipPage.tag = com.rifters.riftedreader.data.preferences.ReaderMode.PAGINATED
+        binding.modeChipPage.tag = ReaderMode.PAGINATED
+        binding.modeChipScroll.tag = ReaderMode.SCROLL
     }
 
     private fun setupPaginationChips() {
         binding.paginationChipGroup.setOnCheckedStateChangeListener { group, checkedIds ->
+            if (syncingSettings) return@setOnCheckedStateChangeListener
             val id = checkedIds.firstOrNull() ?: return@setOnCheckedStateChangeListener
             val chip = group.findViewById<Chip>(id)
             val mode = chip?.tag as? PaginationMode ?: return@setOnCheckedStateChangeListener
@@ -146,10 +211,10 @@ class ReaderTextSettingsBottomSheet : BottomSheetDialogFragment() {
         }
     }
     
-    private fun selectModeChip(mode: com.rifters.riftedreader.data.preferences.ReaderMode) {
+    private fun selectModeChip(mode: ReaderMode) {
         val targetId = when (mode) {
-            com.rifters.riftedreader.data.preferences.ReaderMode.SCROLL -> binding.modeChipScroll.id
-            com.rifters.riftedreader.data.preferences.ReaderMode.PAGINATED -> binding.modeChipPage.id
+            ReaderMode.PAGINATED -> binding.modeChipPage.id
+            ReaderMode.SCROLL -> binding.modeChipScroll.id
         }
         if (binding.modeChipGroup.checkedChipId != targetId) {
             binding.modeChipGroup.check(targetId)
