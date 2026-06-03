@@ -89,6 +89,7 @@ class ReaderViewModel(
         private const val LAST_READ_DEBOUNCE_MS = 2_000L
         private const val MODE_SWITCH_BOOKMARK_LABEL = "_mode_switch"
         private const val BOOKMARK_MATCH_CHAR_RADIUS = 200
+        private const val BOOKMARK_RESTORE_WINDOW_SEARCH_RADIUS = 2
         const val SCROLL_POSITION_DEBOUNCE_MS = 500L
     }
 
@@ -1540,7 +1541,7 @@ class ReaderViewModel(
         val conveyor = conveyorBeltSystem ?: return null
         return sequence {
             yield(preferredWindow)
-            for (distance in 1..2) {
+            for (distance in 1..BOOKMARK_RESTORE_WINDOW_SEARCH_RADIUS) {
                 yield(preferredWindow - distance)
                 yield(preferredWindow + distance)
             }

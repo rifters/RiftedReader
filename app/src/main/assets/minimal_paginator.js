@@ -948,13 +948,11 @@
             log('DIAGNOSTIC', `Scroll event - scrollLeft=${currentScrollLeft.toFixed(1)}px, appliedColumnWidth=${state.appliedColumnWidth}px`);
             
             // Update current page based on container scroll position
-            const newPage = Math.round(currentScrollLeft / state.appliedColumnWidth);
             const prevPage = state.currentPage;  // ← TRACK PREVIOUS
-            state.currentPage = Math.max(0, Math.min(newPage, state.pageCount - 1));
-            syncPaginationState();
+            state.currentPage = syncPaginationState(currentScrollLeft);
             
             // DIAGNOSTIC: Log page calculation from scroll
-            log('DIAGNOSTIC', `Scroll page calculation: round(${currentScrollLeft.toFixed(1)} / ${state.appliedColumnWidth}) = ${newPage}, clamped to ${state.currentPage}`);
+            log('DIAGNOSTIC', `Scroll page calculation: round(${currentScrollLeft.toFixed(1)} / ${state.appliedColumnWidth}) clamped to ${state.currentPage}`);
             
             // ✅ ADD THIS: Notify Android when page actually changes
             if (state.currentPage !== prevPage) {
@@ -1140,13 +1138,17 @@
                 }, 100);
             }
         }
+    }
 
-        function syncPaginationState() {
-            if (!state.columnContainer || state.appliedColumnWidth <= 0) return;
-            const currentScrollLeft = state.columnContainer.scrollLeft;
-            const computedPage = Math.round(currentScrollLeft / state.appliedColumnWidth);
-            state.currentPage = Math.max(0, Math.min(computedPage, state.pageCount - 1));
-        }
+    function syncPaginationState(currentScrollLeft) {
+        if (!state.columnContainer || state.appliedColumnWidth <= 0) return state.currentPage;
+        const scrollLeft = typeof currentScrollLeft === 'number'
+            ? currentScrollLeft
+            : state.columnContainer.scrollLeft;
+        const computedPage = Math.round(scrollLeft / state.appliedColumnWidth);
+        const clampedPage = Math.max(0, Math.min(computedPage, state.pageCount - 1));
+        state.currentPage = clampedPage;
+        return clampedPage;
     }
     
     /**
