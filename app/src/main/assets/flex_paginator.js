@@ -331,6 +331,47 @@
         return true;
     }
 
+    function jumpToAnchor(anchorId) {
+        const target = document.getElementById(anchorId);
+        if (!target) {
+            return false;
+        }
+
+        if (document.body.classList.contains('mode-scroll')) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return true;
+        }
+
+        if (!state.isInitialized || state.slices.length === 0) {
+            log('WARN', 'jumpToAnchor: paginator not ready');
+            return false;
+        }
+
+        const targetPage = target.closest('.page');
+        const targetChapter = targetPage ? parseInt(targetPage.getAttribute('data-chapter'), 10) : NaN;
+        const targetPageIndex = targetPage ? parseInt(targetPage.getAttribute('data-page'), 10) : NaN;
+        const containingSlice = Number.isInteger(targetPageIndex) ? state.slices[targetPageIndex] : null;
+        const startChar = getSliceStartChar(containingSlice);
+        const relativeCharOffset = targetPage ? getTextLengthBeforeTarget(targetPage, target) : 0;
+        const targetCharOffset = startChar + relativeCharOffset;
+
+        let nearestPageIndex = Number.isInteger(targetPageIndex) ? targetPageIndex : 0;
+        let nearestStartChar = -1;
+        for (let i = 0; i < state.slices.length; i++) {
+            const slice = state.slices[i];
+            if (!slice) continue;
+            if (Number.isInteger(targetChapter) && slice.chapter !== targetChapter) continue;
+
+            const sliceStartChar = getSliceStartChar(slice);
+            if (sliceStartChar <= targetCharOffset && sliceStartChar >= nearestStartChar) {
+                nearestPageIndex = i;
+                nearestStartChar = sliceStartChar;
+            }
+        }
+
+        return navigateToPage(nearestPageIndex);
+    }
+
     function nextPage() {
         return navigateToPage(state.currentPage + 1);
     }
@@ -350,6 +391,39 @@
     function getCharacterOffsetForPage(pageIndex) {
         const slice = state.slices[pageIndex];
         return slice ? slice.startChar : 0;
+    }
+
+    function getSliceStartChar(slice) {
+        if (!slice) return 0;
+        if (typeof slice.charOffset === 'number') return slice.charOffset;
+        if (typeof slice.startChar === 'number') return slice.startChar;
+        return 0;
+    }
+
+    function getTextLengthBeforeTarget(root, target) {
+        function walk(node) {
+            if (node === target) {
+                return { found: true, length: 0 };
+            }
+
+            if (node.nodeType === Node.TEXT_NODE) {
+                return { found: false, length: (node.textContent || '').length };
+            }
+
+            let length = 0;
+            for (let i = 0; i < node.childNodes.length; i++) {
+                const child = node.childNodes[i];
+                const result = walk(child);
+                if (result.found) {
+                    return { found: true, length: length + result.length };
+                }
+                length += result.length;
+            }
+
+            return { found: false, length };
+        }
+
+        return walk(root).length;
     }
 
     function isReady() {
@@ -546,6 +620,7 @@
     window.flexPaginator = {
         navigateToPage,
         goToPage: navigateToPage,
+        jumpToAnchor,
         nextPage,
         prevPage,
         getCurrentPage,

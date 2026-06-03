@@ -68,6 +68,7 @@ object ReaderHtmlWrapper {
         val backgroundColor = colorToHex(config.palette.backgroundColor)
         val textColor = colorToHex(config.palette.textColor)
         val sanitizedFontFamily = CssSanitizers.sanitizeCssFontFamily(config.fontFamily, "serif")
+        val anchoredContentHtml = HeadingAnchorSlugger.injectHeadingIds(contentHtml)
         
         // Enable diagnostics in paginator if configured
         val diagnosticsScript = if (config.enableDiagnostics) {
@@ -281,7 +282,7 @@ object ReaderHtmlWrapper {
                 $debugBanner
                 <!-- TTS root container for TTS DOM operations -->
                 <div id="tts-root" aria-hidden="true"></div>
-                $contentHtml
+                $anchoredContentHtml
                 $diagnosticsScript
                 $ttsInitScript
             </body>
