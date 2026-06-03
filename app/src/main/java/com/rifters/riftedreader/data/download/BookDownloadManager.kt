@@ -6,6 +6,8 @@ import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.domain.parser.ParserFactory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -19,6 +21,7 @@ class BookDownloadManager(
     private val client: OkHttpClient = DEFAULT_CLIENT,
 ) {
     private val appContext = context.applicationContext
+    private val importMutex = Mutex()
 
     suspend fun downloadFromUrl(
         url: String,
@@ -63,41 +66,46 @@ class BookDownloadManager(
     }
 
     private suspend fun importDownloadedBook(file: File, filename: String): BookMeta {
-        val parser = ParserFactory.getParser(file)
-            ?: throw UnsupportedBookDownloadException(filename)
+        return importMutex.withLock {
+            val parser = ParserFactory.getParser(file)
+                ?: throw UnsupportedBookDownloadException(filename)
 
-        bookRepository.getBookByPath(file.absolutePath)?.let { existing ->
-            throw DuplicateBookDownloadException(existing)
-        }
+            bookRepository.getBookByPath(file.absolutePath)?.let { existing ->
+                throw DuplicateBookDownloadException(existing)
+            }
 
-        return parser.extractMetadata(file).also { metadata ->
-            bookRepository.insertBook(metadata)
+            parser.extractMetadata(file).also { metadata ->
+                bookRepository.insertBook(metadata)
+            }
         }
     }
 
     private fun createDestination(filename: String): File {
         val directory = File(appContext.filesDir, IMPORTS_DIRECTORY).apply {
             if (!exists() && !mkdirs()) {
-                throw IOException("Unable to create imports directory at $absolutePath")
+                throw IOException("Failed to create imports directory at $absolutePath. Check available storage.")
             }
         }
-        return File(directory, ensureUniqueName(directory, sanitizeFileName(filename)))
-    }
-
-    private fun ensureUniqueName(directory: File, fileName: String): String {
-        var candidate = fileName
-        var counter = 1
-        val base = fileName.substringBeforeLast('.', fileName)
-        val extension = fileName.substringAfterLast('.', "")
-        while (File(directory, candidate).exists()) {
-            candidate = if (extension.isEmpty()) {
-                "${base}_$counter"
-            } else {
-                "${base}_$counter.$extension"
+        val safeName = sanitizeFileName(filename)
+        var counter = 0
+        while (true) {
+            val candidate = if (counter == 0) safeName else uniqueName(safeName, counter)
+            val destination = File(directory, candidate)
+            if (destination.createNewFile()) {
+                return destination
             }
             counter++
         }
-        return candidate
+    }
+
+    private fun uniqueName(fileName: String, counter: Int): String {
+        val base = fileName.substringBeforeLast('.', fileName)
+        val extension = fileName.substringAfterLast('.', "")
+        return if (extension.isEmpty()) {
+            "${base}_$counter"
+        } else {
+            "${base}_$counter.$extension"
+        }
     }
 
     private fun sanitizeFileName(name: String): String {

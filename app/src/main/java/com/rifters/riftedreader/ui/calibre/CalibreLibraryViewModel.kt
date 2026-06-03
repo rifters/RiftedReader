@@ -102,7 +102,7 @@ class CalibreLibraryViewModel(
                         is DuplicateBookDownloadException -> {
                             _downloadEvents.emit(
                                 CalibreDownloadEvent.DownloadDuplicate(
-                                    throwable.existingBook.title.ifBlank { book.title }
+                                    throwable.existingBook.title
                                 )
                             )
                         }
