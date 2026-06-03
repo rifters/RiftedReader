@@ -959,12 +959,11 @@ class ReaderPageFragment : Fragment() {
     }
 
     private fun buildNavigateToPageScript(pageIndex: Int): String {
-        val target = pageIndex.coerceAtLeast(0)
         return """
             if (window.flexPaginator && window.flexPaginator.isReady()) {
-                window.flexPaginator.navigateToPage($target);
+                window.flexPaginator.navigateToPage($pageIndex);
             } else if (window.minimalPaginator && window.minimalPaginator.isReady()) {
-                window.minimalPaginator.goToPage($target, false);
+                window.minimalPaginator.goToPage($pageIndex, false);
             }
         """.trimIndent()
     }

@@ -54,6 +54,11 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.roundToInt
 
+/**
+ * Requests a silent in-window page correction after fresh SliceMetadata replaces
+ * stale metadata. [fallbackPageIndex] is the hint used immediately; [pageIndex]
+ * is the precise page found from the bookmark character offset after re-slicing.
+ */
 data class SliceRestoreCorrection(
     val windowIndex: Int,
     val pageIndex: Int,

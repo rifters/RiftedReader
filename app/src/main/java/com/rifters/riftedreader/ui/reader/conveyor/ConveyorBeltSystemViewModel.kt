@@ -31,6 +31,12 @@ import java.util.ArrayDeque
 import java.io.File
 import kotlin.math.abs
 
+/**
+ * Emitted after a cached window slot finishes a re-slice attempt.
+ *
+ * Consumers can retry precise page lookup when [isSliceStale] is false; when true,
+ * the old SliceMetadata remains cached as a degraded fallback.
+ */
 data class SliceInvalidatedEvent(
     val windowIndex: Int,
     val isSliceStale: Boolean
@@ -618,8 +624,8 @@ class ConveyorBeltSystemViewModel(
     }
 
     private fun requestPriorityReslice(windowIndex: Int) {
-        if (!_isReslicing.value) return
         synchronized(pendingPriorityReslices) {
+            if (!_isReslicing.value) return
             pendingPriorityReslices.remove(windowIndex)
             pendingPriorityReslices.add(0, windowIndex)
         }
