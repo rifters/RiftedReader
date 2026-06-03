@@ -35,7 +35,7 @@ object WindowSyncHelpers {
         windowCountLiveData: MutableLiveData<Int>,
         notifyAdapterCallback: (() -> Unit)? = null
     ) {
-        val windowCount = paginator.getWindowCount()
+        val windowCount = paginator.windowCount
         val totalChapters = paginator.getTotalChapters()
         val chaptersPerWindow = paginator.getChaptersPerWindow()
         val previousValue = windowCountLiveData.value ?: 0
@@ -55,7 +55,7 @@ object WindowSyncHelpers {
             // Post to main thread
             AppLogger.d(TAG, "[PAGINATION_DEBUG] syncWindowCountToUi: Posting to main thread")
             mainHandler.post {
-                val currentPaginatorWindowCount = paginator.getWindowCount()
+                val currentPaginatorWindowCount = paginator.windowCount
                 windowCountLiveData.value = currentPaginatorWindowCount
                 notifyAdapterCallback?.invoke()
                 AppLogger.d(TAG, "[PAGINATION_DEBUG] syncWindowCountToUi: POSTED update completed, windowCount=$currentPaginatorWindowCount")
@@ -77,7 +77,7 @@ object WindowSyncHelpers {
         updateCallback: (Int) -> Unit,
         notifyAdapterCallback: (() -> Unit)? = null
     ) {
-        val windowCount = paginator.getWindowCount()
+        val windowCount = paginator.windowCount
         val totalChapters = paginator.getTotalChapters()
         val chaptersPerWindow = paginator.getChaptersPerWindow()
         
@@ -96,7 +96,7 @@ object WindowSyncHelpers {
             // Post to main thread
             AppLogger.d(TAG, "[PAGINATION_DEBUG] syncWindowCountToUiFlow: Posting callback to main thread")
             mainHandler.post {
-                val currentPaginatorWindowCount = paginator.getWindowCount()
+                val currentPaginatorWindowCount = paginator.windowCount
                 updateCallback(currentPaginatorWindowCount)
                 notifyAdapterCallback?.invoke()
                 AppLogger.d(TAG, "[PAGINATION_DEBUG] syncWindowCountToUiFlow: POSTED callback completed, windowCount=$currentPaginatorWindowCount")
@@ -113,7 +113,7 @@ object WindowSyncHelpers {
      */
     fun logWindowSyncState(paginator: SlidingWindowPaginator, context: String) {
         AppLogger.d(TAG, "[PAGINATION_DEBUG] Window sync state ($context): " +
-            "windowCount=${paginator.getWindowCount()}, " +
+            "windowCount=${paginator.windowCount}, " +
             "totalChapters=${paginator.getTotalChapters()}, " +
             "chaptersPerWindow=${paginator.getChaptersPerWindow()}, " +
             "isMainThread=${Looper.myLooper() == Looper.getMainLooper()}")

@@ -58,6 +58,9 @@ class SlidingWindowPaginator(
     // Cached window count after recompute
     private var cachedWindowCount: Int = 0
     private var cachedTotalChapters: Int = 0
+
+    val windowCount: Int
+        get() = cachedWindowCount
     
     /**
      * Recompute window mappings based on the given total number of chapters.
@@ -110,11 +113,11 @@ class SlidingWindowPaginator(
      * @return IntRange representing the chapters in this window (inclusive start and end)
      * @throws IllegalArgumentException if windowIndex is invalid
      */
-    fun getWindowRange(windowIndex: Int): IntRange {
-        require(windowIndex >= 0) { "windowIndex must be non-negative, got: $windowIndex" }
-        require(cachedTotalChapters > 0) { "No chapters computed. Call recomputeWindows first." }
-        require(windowIndex < cachedWindowCount) { 
-            "windowIndex $windowIndex out of bounds, windowCount is $cachedWindowCount" 
+    fun getWindowRange(windowIndex: Int): IntRange? {
+        if (windowIndex < 0 || windowIndex >= cachedWindowCount || cachedTotalChapters == 0) {
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] getWindowRange: invalid windowIndex=$windowIndex " +
+                "(windowCount=$cachedWindowCount, totalChapters=$cachedTotalChapters)")
+            return null
         }
         
         val firstChapter = windowIndex * chaptersPerWindow
@@ -152,14 +155,19 @@ class SlidingWindowPaginator(
      * 
      * @param newChaptersPerWindow The new chapters per window value
      */
-    fun setChaptersPerWindow(newChaptersPerWindow: Int) {
+    fun setChaptersPerWindow(newChaptersPerWindow: Int): Boolean {
         require(newChaptersPerWindow > 0) { "chaptersPerWindow must be positive, got: $newChaptersPerWindow" }
+        if (chaptersPerWindow == newChaptersPerWindow) {
+            AppLogger.d(TAG, "[PAGINATION_DEBUG] setChaptersPerWindow: unchanged ($newChaptersPerWindow)")
+            return false
+        }
         val oldValue = chaptersPerWindow
         this.chaptersPerWindow = newChaptersPerWindow
         // Reset cached values to force recomputation
         cachedWindowCount = 0
         cachedTotalChapters = 0
         AppLogger.d(TAG, "[PAGINATION_DEBUG] setChaptersPerWindow: $oldValue -> $newChaptersPerWindow (cache cleared)")
+        return true
     }
     
     /**
@@ -168,13 +176,6 @@ class SlidingWindowPaginator(
      * @return The number of chapters per window
      */
     fun getChaptersPerWindow(): Int = chaptersPerWindow
-    
-    /**
-     * Get the cached window count from the last recompute.
-     * 
-     * @return The number of windows
-     */
-    fun getWindowCount(): Int = cachedWindowCount
     
     /**
      * Get the cached total chapters from the last recompute.
@@ -195,13 +196,13 @@ class SlidingWindowPaginator(
         }
         
         val sb = StringBuilder()
-        sb.append("WindowMap[total=$cachedTotalChapters, perWindow=$chaptersPerWindow, count=$cachedWindowCount]: ")
+        sb.append("WindowMap[totalChapters=$cachedTotalChapters, chaptersPerWindow=$chaptersPerWindow, windowCount=$cachedWindowCount]: ")
         
         for (windowIndex in 0 until cachedWindowCount) {
             val firstChapter = windowIndex * chaptersPerWindow
             val lastChapter = minOf(firstChapter + chaptersPerWindow - 1, cachedTotalChapters - 1)
             val chaptersInWindow = lastChapter - firstChapter + 1
-            sb.append("W$windowIndex=[${firstChapter}-${lastChapter}]($chaptersInWindow)")
+            sb.append("W$windowIndex=[${firstChapter}-${lastChapter}]($chaptersInWindow ch)")
             if (windowIndex < cachedWindowCount - 1) sb.append(", ")
         }
         
@@ -234,5 +235,19 @@ class SlidingWindowPaginator(
         }
         sb.appendLine("=========================================")
         return sb.toString()
+    }
+
+    /**
+     * Validate that the cached window count matches the current chapter configuration.
+     *
+     * @return true if the cached count is correct, false otherwise
+     */
+    fun assertWindowCountValid(): Boolean {
+        val expectedWindowCount = if (cachedTotalChapters <= 0) {
+            0
+        } else {
+            kotlin.math.ceil(cachedTotalChapters.toDouble() / chaptersPerWindow).toInt()
+        }
+        return cachedWindowCount == expectedWindowCount
     }
 }

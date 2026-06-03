@@ -1,6 +1,6 @@
 package com.rifters.riftedreader
 
-import com.rifters.riftedreader.domain.pagination.SlidingWindowPaginator
+import com.rifters.riftedreader.pagination.SlidingWindowPaginator
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -52,7 +52,7 @@ class SlidingWindowPaginatorTest {
         
         assertNotNull(range)
         assertEquals(0, range!!.first)
-        assertEquals(4, range.second)
+        assertEquals(4, range.last)
     }
     
     @Test
@@ -63,7 +63,7 @@ class SlidingWindowPaginatorTest {
         
         assertNotNull(range)
         assertEquals(5, range!!.first)
-        assertEquals(9, range.second)
+        assertEquals(9, range.last)
     }
     
     @Test
@@ -74,7 +74,7 @@ class SlidingWindowPaginatorTest {
         
         assertNotNull(range)
         assertEquals(10, range!!.first)
-        assertEquals(11, range.second) // Only 2 chapters in last window
+        assertEquals(11, range.last) // Only 2 chapters in last window
     }
     
     @Test
