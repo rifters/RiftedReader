@@ -96,20 +96,21 @@ class FlexPaginatorBridge(
      */
     @JavascriptInterface
     fun onBoundaryReached(direction: String) {
+        if (direction != "forward" && direction != "backward") {
+            AppLogger.w(
+                TAG,
+                "[BOUNDARY_REACHED] Ignoring unexpected direction=$direction for windowIndex=$windowIndex"
+            )
+            return
+        }
+
         AppLogger.d(
             TAG,
             "[BOUNDARY_REACHED] windowIndex=$windowIndex, direction=$direction"
         )
 
-        if (direction.isNotEmpty()) {
-            mainHandler.post {
-                onBoundaryReached(windowIndex, direction)
-            }
-        } else {
-            AppLogger.w(
-                TAG,
-                "[BOUNDARY_REACHED] Ignoring empty direction for windowIndex=$windowIndex"
-            )
+        mainHandler.post {
+            onBoundaryReached(windowIndex, direction)
         }
     }
 

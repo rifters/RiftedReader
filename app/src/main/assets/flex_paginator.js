@@ -305,13 +305,8 @@
      * @returns {boolean} true if navigation was handled
      */
     function navigateToPage(pageIndex) {
-        if (!state.isInitialized && state.slices.length === 0) {
+        if (!state.isInitialized || state.slices.length === 0) {
             log('WARN', 'navigateToPage: paginator not ready');
-            return false;
-        }
-
-        if (state.slices.length === 0) {
-            log('WARN', 'navigateToPage: no slices available');
             return false;
         }
 
