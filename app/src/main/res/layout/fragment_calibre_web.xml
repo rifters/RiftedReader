@@ -105,7 +105,8 @@
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/calibre_web_back"
-                android:src="@drawable/ic_arrow_back_24" />
+                android:src="@drawable/ic_arrow_back_24"
+                android:tint="?attr/colorOnSurface" />
 
             <ImageButton
                 android:id="@+id/forwardButton"
@@ -113,7 +114,8 @@
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/calibre_web_forward"
-                android:src="@drawable/ic_arrow_forward_24" />
+                android:src="@drawable/ic_arrow_forward_24"
+                android:tint="?attr/colorOnSurface" />
 
             <ImageButton
                 android:id="@+id/refreshButton"
@@ -121,7 +123,8 @@
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/calibre_web_refresh"
-                android:src="@drawable/ic_refresh_24" />
+                android:src="@drawable/ic_refresh_24"
+                android:tint="?attr/colorOnSurface" />
 
             <ImageButton
                 android:id="@+id/homeButton"
@@ -129,7 +132,8 @@
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/calibre_web_home"
-                android:src="@drawable/ic_home_24" />
+                android:src="@drawable/ic_home_24"
+                android:tint="?attr/colorOnSurface" />
 
             <FrameLayout
                 android:layout_width="48dp"
@@ -141,7 +145,8 @@
                     android:layout_height="48dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/calibre_web_downloads"
-                    android:src="@drawable/ic_download_24" />
+                    android:src="@drawable/ic_download_24"
+                    android:tint="?attr/colorOnSurface" />
 
                 <TextView
                     android:id="@+id/downloadBadge"

@@ -2,6 +2,7 @@ package com.rifters.riftedreader.ui.calibre
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -231,7 +232,7 @@ class CalibreWebFragment : Fragment() {
         }
         TextView(requireContext()).apply {
             text = getString(R.string.calibre_web_active_downloads)
-            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleLarge)
+            typeface = Typeface.DEFAULT_BOLD
             container.addView(this)
         }
         if (activeDownloads.isEmpty()) {
