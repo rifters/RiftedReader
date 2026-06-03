@@ -85,7 +85,7 @@ class CalibreListResponseDeserializer : JsonDeserializer<CalibreListResponse> {
             element.isJsonArray -> element.asJsonArray.mapNotNull { it.asStringOrNull() }
             element.isJsonObject -> element.asJsonObject.keySet().toList()
             else -> element.asStringOrNull()
-                ?.split(',', ';')
+                ?.split(*LIST_DELIMITERS)
                 ?.map { it.trim() }
                 ?.filter { it.isNotEmpty() }
                 .orEmpty()
@@ -107,7 +107,7 @@ class CalibreListResponseDeserializer : JsonDeserializer<CalibreListResponse> {
         return when {
             element.isJsonArray -> element.asJsonArray.mapNotNull { it.asStringOrNull() }
             else -> element.asStringOrNull()
-                ?.split(',', ';', '&')
+                ?.split(*LIST_DELIMITERS)
                 ?.map { it.trim() }
                 ?.filter { it.isNotEmpty() }
                 .orEmpty()
@@ -144,5 +144,6 @@ class CalibreListResponseDeserializer : JsonDeserializer<CalibreListResponse> {
 
     private companion object {
         const val DEFAULT_TITLE = "Untitled"
+        val LIST_DELIMITERS = charArrayOf(',', ';', '&')
     }
 }

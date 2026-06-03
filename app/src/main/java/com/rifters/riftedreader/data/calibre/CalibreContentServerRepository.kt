@@ -75,14 +75,7 @@ class CalibreContentServerRepository(
     }
 
     fun getCoverUrl(bookId: Int): String {
-        return latestConfig().contentServerUrl.toHttpUrl()
-            .newBuilder()
-            .addPathSegment("get")
-            .addPathSegment("cover")
-            .addPathSegment(bookId.toString())
-            .addPathSegment("cover.jpg")
-            .build()
-            .toString()
+        return coverUrl(latestConfig().contentServerUrl, bookId)
     }
 
     private suspend fun loadEnabledConfig(): CalibreConnectionConfig {
@@ -105,7 +98,7 @@ class CalibreContentServerRepository(
                 currentConfig
             }
             ?: throw IllegalStateException(
-                "Calibre Content Server config has not been loaded. Call getLibrary() or searchBooks() before accessing generated URLs, or provide a configProvider."
+                "Calibre Content Server config has not been loaded. Call and await getLibrary() or searchBooks() before accessing generated URLs, or provide a configProvider."
             )
     }
 
@@ -144,6 +137,8 @@ class CalibreContentServerRepository(
         val books = books.map { (id, metadata) ->
             metadata.toBook(id, baseUrl)
         }
+        // The Calibre list/search command shape used here does not include offset or limit
+        // fields, so callers receive a page from the fetched command response.
         val safeOffset = offset.coerceAtLeast(0)
         val safeLimit = limit.coerceAtLeast(0)
         return CalibreLibrary(
