@@ -27,7 +27,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -54,6 +56,9 @@ class LibraryViewModel(
     private val _smartCollections = MutableStateFlow(SmartCollections.snapshot(emptyList()))
     val smartCollections: StateFlow<List<SmartCollectionSnapshot>> = _smartCollections.asStateFlow()
 
+    private val _availableTags = MutableStateFlow<List<String>>(emptyList())
+    val availableTags: StateFlow<List<String>> = _availableTags.asStateFlow()
+
     val savedSearches: StateFlow<List<SavedLibrarySearch>> = libraryPreferences.savedSearches
 
     private val _isScanning = MutableStateFlow(false)
@@ -68,6 +73,7 @@ class LibraryViewModel(
     init {
         observeBooks()
         observeCollections()
+        observeAvailableTags()
         observeSmartCollections()
     }
 
@@ -104,6 +110,22 @@ class LibraryViewModel(
                     }
                 }
             }
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun observeAvailableTags() {
+        viewModelScope.launch {
+            repository.allBooks
+                .mapLatest { allBooks ->
+                    withContext(Dispatchers.Default) {
+                        extractUniqueTagsWithPreferredCasing(allBooks)
+                    }
+                }
+                .distinctUntilChanged()
+                .collectLatest { extractedTags ->
+                    _availableTags.value = extractedTags
+                }
         }
     }
     
