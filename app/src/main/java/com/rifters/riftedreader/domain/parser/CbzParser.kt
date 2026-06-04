@@ -7,7 +7,6 @@ import com.rifters.riftedreader.domain.reader.ImageSequenceEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.lingala.zip4j.ZipFile
-import net.lingala.zip4j.model.FileHeader
 import java.io.File
 
 class CbzParser : BookParser {
