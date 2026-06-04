@@ -90,7 +90,7 @@
 
         <ListPreference
             android:key="reader_font_family"
-            android:title="Font"
+            android:title="@string/settings_reader_font_family"
             android:defaultValue="sans-serif"
             app:entries="@array/font_family_entries"
             app:entryValues="@array/font_family_values"
@@ -98,7 +98,7 @@
 
         <SeekBarPreference
             android:key="reader_page_padding_dp"
-            android:title="Page Margins"
+            android:title="@string/settings_reader_page_padding"
             android:defaultValue="16"
             app:min="0"
             android:max="48"
