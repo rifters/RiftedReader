@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.lingala.zip4j.ZipFile
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 class CbzParser : BookParser {
 
@@ -17,7 +18,7 @@ class CbzParser : BookParser {
     }
 
     private val imageSequenceEngine = ImageSequenceEngine()
-    private val imageEntryCache = mutableMapOf<String, List<String>>()
+    private val imageEntryCache = ConcurrentHashMap<String, List<String>>()
 
     override fun canParse(file: File): Boolean = file.extension.lowercase() in SUPPORTED_EXTENSIONS
 
@@ -60,9 +61,7 @@ class CbzParser : BookParser {
 
     private fun getImageEntryNames(file: File): List<String> {
         val cacheKey = cacheKey(file)
-        imageEntryCache[cacheKey]?.let { return it }
-
-        return runCatching {
+        return imageEntryCache[cacheKey] ?: runCatching {
             ZipFile(file).use { zipFile ->
                 zipFile.fileHeaders
                     .asSequence()

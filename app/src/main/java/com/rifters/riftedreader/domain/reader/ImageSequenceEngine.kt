@@ -5,6 +5,7 @@ import android.util.Base64
 import com.rifters.riftedreader.util.ReaderConstants.IMAGE_CACHE_SIZE
 import com.rifters.riftedreader.util.ReaderConstants.IMAGE_RENDER_DPI
 import java.io.ByteArrayOutputStream
+import java.util.Collections
 import kotlin.math.roundToInt
 
 data class ImagePage(
@@ -25,11 +26,11 @@ class ImageSequenceEngine(
         val dataUri: String
     )
 
-    private val pageCache = object : LinkedHashMap<Int, CachedPage>(maxCachePages, 0.75f, true) {
+    private val pageCache = Collections.synchronizedMap(object : LinkedHashMap<Int, CachedPage>(maxCachePages, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, CachedPage>?): Boolean {
             return size > maxCachePages
         }
-    }
+    })
 
     @Synchronized
     fun renderPage(bitmap: Bitmap): String = encodeBitmap(bitmap)
