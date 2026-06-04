@@ -23,6 +23,7 @@ import com.rifters.riftedreader.domain.parser.ParserFactory
 import com.rifters.riftedreader.util.FileScanner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -335,6 +336,27 @@ class LibraryViewModel(
                     }
                 }
                 _events.emit(LibraryEvent.CollectionDeleted(collection.name))
+            } catch (e: Exception) {
+                _events.emit(LibraryEvent.CollectionOperationFailed)
+            }
+        }
+    }
+
+    fun getCollectionsForBook(bookId: String): Flow<List<CollectionEntity>> =
+        collectionRepository.getCollectionsForBook(bookId)
+
+    fun setBookCollections(bookId: String, selectedIds: Set<String>) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val currentIds = collectionRepository.getCollectionIdsForBook(bookId).toSet()
+                    (selectedIds - currentIds).forEach { id ->
+                        collectionRepository.addBookToCollection(bookId, id)
+                    }
+                    (currentIds - selectedIds).forEach { id ->
+                        collectionRepository.removeBookFromCollection(bookId, id)
+                    }
+                }
             } catch (e: Exception) {
                 _events.emit(LibraryEvent.CollectionOperationFailed)
             }

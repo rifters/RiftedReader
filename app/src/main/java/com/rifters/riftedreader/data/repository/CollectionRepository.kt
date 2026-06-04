@@ -19,6 +19,9 @@ class CollectionRepository(private val collectionDao: CollectionDao) {
 
     val collectionsWithBooks: Flow<List<CollectionWithBooks>> = collectionDao.observeCollectionsWithBooks()
 
+    fun getCollectionsForBook(bookId: String): Flow<List<CollectionEntity>> =
+        collectionDao.observeCollectionsForBook(bookId)
+
     suspend fun createCollection(name: String, description: String? = null): CollectionEntity {
         val collection = CollectionEntity(name = name.trim(), description = description?.trim())
         collectionDao.insertCollection(collection)
