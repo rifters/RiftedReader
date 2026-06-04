@@ -73,6 +73,8 @@ class LibraryFragment : Fragment() {
     private val binding get() = _binding!!
 
     private lateinit var viewModel: LibraryViewModel
+    internal val libraryViewModel: LibraryViewModel
+        get() = viewModel
     private lateinit var adapter: BooksAdapter
     private var favoritesMenuItem: MenuItem? = null
     private var cachedCollections: List<CollectionEntity> = emptyList()
@@ -236,6 +238,14 @@ class LibraryFragment : Fragment() {
                 putExtra("BOOK_TITLE", book.title)
             }
             startActivity(intent)
+        }
+        adapter.onBookLongPress = { book ->
+            val sheet = BookOptionsBottomSheet.newInstance(book)
+            sheet.onAddToCollection = { selectedBook ->
+                CollectionPickerBottomSheet.newInstance(selectedBook.id)
+                    .show(childFragmentManager, "collection_picker")
+            }
+            sheet.show(childFragmentManager, "book_options")
         }
 
         binding.booksRecyclerView.layoutManager = LinearLayoutManager(requireContext())

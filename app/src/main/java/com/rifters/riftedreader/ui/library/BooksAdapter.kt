@@ -22,6 +22,7 @@ class BooksAdapter(
 ) : ListAdapter<BookMeta, BooksAdapter.BookViewHolder>(BookDiffCallback()) {
 
     var selectionTracker: SelectionTracker<String>? = null
+    var onBookLongPress: (BookMeta) -> Unit = {}
 
     init {
         setHasStableIds(true)
@@ -37,7 +38,7 @@ class BooksAdapter(
             parent,
             false
         )
-        return BookViewHolder(binding, onBookClick)
+        return BookViewHolder(binding, onBookClick, onBookLongPress)
     }
 
     override fun onBindViewHolder(holder: BookViewHolder, position: Int) {
@@ -56,7 +57,8 @@ class BooksAdapter(
 
     class BookViewHolder(
         private val binding: ItemBookBinding,
-        private val onBookClick: (BookMeta) -> Unit
+        private val onBookClick: (BookMeta) -> Unit,
+        private val onBookLongPress: (BookMeta) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
 
         private var currentBook: BookMeta? = null
@@ -115,7 +117,7 @@ class BooksAdapter(
             }
 
             binding.root.setOnLongClickListener {
-                selectionTracker?.select(book.id)
+                onBookLongPress(book)
                 true
             }
         }
