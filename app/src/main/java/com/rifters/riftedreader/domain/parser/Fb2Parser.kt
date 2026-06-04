@@ -334,7 +334,6 @@ class Fb2Parser : BookParser {
             isNamespaceAware = true
         }
         return factory.newPullParser().apply {
-            setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true)
             setInput(ByteArrayInputStream(bytes), null)
         }
     }
