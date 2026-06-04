@@ -3,6 +3,7 @@ package com.rifters.riftedreader.ui.library
 import android.database.sqlite.SQLiteConstraintException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rifters.riftedreader.data.database.entities.Bookmark
 import com.rifters.riftedreader.data.database.entities.BookMeta as Book
 import com.rifters.riftedreader.data.database.entities.CollectionEntity
 import com.rifters.riftedreader.data.preferences.LibraryPreferences
@@ -64,7 +65,7 @@ class LibraryViewModel(
     val books: StateFlow<List<Book>> = _books.asStateFlow()
 
     private val chapterCountCache = Collections.synchronizedMap(
-        object : LinkedHashMap<String, Int>(128, 0.75f, true) {
+        object : LinkedHashMap<String, Int>(256, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Int>?): Boolean {
                 return size > 256
             }
@@ -407,12 +408,7 @@ class LibraryViewModel(
             buildList {
                 for (book in allBooks) {
                     val bookmark = lastReadBookmarks[book.id]
-                    val hasProgress = book.lastOpened > 0L ||
-                        bookmark != null ||
-                        book.currentChapterIndex > 0 ||
-                        book.currentCharacterOffset > 0 ||
-                        book.percentComplete > 0f
-                    if (!hasProgress) continue
+                    if (!hasReadingProgress(book, bookmark)) continue
 
                     add(
                         BookWithProgress(
@@ -426,6 +422,14 @@ class LibraryViewModel(
                 }
             }.sortedByDescending { it.lastOpenedTimestamp }
         }
+    }
+
+    private fun hasReadingProgress(book: Book, bookmark: Bookmark?): Boolean {
+        return book.lastOpened > 0L ||
+            bookmark != null ||
+            book.currentChapterIndex > 0 ||
+            book.currentCharacterOffset > 0 ||
+            book.percentComplete > 0f
     }
 
     private suspend fun resolveTotalChapters(book: Book): Int {
