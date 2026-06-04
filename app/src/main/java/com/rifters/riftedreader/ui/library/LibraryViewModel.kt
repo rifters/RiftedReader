@@ -66,6 +66,7 @@ data class BookWithProgress(
     val totalChapters: Int
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class LibraryViewModel(
     private val repository: BookRepository,
     private val bookmarkRepository: BookmarkRepository,
