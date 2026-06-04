@@ -54,6 +54,9 @@ class LibraryViewModel(
     private val _smartCollections = MutableStateFlow(SmartCollections.snapshot(emptyList()))
     val smartCollections: StateFlow<List<SmartCollectionSnapshot>> = _smartCollections.asStateFlow()
 
+    private val _availableTags = MutableStateFlow<List<String>>(emptyList())
+    val availableTags: StateFlow<List<String>> = _availableTags.asStateFlow()
+
     val savedSearches: StateFlow<List<SavedLibrarySearch>> = libraryPreferences.savedSearches
 
     private val _isScanning = MutableStateFlow(false)
@@ -93,6 +96,15 @@ class LibraryViewModel(
     private fun observeSmartCollections() {
         viewModelScope.launch {
             repository.allBooks.collectLatest { allBooks ->
+                _availableTags.value = allBooks
+                    .asSequence()
+                    .flatMap { it.tags.asSequence() }
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .distinctBy { it.lowercase() }
+                    .sortedBy { it.lowercase() }
+                    .toList()
+
                 val snapshot = SmartCollections.snapshot(allBooks)
                 _smartCollections.value = snapshot
 
