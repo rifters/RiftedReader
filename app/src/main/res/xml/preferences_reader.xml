@@ -106,13 +106,13 @@
 
         <androidx.preference.SwitchPreferenceCompat
             android:key="reader_keep_screen_on"
-            android:title="Keep Screen On"
+            android:title="@string/settings_reader_keep_screen_on"
             android:defaultValue="false" />
 
         <SeekBarPreference
             android:key="reader_brightness_percent"
-            android:title="Brightness"
-            android:summary="0 = system default"
+            android:title="@string/settings_reader_brightness"
+            android:summary="@string/settings_reader_brightness_summary"
             android:defaultValue="0"
             app:min="0"
             android:max="100"

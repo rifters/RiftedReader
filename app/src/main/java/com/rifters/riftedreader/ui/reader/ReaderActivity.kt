@@ -895,7 +895,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                         lp.screenBrightness = if (settings.brightnessPercent == 0) {
                             WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                         } else {
-                            settings.brightnessPercent / 100f
+                            settings.brightnessPercent.toFloat() / 100f
                         }
                         window.attributes = lp
                     }
