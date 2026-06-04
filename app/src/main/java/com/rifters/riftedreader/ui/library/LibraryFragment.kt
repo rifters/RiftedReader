@@ -26,6 +26,7 @@ import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
 import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.setFragmentResultListener
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.Lifecycle
@@ -180,6 +181,7 @@ class LibraryFragment : Fragment() {
         setupSavedSearchControls()
         setupFab()
         setupMenu()
+        setupBottomSheetResults()
         observeViewModel()
 
         val allChip = Chip(requireContext()).apply {
@@ -237,6 +239,10 @@ class LibraryFragment : Fragment() {
             }
             startActivity(intent)
         }
+        adapter.onBookLongPress = { book ->
+            BookOptionsBottomSheet.newInstance(book)
+                .show(childFragmentManager, "book_options")
+        }
 
         binding.booksRecyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.booksRecyclerView.adapter = adapter
@@ -253,6 +259,26 @@ class LibraryFragment : Fragment() {
         tracker.addObserver(selectionObserver)
         selectionTracker = tracker
         adapter.selectionTracker = tracker
+    }
+
+    private fun setupBottomSheetResults() {
+        childFragmentManager.setFragmentResultListener(
+            BookOptionsBottomSheet.REQUEST_KEY,
+            viewLifecycleOwner
+        ) { _, bundle ->
+            val bookId = bundle.getString(BookOptionsBottomSheet.RESULT_BOOK_ID).orEmpty()
+            if (bookId.isNotBlank()) {
+                CollectionPickerBottomSheet.newInstance(bookId)
+                    .show(childFragmentManager, "collection_picker")
+            }
+        }
+
+        childFragmentManager.setFragmentResultListener(
+            CollectionPickerBottomSheet.REQUEST_KEY_MANAGE_COLLECTIONS,
+            viewLifecycleOwner
+        ) { _, _ ->
+            showManageCollectionsDialog()
+        }
     }
 
     private fun setupSearchView() {

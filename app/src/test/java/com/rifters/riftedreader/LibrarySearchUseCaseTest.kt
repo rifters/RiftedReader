@@ -383,6 +383,11 @@ class TestBookMetaDao(private val books: List<BookMeta>) : BookMetaDao {
 class TestCollectionDao(private val collectionsWithBooksData: List<CollectionWithBooks>) : CollectionDao {
     override fun observeCollectionsWithBooks(): Flow<List<CollectionWithBooks>> = MutableStateFlow(collectionsWithBooksData)
     override fun observeCollections(): Flow<List<CollectionEntity>> = MutableStateFlow(collectionsWithBooksData.map { it.collection })
+    override fun observeCollectionsForBook(bookId: String): Flow<List<CollectionEntity>> = MutableStateFlow(
+        collectionsWithBooksData.filter { collectionWithBooks ->
+            collectionWithBooks.books.any { it.id == bookId }
+        }.map { it.collection }
+    )
     override suspend fun insertCollection(collection: CollectionEntity) {}
     override suspend fun updateCollection(collection: CollectionEntity) {}
     override suspend fun deleteCollection(collection: CollectionEntity) {}

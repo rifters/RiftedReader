@@ -49,6 +49,9 @@
     <string name="library_collection_operation_failed">Could not update collections. Try again.</string>
     <string name="library_collection_name_hint">Collection name</string>
     <string name="library_collection_empty_name">Enter a name.</string>
+    <string name="library_book_add_to_collection">Add to collection</string>
+    <string name="library_collection_picker_title">Add to collections</string>
+    <string name="library_collection_picker_empty">No collections yet.</string>
     <string name="library_saved_search_add">Save filters</string>
     <string name="library_saved_search_save_title">Save current filters</string>
     <string name="library_saved_search_rename_title">Rename saved search</string>
