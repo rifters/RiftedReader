@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -57,6 +58,8 @@ class LibraryViewModel(
     val smartCollections: StateFlow<List<SmartCollectionSnapshot>> = _smartCollections.asStateFlow()
 
     private val _availableTags = MutableStateFlow<List<String>>(emptyList())
+    private val _activeTagFilter = MutableStateFlow<String?>(null)
+    val activeTagFilter: StateFlow<String?> = _activeTagFilter.asStateFlow()
     val availableTags: StateFlow<List<String>> = _availableTags.asStateFlow()
 
     val savedSearches: StateFlow<List<SavedLibrarySearch>> = libraryPreferences.savedSearches
@@ -80,7 +83,9 @@ class LibraryViewModel(
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun observeBooks() {
         viewModelScope.launch {
-            _filters.flatMapLatest { filters ->
+            _filters.combine(_activeTagFilter) { filters, tag ->
+                filters.copy(tags = listOfNotNull(tag).toSet())
+            }.flatMapLatest { filters ->
                 searchUseCase.observe(filters)
             }.collectLatest { bookList ->
                 _books.value = bookList
@@ -156,6 +161,10 @@ class LibraryViewModel(
     fun setCollections(collectionIds: Set<String>) = updateFilters { current -> current.copy(collections = collectionIds) }
 
     fun setTags(tags: Set<String>) = updateFilters { current -> current.copy(tags = tags) }
+
+    fun setTagFilter(tag: String?) {
+        _activeTagFilter.value = tag
+    }
 
     fun setFavoritesOnly(enabled: Boolean) = updateFilters { current -> current.copy(favoritesOnly = enabled) }
 

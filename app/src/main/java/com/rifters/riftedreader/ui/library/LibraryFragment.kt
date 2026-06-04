@@ -59,6 +59,7 @@ import com.rifters.riftedreader.ui.reader.ReaderActivity
 import com.rifters.riftedreader.util.AppLogger
 import com.rifters.riftedreader.util.FileScanner
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -172,6 +173,44 @@ class LibraryFragment : Fragment() {
         setupFab()
         setupMenu()
         observeViewModel()
+
+        val allChip = Chip(requireContext()).apply {
+            id = View.generateViewId()
+            text = getString(R.string.library_filter_all_tags)
+            isCheckable = true
+            isChecked = true
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.availableTags.combine(viewModel.activeTagFilter) { tags, activeTag ->
+                    tags to activeTag
+                }.collect { (tags, activeTag) ->
+                    binding.tagChipGroup.removeAllViews()
+                    binding.tagChipGroup.addView(allChip)
+                    allChip.isChecked = activeTag == null
+                    tags.forEach { tag ->
+                        val chip = Chip(requireContext()).apply {
+                            id = View.generateViewId()
+                            text = tag
+                            isCheckable = true
+                            isChecked = activeTag == tag
+                        }
+                        binding.tagChipGroup.addView(chip)
+                    }
+                    binding.tagScrollView.visibility =
+                        if (tags.isEmpty()) View.GONE else View.VISIBLE
+                }
+            }
+        }
+
+        binding.tagChipGroup.setOnCheckedStateChangeListener { group, checkedIds ->
+            val chip = group.findViewById<Chip>(
+                checkedIds.firstOrNull() ?: return@setOnCheckedStateChangeListener
+            )
+            val tag = if (chip.id == allChip.id) null else chip.text.toString()
+            viewModel.setTagFilter(tag)
+        }
     }
 
     override fun onViewStateRestored(savedInstanceState: Bundle?) {

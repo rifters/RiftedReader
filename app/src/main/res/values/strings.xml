@@ -30,6 +30,7 @@
     <string name="library_import_copy_failed">Could not copy the selected file</string>
     <string name="library_menu_settings">Settings</string>
     <string name="library_filter_favorites">Show favorites only</string>
+    <string name="library_filter_all_tags">All</string>
     <string name="library_filter_collections">Collections</string>
     <string name="library_filter_collections_count">Collections (%1$d)</string>
     <string name="library_filter_collections_empty">Create a collection first to filter by it.</string>
