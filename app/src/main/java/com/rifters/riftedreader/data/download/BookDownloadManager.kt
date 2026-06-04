@@ -25,6 +25,7 @@ class BookDownloadManager(
     private val client: OkHttpClient = DEFAULT_CLIENT,
 ) {
     private val appContext = context.applicationContext
+    private val notifHelper = DownloadNotificationHelper(appContext)
     // Serializes metadata insertion so duplicate checks and inserts cannot interleave.
     private val importMutex = Mutex()
 
@@ -32,19 +33,34 @@ class BookDownloadManager(
         url: String,
         filename: String,
         headers: Map<String, String> = emptyMap(),
-    ): Result<BookMeta> = withContext(Dispatchers.IO) {
-        var downloadedFile: File? = null
-        try {
-            val destination = createDestination(filename)
-            downloadedFile = destination
-            downloadToFile(url, headers, destination)
-            Result.success(importDownloadedBook(destination))
-        } catch (throwable: Throwable) {
-            if (throwable is CancellationException) throw throwable
-            downloadedFile?.delete()
-            Result.failure(throwable)
+    ): Result<BookMeta> {
+        val notifId = notifIdFor(url)
+        notifHelper.notifyProgress(notifId, filename)
+        return withContext(Dispatchers.IO) {
+            var downloadedFile: File? = null
+            try {
+                val destination = createDestination(filename)
+                downloadedFile = destination
+                downloadToFile(url, headers, destination)
+                Result.success(importDownloadedBook(destination))
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                downloadedFile?.delete()
+                Result.failure(throwable)
+            }
+        }.also { result ->
+            result
+                .onSuccess { book -> notifHelper.notifySuccess(notifId, book.title) }
+                .onFailure { error ->
+                    notifHelper.notifyFailure(
+                        notifId,
+                        error.message.orEmpty().ifBlank { "Unknown error" }
+                    )
+                }
         }
     }
+
+    private fun notifIdFor(url: String): Int = url.hashCode()
 
     private fun downloadToFile(url: String, headers: Map<String, String>, destination: File) {
         val requestBuilder = Request.Builder()
