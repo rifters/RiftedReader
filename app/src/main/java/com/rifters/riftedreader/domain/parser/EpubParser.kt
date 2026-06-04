@@ -974,6 +974,16 @@ class EpubParser : BookParser {
         }
     }
 
+    /**
+     * Safely record an EPUB image mapping for diagnostics.
+     *
+     * @param originalSrc Original HTML src attribute value.
+     * @param imagePath Resolved EPUB-relative image path.
+     * @param cacheFile Cached file path, or empty when no cache file exists.
+     * @param assetUrl Final asset URL or data URI used by the renderer.
+     * @param chapterIndex Chapter index where the image was processed.
+     * @param errorLabel Human-readable label used in error logs.
+     */
     private fun recordImageMappingSafely(
         originalSrc: String,
         imagePath: String,
