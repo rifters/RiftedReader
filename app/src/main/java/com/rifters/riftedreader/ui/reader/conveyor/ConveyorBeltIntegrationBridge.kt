@@ -45,10 +45,7 @@ import kotlinx.coroutines.launch
  * @param readerViewModel The existing ReaderViewModel to observe (non-invasive)
  * @param conveyorViewModel The isolated conveyor system to forward events to
  */
-class ConveyorBeltIntegrationBridge(
-    private val readerViewModel: ReaderViewModel,
-    private val conveyorViewModel: ConveyorBeltSystemViewModel
-) : DefaultLifecycleObserver {
+class ConveyorBeltIntegrationBridge : DefaultLifecycleObserver {
     
     companion object {
         private const val TAG = "ConveyorBridge"
@@ -58,6 +55,17 @@ class ConveyorBeltIntegrationBridge(
     private var scope: CoroutineScope? = null
     private var isInitialized = false
     private var lastObservedWindow: Int = -1
+    private lateinit var readerViewModel: ReaderViewModel
+    private lateinit var conveyorViewModel: ConveyorBeltSystemViewModel
+
+    fun attach(
+        readerViewModel: ReaderViewModel,
+        conveyorViewModel: ConveyorBeltSystemViewModel
+    ): ConveyorBeltIntegrationBridge {
+        this.readerViewModel = readerViewModel
+        this.conveyorViewModel = conveyorViewModel
+        return this
+    }
     
     /**
      * Initialize the bridge when the lifecycle starts.
@@ -79,6 +87,11 @@ class ConveyorBeltIntegrationBridge(
      * Start observing the ReaderViewModel for window changes.
      */
     private fun startObserving() {
+        if (!::readerViewModel.isInitialized || !::conveyorViewModel.isInitialized) {
+            log("START_OBSERVING", "ReaderViewModel not attached - skipping")
+            return
+        }
+
         if (scope != null) {
             log("START_OBSERVING", "Already observing - skipping")
             return

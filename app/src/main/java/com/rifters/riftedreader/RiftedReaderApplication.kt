@@ -4,6 +4,7 @@ import android.app.Application
 import com.rifters.riftedreader.util.AppLogger
 import com.rifters.riftedreader.util.BufferLogger
 import com.rifters.riftedreader.util.HtmlDebugLogger
+import com.rifters.riftedreader.domain.parser.ParserFactory
 
 /**
  * Application class for RiftedReader
@@ -22,6 +23,8 @@ class RiftedReaderApplication : Application() {
         AppLogger.init(this)
         AppLogger.startSession(this)
         AppLogger.event("Application", "RiftedReader application started", "app/lifecycle")
+
+        ParserFactory.enablePreviewParsers()
 
         // Dedicated conveyor buffer log (separate from AppLogger session log)
         BufferLogger.init(this)

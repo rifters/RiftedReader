@@ -870,7 +870,6 @@ class EpubParser : BookParser {
      * @param actualHeight Decoded image height (for registry)
      * @return CacheResult with asset URL and cache file path
      */
-    @Suppress("UNUSED_PARAMETER") // Parameters reserved for recordMapping after asset handler PR merges
     private fun cacheImageAndGetUrl(
         imageBytes: ByteArray,
         imagePath: String,
@@ -929,8 +928,16 @@ class EpubParser : BookParser {
                 img.attr("href", assetUrl)
                 img.attr("xlink:href", assetUrl)
             }
-            
-            // TODO(#208): Enable EpubImageAssetHelper.recordMapping after asset handler PR merges
+
+            EpubImageAssetHelper.recordMapping(
+                EpubImageAssetHelper.MappingEntry(
+                    originalSrc = originalSrc,
+                    resolvedPath = imagePath,
+                    cacheFile = cachedImageFile.absolutePath,
+                    assetUrl = assetUrl,
+                    chapterIndex = page
+                )
+            )
             
             CacheResult(assetUrl, cachedImageFile.absolutePath)
         } catch (e: Exception) {
@@ -954,8 +961,16 @@ class EpubParser : BookParser {
                 img.attr("href", dataUri)
                 img.attr("xlink:href", dataUri)
             }
-            
-            // TODO(#208): Enable EpubImageAssetHelper.recordMapping for base64 fallback after asset handler PR merges
+
+            EpubImageAssetHelper.recordMapping(
+                EpubImageAssetHelper.MappingEntry(
+                    originalSrc = originalSrc,
+                    resolvedPath = imagePath,
+                    cacheFile = "",
+                    assetUrl = truncateForDisplay(dataUri),
+                    chapterIndex = page
+                )
+            )
             
             CacheResult(truncateForDisplay(dataUri), null)
         }

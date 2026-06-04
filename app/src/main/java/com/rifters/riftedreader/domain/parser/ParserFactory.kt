@@ -8,6 +8,7 @@ import java.io.File
 object ParserFactory {
 
     private val parsers = mutableListOf<BookParser>()
+    private var previewParsersEnabled = false
 
     init {
         register(TxtParser())
@@ -21,6 +22,9 @@ object ParserFactory {
     }
 
     fun enablePreviewParsers() {
+        if (previewParsersEnabled) return
+        previewParsersEnabled = true
+
         FormatCatalog.previewParsers().forEach { preview ->
             val alreadyRegistered = parsers.any { existing ->
                 existing is PreviewParser && existing.descriptor.id == preview.descriptor.id

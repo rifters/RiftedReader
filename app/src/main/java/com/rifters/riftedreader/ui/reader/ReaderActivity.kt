@@ -51,6 +51,7 @@ import com.rifters.riftedreader.domain.tts.TTSStatusNotifier
 import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
 import com.rifters.riftedreader.ui.reader.ReaderThemePaletteResolver
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
+import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltIntegrationBridge
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorDebugActivity
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorPhase
 import com.rifters.riftedreader.ui.tts.TTSControlsBottomSheet
@@ -97,6 +98,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
     private var isReslicingIndicatorVisible: Boolean = false
     private lateinit var layoutManager: LinearLayoutManager
     private lateinit var snapHelper: PagerSnapHelper
+    private lateinit var conveyorBeltIntegrationBridge: ConveyorBeltIntegrationBridge
     private var readerBookmarkMenuItem: MenuItem? = null
     private var currentPagerPosition: Int = 0
     private var isUserScrolling: Boolean = false
@@ -246,6 +248,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
             OffscreenSlicingWebView(applicationContext)
         }
         viewModel.setConveyorBeltSystem(conveyorBeltSystem)
+        conveyorBeltIntegrationBridge = ConveyorBeltIntegrationBridge().attach(viewModel, conveyorBeltSystem)
+        lifecycle.addObserver(conveyorBeltIntegrationBridge)
         
         // DIAGNOSTICS: Log ConveyorPrimary status at startup
         // Conveyor is now always enabled - minimal paginator is the only system
