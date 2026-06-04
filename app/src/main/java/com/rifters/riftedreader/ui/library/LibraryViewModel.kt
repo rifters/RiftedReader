@@ -3,9 +3,11 @@ package com.rifters.riftedreader.ui.library
 import android.database.sqlite.SQLiteConstraintException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.rifters.riftedreader.data.database.entities.BookMeta
+import com.rifters.riftedreader.data.database.entities.Bookmark
+import com.rifters.riftedreader.data.database.entities.BookMeta as Book
 import com.rifters.riftedreader.data.database.entities.CollectionEntity
 import com.rifters.riftedreader.data.preferences.LibraryPreferences
+import com.rifters.riftedreader.data.repository.BookmarkRepository
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.data.repository.CollectionRepository
 import com.rifters.riftedreader.domain.library.BookMetadataUpdate
@@ -23,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,14 +33,27 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Collections
+import java.util.LinkedHashMap
+
+data class BookWithProgress(
+    val book: Book,
+    val lastReadChapterIndex: Int,
+    val lastReadCharOffset: Int,
+    val lastOpenedTimestamp: Long,
+    val totalChapters: Int
+)
 
 class LibraryViewModel(
     private val repository: BookRepository,
+    private val bookmarkRepository: BookmarkRepository,
     private val collectionRepository: CollectionRepository,
     private val fileScanner: FileScanner,
     private val libraryPreferences: LibraryPreferences
@@ -45,8 +61,24 @@ class LibraryViewModel(
 
     private val searchUseCase = LibrarySearchUseCase(repository, collectionRepository)
 
-    private val _books = MutableStateFlow<List<BookMeta>>(emptyList())
-    val books: StateFlow<List<BookMeta>> = _books.asStateFlow()
+    private val _books = MutableStateFlow<List<Book>>(emptyList())
+    val books: StateFlow<List<Book>> = _books.asStateFlow()
+
+    private val chapterCountCache = Collections.synchronizedMap(
+        object : LinkedHashMap<String, Int>(256, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Int>?): Boolean {
+                return size > 256
+            }
+        }
+    )
+
+    val continueReadingBooks: StateFlow<List<BookWithProgress>> = repository.allBooks
+        .map { allBooks -> buildContinueReadingBooks(allBooks) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
 
     private val _collections = MutableStateFlow<List<CollectionEntity>>(emptyList())
     val collections: StateFlow<List<CollectionEntity>> = _collections.asStateFlow()
@@ -368,8 +400,57 @@ class LibraryViewModel(
             updated
         }
     }
+
+    private suspend fun buildContinueReadingBooks(allBooks: List<Book>): List<BookWithProgress> {
+        return withContext(Dispatchers.IO) {
+            val lastReadBookmarks = bookmarkRepository.loadLastReads(allBooks.map { it.id })
+
+            buildList {
+                for (book in allBooks) {
+                    val bookmark = lastReadBookmarks[book.id]
+                    if (!hasReadingProgress(book, bookmark)) continue
+
+                    add(
+                        BookWithProgress(
+                            book = book,
+                            lastReadChapterIndex = bookmark?.chapterIndex ?: book.currentChapterIndex,
+                            lastReadCharOffset = bookmark?.charOffset ?: book.currentCharacterOffset,
+                            lastOpenedTimestamp = maxOf(book.lastOpened, bookmark?.savedAt ?: 0L),
+                            totalChapters = resolveTotalChapters(book)
+                        )
+                    )
+                }
+            }.sortedByDescending { it.lastOpenedTimestamp }
+        }
+    }
+
+    private fun hasReadingProgress(book: Book, bookmark: Bookmark?): Boolean {
+        return book.lastOpened > 0L ||
+            bookmark != null ||
+            book.currentChapterIndex > 0 ||
+            book.currentCharacterOffset > 0 ||
+            book.percentComplete > 0f
+    }
+
+    private suspend fun resolveTotalChapters(book: Book): Int {
+        chapterCountCache[book.id]?.let { return it }
+        if (book.totalPages > 0) {
+            return book.totalPages.also { chapterCountCache[book.id] = it }
+        }
+
+        val totalChapters = runCatching {
+            val bookFile = File(book.path)
+            val parser = ParserFactory.getParser(bookFile)
+            parser?.getPageCount(bookFile)
+        }.getOrNull()
+            ?.coerceAtLeast(0)
+            ?: 0
+
+        chapterCountCache[book.id] = totalChapters
+        return totalChapters
+    }
     
-    fun deleteBook(book: BookMeta) {
+    fun deleteBook(book: Book) {
         viewModelScope.launch {
             repository.deleteBook(book)
         }
