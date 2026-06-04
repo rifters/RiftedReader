@@ -1413,7 +1413,7 @@ class ReaderViewModel(
         label: String? = null
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            saveNamedBookmark(
+            createNamedBookmark(
                 createBookmark(
                     event = event,
                     anchorEntries = anchorEntries,
@@ -1440,7 +1440,7 @@ class ReaderViewModel(
             } else {
                 fromPage
             }
-            resolvedBookmark?.let { saveNamedBookmark(it) }
+            resolvedBookmark?.let { createNamedBookmark(it) }
         }
         refreshNamedBookmarks()
         return bookmark
@@ -1476,7 +1476,7 @@ class ReaderViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val currentMode = readerPreferences.settings.value.mode
             latestPageChangedEvent.value?.let { pending ->
-                saveNamedBookmark(
+                createNamedBookmark(
                     createBookmark(
                         event = pending.event,
                         anchorEntries = pending.anchorEntries,

@@ -8,6 +8,7 @@ import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.data.repository.BookmarkRepository
+import com.rifters.riftedreader.domain.bookmark.BookmarkManager
 import com.rifters.riftedreader.domain.pagination.ContinuousPaginator
 import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.BookParser
@@ -267,6 +268,7 @@ private fun readerViewModel(bookmarkRepository: BookmarkRepository): ReaderViewM
             parser = MockParser(chapterCount = 20),
             repository = BookRepository(noOpBookMetaDao()),
             bookmarkRepository = bookmarkRepository,
+            bookmarkManager = BookmarkManager(bookmarkRepository),
             readerPreferences = testReaderPreferences()
         )
     }
