@@ -16,6 +16,7 @@ object ParserFactory {
         register(MobiParser())
         register(Fb2Parser())
         register(CbzParser())
+        register(CbrParser())
         register(PdfParser())
         register(HtmlParser())
     }

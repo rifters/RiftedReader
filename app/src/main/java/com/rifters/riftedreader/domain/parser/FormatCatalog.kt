@@ -71,7 +71,7 @@ object FormatCatalog {
             displayName = "CBR",
             extensions = setOf("cbr"),
             mimeTypes = setOf("application/x-cbr", "application/octet-stream"),
-            status = FormatSupportStatus.PLANNED,
+            status = FormatSupportStatus.SUPPORTED,
             notes = "RAR archive extraction using commons-compress or junrar"
         ),
         FormatDescriptor(

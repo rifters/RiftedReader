@@ -33,17 +33,7 @@ class PreviewParser(
 
     override suspend fun getPageContent(file: File, page: Int): PageContent {
         if (descriptor.id == "cbr") {
-            return PageContent(
-                text = "CBR (RAR-compressed comics) is not yet supported.",
-                html = """
-                    <div class="image-page image-page-error">
-                        <h2>CBR Format</h2>
-                        <p>CBR (RAR-compressed comics) is not yet supported.</p>
-                        <p>Convert your CBR file to CBZ using a tool like Calibre or ComicRack, then re-import.</p>
-                    </div>
-                """.trimIndent(),
-                title = descriptor.displayName
-            )
+            return CbrParser().getPageContent(file, page)
         }
         return PageContent(
             text = buildString {
