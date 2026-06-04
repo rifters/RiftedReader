@@ -27,25 +27,25 @@ class CbrParser : BookParser {
     override suspend fun extractMetadata(file: File): BookMeta = withContext(Dispatchers.IO) {
         BookMeta(
             path = file.absolutePath,
-            title = file.nameWithoutExtension.ifBlank { "CBZ" },
-            format = "CBZ",
+            title = file.nameWithoutExtension.ifBlank { "CBR" },
+            format = "CBR",
             size = file.length(),
             totalPages = getPageCount(file),
-            description = "Comic archive rendered as individual image pages."
+            description = "RAR-compressed comic archive rendered as individual image pages."
         )
     }
 
     override suspend fun getPageContent(file: File, page: Int): PageContent = withContext(Dispatchers.IO) {
         val imageEntryName = getImageEntryNames(file).getOrNull(page)
-            ?: return@withContext placeholderPage(page, "Could not open CBZ")
+            ?: return@withContext placeholderPage(page, "Could not open CBR")
 
         val bitmap = decodeBitmap(file, imageEntryName)
-            ?: return@withContext placeholderPage(page, "Could not decode CBZ image")
+            ?: return@withContext placeholderPage(page, "Could not decode CBR image")
 
         try {
             val imagePage = imageSequenceEngine.renderPage(page, bitmap)
             PageContent(
-                text = "CBZ page ${page + 1}",
+                text = "CBR page ${page + 1}",
                 html = imageSequenceEngine.toHtmlPage(imagePage),
                 title = imageEntryName.substringAfterLast('/')
             )
@@ -97,7 +97,7 @@ class CbrParser : BookParser {
                     <p>Page ${page + 1} could not be displayed.</p>
                 </div>
             """.trimIndent(),
-            title = "CBZ"
+            title = "CBR"
         )
     }
 
