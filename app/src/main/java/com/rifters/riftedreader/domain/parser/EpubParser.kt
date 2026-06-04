@@ -870,7 +870,6 @@ class EpubParser : BookParser {
      * @param actualHeight Decoded image height (for registry)
      * @return CacheResult with asset URL and cache file path
      */
-    @Suppress("UNUSED_PARAMETER") // Parameters reserved for recordMapping after asset handler PR merges
     private fun cacheImageAndGetUrl(
         imageBytes: ByteArray,
         imagePath: String,
@@ -929,8 +928,15 @@ class EpubParser : BookParser {
                 img.attr("href", assetUrl)
                 img.attr("xlink:href", assetUrl)
             }
-            
-            // TODO(#208): Enable EpubImageAssetHelper.recordMapping after asset handler PR merges
+
+            recordImageMappingSafely(
+                originalSrc = originalSrc,
+                imagePath = imagePath,
+                cacheFile = cachedImageFile.absolutePath,
+                assetUrl = assetUrl,
+                chapterIndex = page,
+                errorLabel = "image mapping"
+            )
             
             CacheResult(assetUrl, cachedImageFile.absolutePath)
         } catch (e: Exception) {
@@ -954,10 +960,54 @@ class EpubParser : BookParser {
                 img.attr("href", dataUri)
                 img.attr("xlink:href", dataUri)
             }
-            
-            // TODO(#208): Enable EpubImageAssetHelper.recordMapping for base64 fallback after asset handler PR merges
+
+            recordImageMappingSafely(
+                originalSrc = originalSrc,
+                imagePath = imagePath,
+                cacheFile = "",
+                assetUrl = dataUri,
+                chapterIndex = page,
+                errorLabel = "base64 image mapping"
+            )
             
             CacheResult(truncateForDisplay(dataUri), null)
+        }
+    }
+
+    /**
+     * Safely record an EPUB image mapping for diagnostics.
+     *
+     * @param originalSrc Original HTML src attribute value.
+     * @param imagePath Resolved EPUB-relative image path.
+     * @param cacheFile Cached file path, or empty when no cache file exists.
+     * @param assetUrl Final asset URL or data URI used by the renderer.
+     * @param chapterIndex Chapter index where the image was processed.
+     * @param errorLabel Human-readable label used in error logs.
+     */
+    private fun recordImageMappingSafely(
+        originalSrc: String,
+        imagePath: String,
+        cacheFile: String,
+        assetUrl: String,
+        chapterIndex: Int,
+        errorLabel: String
+    ) {
+        runCatching {
+            EpubImageAssetHelper.recordMapping(
+                EpubImageAssetHelper.MappingEntry(
+                    originalSrc = originalSrc,
+                    resolvedPath = imagePath,
+                    cacheFile = cacheFile,
+                    assetUrl = assetUrl,
+                    chapterIndex = chapterIndex
+                )
+            )
+        }.onFailure { mappingError ->
+            AppLogger.w(
+                "EpubParser",
+                "Failed to record $errorLabel for src=$originalSrc path=$imagePath",
+                mappingError
+            )
         }
     }
     

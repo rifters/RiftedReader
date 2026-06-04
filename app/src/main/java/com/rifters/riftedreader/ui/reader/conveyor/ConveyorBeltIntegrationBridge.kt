@@ -35,35 +35,50 @@ import kotlinx.coroutines.launch
  * 
  * ```kotlin
  * // In ReaderActivity or similar
- * val bridge = ConveyorBeltIntegrationBridge(
- *     readerViewModel = viewModel,
- *     conveyorViewModel = conveyorViewModel
- * )
+ * val bridge = ConveyorBeltIntegrationBridge().attach(viewModel, conveyorViewModel)
  * lifecycle.addObserver(bridge)
  * ```
- * 
- * @param readerViewModel The existing ReaderViewModel to observe (non-invasive)
- * @param conveyorViewModel The isolated conveyor system to forward events to
  */
-class ConveyorBeltIntegrationBridge(
-    private val readerViewModel: ReaderViewModel,
-    private val conveyorViewModel: ConveyorBeltSystemViewModel
-) : DefaultLifecycleObserver {
+class ConveyorBeltIntegrationBridge : DefaultLifecycleObserver {
     
     companion object {
         private const val TAG = "ConveyorBridge"
         private const val LOG_PREFIX = "[CONVEYOR_BRIDGE]"
     }
     
+    private data class Attachment(
+        val readerViewModel: ReaderViewModel,
+        val conveyorViewModel: ConveyorBeltSystemViewModel
+    )
+
+    private val attachmentStateLock = Any()
     private var scope: CoroutineScope? = null
     private var isInitialized = false
     private var lastObservedWindow: Int = -1
+    private var attachment: Attachment? = null
+
+    fun attach(
+        readerViewModel: ReaderViewModel,
+        conveyorViewModel: ConveyorBeltSystemViewModel
+    ): ConveyorBeltIntegrationBridge {
+        synchronized(attachmentStateLock) {
+            check(attachment == null) {
+                "ConveyorBeltIntegrationBridge can only be attached once. Create a new instance if reattachment is needed."
+            }
+            attachment = Attachment(readerViewModel, conveyorViewModel)
+        }
+        return this
+    }
     
     /**
      * Initialize the bridge when the lifecycle starts.
      */
     override fun onStart(owner: LifecycleOwner) {
         super.onStart(owner)
+        if (!isAttached()) {
+            log("START_OBSERVING", "Bridge not attached - skipping")
+            return
+        }
         startObserving()
     }
     
@@ -83,6 +98,13 @@ class ConveyorBeltIntegrationBridge(
             log("START_OBSERVING", "Already observing - skipping")
             return
         }
+
+        val attachment = synchronized(attachmentStateLock) { attachment } ?: run {
+            log("START_OBSERVING", "Bridge not attached - skipping")
+            return
+        }
+        val readerViewModel = attachment.readerViewModel
+        val conveyorViewModel = attachment.conveyorViewModel
         
         log("START_OBSERVING", "Starting to observe ReaderViewModel")
         
@@ -114,6 +136,9 @@ class ConveyorBeltIntegrationBridge(
      * Initialize the isolated conveyor system with current book state.
      */
     private fun initializeIsolatedSystem() {
+        val attachment = synchronized(attachmentStateLock) { attachment } ?: return
+        val readerViewModel = attachment.readerViewModel
+        val conveyorViewModel = attachment.conveyorViewModel
         val windowCount = readerViewModel.windowCount.value
         val currentWindow = readerViewModel.currentWindowIndex.value
         
@@ -137,6 +162,9 @@ class ConveyorBeltIntegrationBridge(
      * Handle window index changes from ReaderViewModel.
      */
     private fun onWindowIndexChanged(windowIndex: Int) {
+        val attachment = synchronized(attachmentStateLock) { attachment } ?: return
+        val readerViewModel = attachment.readerViewModel
+        val conveyorViewModel = attachment.conveyorViewModel
         // Skip if same window or not initialized
         if (windowIndex == lastObservedWindow) {
             return
@@ -179,6 +207,8 @@ class ConveyorBeltIntegrationBridge(
      * the ConveyorBeltSystemViewModel state.
      */
     private fun logStateComparison(label: String) {
+        val attachment = synchronized(attachmentStateLock) { attachment } ?: return
+        val conveyorViewModel = attachment.conveyorViewModel
         // WindowBufferManager has been deprecated and removed
         val oldPhase = "DEPRECATED"
         val oldActive = "N/A"
@@ -228,6 +258,9 @@ class ConveyorBeltIntegrationBridge(
      * Check if the bridge is currently observing.
      */
     fun isObserving(): Boolean = scope != null
+
+    private fun isAttached(): Boolean =
+        synchronized(attachmentStateLock) { attachment != null }
     
     private fun log(event: String, message: String) {
         AppLogger.d(TAG, "$LOG_PREFIX [$event] $message")
