@@ -16,15 +16,11 @@ class MobiParser : BookParser {
     }
 
     override suspend fun extractMetadata(file: File): BookMeta = withContext(Dispatchers.IO) {
-        val text = extractReadableText(file)
         BookMeta(
             path = file.absolutePath,
             format = "MOBI",
             size = file.length(),
             title = file.nameWithoutExtension.ifBlank { "MOBI" },
-            description = text.takeIf { it.isNotBlank() }?.let {
-                "Best-effort MOBI text extraction with no external dependency."
-            },
             totalPages = 1
         )
     }

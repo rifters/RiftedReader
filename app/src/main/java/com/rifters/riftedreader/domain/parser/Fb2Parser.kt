@@ -65,12 +65,12 @@ class Fb2Parser : BookParser {
                     ?: zip.fileHeaders.firstOrNull { !it.isDirectory }
                     ?: return null
                 zip.getInputStream(header).use { input ->
-                    Fb2Source(input.readBytes(), header.fileName)
+                    Fb2Source(input.readBytes())
                 }
             }
         } else {
             if (!file.exists()) return null
-            Fb2Source(file.readBytes(), file.name)
+            Fb2Source(file.readBytes())
         }
     }
 
@@ -167,11 +167,12 @@ class Fb2Parser : BookParser {
         }
 
         return if (chapters.isEmpty()) {
+            val fallbackText = String(bytes, Charsets.UTF_8).trim()
             listOf(
                 Fb2Chapter(
                     title = "FB2",
-                    text = String(bytes, Charsets.UTF_8).trim(),
-                    html = "<pre>${escapeHtml(String(bytes, Charsets.UTF_8).trim())}</pre>",
+                    text = fallbackText,
+                    html = "<pre>${escapeHtml(fallbackText)}</pre>",
                     tocEntries = listOf(TocEntry(title = "FB2", pageNumber = 0))
                 )
             )
@@ -369,7 +370,7 @@ class Fb2Parser : BookParser {
         return trim().replace(Regex("\\s+"), " ")
     }
 
-    private data class Fb2Source(val bytes: ByteArray, val name: String)
+    private class Fb2Source(val bytes: ByteArray)
 
     private data class Fb2Metadata(
         val title: String?,
