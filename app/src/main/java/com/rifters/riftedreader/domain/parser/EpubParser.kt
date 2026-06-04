@@ -940,7 +940,11 @@ class EpubParser : BookParser {
                     )
                 )
             }.onFailure { mappingError ->
-                AppLogger.w("EpubParser", "Failed to record image mapping: ${mappingError.message}")
+                AppLogger.w(
+                    "EpubParser",
+                    "Failed to record image mapping for src=$originalSrc path=$imagePath",
+                    mappingError
+                )
             }
             
             CacheResult(assetUrl, cachedImageFile.absolutePath)
@@ -977,7 +981,11 @@ class EpubParser : BookParser {
                     )
                 )
             }.onFailure { mappingError ->
-                AppLogger.w("EpubParser", "Failed to record base64 image mapping: ${mappingError.message}")
+                AppLogger.w(
+                    "EpubParser",
+                    "Failed to record base64 image mapping for src=$originalSrc path=$imagePath",
+                    mappingError
+                )
             }
             
             CacheResult(truncateForDisplay(dataUri), null)
