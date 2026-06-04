@@ -2,6 +2,10 @@ package com.rifters.riftedreader.data.preferences
 
 import android.content.Context
 import androidx.core.content.edit
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
 import com.rifters.riftedreader.domain.library.LibrarySearchFilters
 import com.rifters.riftedreader.domain.library.SavedLibrarySearch
 import com.rifters.riftedreader.domain.library.SmartCollectionId
@@ -12,6 +16,12 @@ import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+
+val Context.libraryDataStore: DataStore<Preferences> by preferencesDataStore(name = "library_preferences")
+
+object LibraryDataStoreKeys {
+    val SORT_ORDER = stringPreferencesKey("library_sort_order")
+}
 
 /**
  * Central place for storing and retrieving library specific preferences such as the last used

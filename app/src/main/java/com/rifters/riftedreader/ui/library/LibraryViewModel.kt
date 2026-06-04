@@ -1,11 +1,15 @@
 package com.rifters.riftedreader.ui.library
 
 import android.database.sqlite.SQLiteConstraintException
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rifters.riftedreader.data.database.entities.Bookmark
 import com.rifters.riftedreader.data.database.entities.BookMeta as Book
 import com.rifters.riftedreader.data.database.entities.CollectionEntity
+import com.rifters.riftedreader.data.preferences.LibraryDataStoreKeys.SORT_ORDER
 import com.rifters.riftedreader.data.preferences.LibraryPreferences
 import com.rifters.riftedreader.data.repository.BookmarkRepository
 import com.rifters.riftedreader.data.repository.BookRepository
@@ -44,6 +48,16 @@ import java.io.File
 import java.util.Collections
 import java.util.LinkedHashMap
 
+enum class LibrarySortOrder {
+    TITLE_ASC,
+    TITLE_DESC,
+    AUTHOR_ASC,
+    AUTHOR_DESC,
+    DATE_ADDED_DESC,
+    DATE_ADDED_ASC,
+    LAST_READ_DESC
+}
+
 data class BookWithProgress(
     val book: Book,
     val lastReadChapterIndex: Int,
@@ -57,13 +71,11 @@ class LibraryViewModel(
     private val bookmarkRepository: BookmarkRepository,
     private val collectionRepository: CollectionRepository,
     private val fileScanner: FileScanner,
-    private val libraryPreferences: LibraryPreferences
+    private val libraryPreferences: LibraryPreferences,
+    private val dataStore: DataStore<Preferences>
 ) : ViewModel() {
 
     private val searchUseCase = LibrarySearchUseCase(repository, collectionRepository)
-
-    private val _books = MutableStateFlow<List<Book>>(emptyList())
-    val books: StateFlow<List<Book>> = _books.asStateFlow()
 
     private val chapterCountCache = Collections.synchronizedMap(
         object : LinkedHashMap<String, Int>(256, 0.75f, true) {
@@ -95,6 +107,33 @@ class LibraryViewModel(
     val activeTagFilter: StateFlow<String?> = _activeTagFilter.asStateFlow()
     val availableTags: StateFlow<List<String>> = _availableTags.asStateFlow()
 
+    private val filteredBooks: Flow<List<Book>> = _filters.combine(_activeTagFilter) { filters, tag ->
+        filters.copy(tags = listOfNotNull(tag).toSet())
+    }.flatMapLatest { filters ->
+        searchUseCase.observe(filters)
+    }
+
+    val activeSortOrder: StateFlow<LibrarySortOrder> =
+        dataStore.data
+            .map { prefs ->
+                prefs[SORT_ORDER]
+                    ?.let { runCatching { LibrarySortOrder.valueOf(it) }.getOrNull() }
+                    ?: LibrarySortOrder.DATE_ADDED_DESC
+            }
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5_000),
+                LibrarySortOrder.DATE_ADDED_DESC
+            )
+
+    val books: StateFlow<List<Book>> = combine(filteredBooks, activeSortOrder) { bookList, sortOrder ->
+        sortBooks(bookList, sortOrder)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList()
+    )
+
     val savedSearches: StateFlow<List<SavedLibrarySearch>> = libraryPreferences.savedSearches
 
     private val _isScanning = MutableStateFlow(false)
@@ -107,23 +146,9 @@ class LibraryViewModel(
     val events: SharedFlow<LibraryEvent> = _events
 
     init {
-        observeBooks()
         observeCollections()
         observeAvailableTags()
         observeSmartCollections()
-    }
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private fun observeBooks() {
-        viewModelScope.launch {
-            _filters.combine(_activeTagFilter) { filters, tag ->
-                filters.copy(tags = listOfNotNull(tag).toSet())
-            }.flatMapLatest { filters ->
-                searchUseCase.observe(filters)
-            }.collectLatest { bookList ->
-                _books.value = bookList
-            }
-        }
     }
 
     private fun observeCollections() {
@@ -197,6 +222,12 @@ class LibraryViewModel(
 
     fun setTagFilter(tag: String?) {
         _activeTagFilter.value = tag
+    }
+
+    fun setSortOrder(order: LibrarySortOrder) {
+        viewModelScope.launch {
+            dataStore.edit { it[SORT_ORDER] = order.name }
+        }
     }
 
     fun setFavoritesOnly(enabled: Boolean) = updateFilters { current -> current.copy(favoritesOnly = enabled) }
@@ -443,6 +474,18 @@ class LibraryViewModel(
                     )
                 }
             }.sortedByDescending { it.lastOpenedTimestamp }
+        }
+    }
+
+    private fun sortBooks(bookList: List<Book>, sortOrder: LibrarySortOrder): List<Book> {
+        return when (sortOrder) {
+            LibrarySortOrder.TITLE_ASC -> bookList.sortedBy { it.title.lowercase() }
+            LibrarySortOrder.TITLE_DESC -> bookList.sortedByDescending { it.title.lowercase() }
+            LibrarySortOrder.AUTHOR_ASC -> bookList.sortedBy { it.author?.lowercase() ?: "" }
+            LibrarySortOrder.AUTHOR_DESC -> bookList.sortedByDescending { it.author?.lowercase() ?: "" }
+            LibrarySortOrder.DATE_ADDED_DESC -> bookList.sortedByDescending { it.dateAdded }
+            LibrarySortOrder.DATE_ADDED_ASC -> bookList.sortedBy { it.dateAdded }
+            LibrarySortOrder.LAST_READ_DESC -> bookList.sortedByDescending { it.lastOpened }
         }
     }
 

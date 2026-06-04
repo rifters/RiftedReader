@@ -32,6 +32,13 @@
     <string name="library_filter_favorites">Show favorites only</string>
     <string name="library_filter_all_tags">All</string>
     <string name="library_filter_collections">Collections</string>
+    <string name="library_sort_title_asc">Title (A–Z)</string>
+    <string name="library_sort_title_desc">Title (Z–A)</string>
+    <string name="library_sort_author_asc">Author (A–Z)</string>
+    <string name="library_sort_author_desc">Author (Z–A)</string>
+    <string name="library_sort_date_added_desc">Date added (newest first)</string>
+    <string name="library_sort_date_added_asc">Date added (oldest first)</string>
+    <string name="library_sort_last_read_desc">Last read</string>
     <string name="library_filter_collections_count">Collections (%1$d)</string>
     <string name="library_filter_collections_empty">Create a collection first to filter by it.</string>
     <string name="library_filter_collections_title">Filter by collections</string>
