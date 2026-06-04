@@ -64,8 +64,8 @@ object FormatCatalog {
             displayName = "CBZ",
             extensions = setOf("cbz"),
             mimeTypes = setOf("application/x-cbz", "application/zip"),
-            status = FormatSupportStatus.IN_PROGRESS,
-            notes = "Zip image archive parsing (foobnix/ext/CbzCbrExtractor.java)"
+            status = FormatSupportStatus.SUPPORTED,
+            notes = "Zip image archive parsing rendered as single-image WebView pages"
         ),
         FormatDescriptor(
             id = "cbr",
