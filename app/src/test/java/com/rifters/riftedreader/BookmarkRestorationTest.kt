@@ -247,6 +247,10 @@ private class TestBookmarkRepository : BookmarkRepository {
             return lastRead[bookId]
         }
 
+        override suspend fun loadLastReads(bookIds: Collection<String>): Map<String, Bookmark> {
+            return lastRead.filterKeys { it in bookIds }
+        }
+
         override suspend fun saveNamedBookmark(bookmark: Bookmark) = Unit
 
         override suspend fun loadNamedBookmarks(bookId: String): List<Bookmark> = emptyList()

@@ -77,6 +77,10 @@ private class MockBookmarkRepository : BookmarkRepository {
         return lastRead[bookId]
     }
 
+    override suspend fun loadLastReads(bookIds: Collection<String>): Map<String, Bookmark> {
+        return lastRead.filterKeys { it in bookIds }
+    }
+
     override suspend fun saveNamedBookmark(bookmark: Bookmark) {
         named.add(bookmark)
     }

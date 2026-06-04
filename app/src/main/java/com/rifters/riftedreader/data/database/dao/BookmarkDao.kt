@@ -15,6 +15,9 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks WHERE bookId = :bookId AND isLastRead = 1 LIMIT 1")
     suspend fun loadLastRead(bookId: String): BookmarkEntity?
 
+    @Query("SELECT * FROM bookmarks WHERE isLastRead = 1 AND bookId IN (:bookIds)")
+    suspend fun loadLastReads(bookIds: List<String>): List<BookmarkEntity>
+
     @Query("SELECT * FROM bookmarks WHERE bookId = :bookId AND isLastRead = 0 ORDER BY savedAt DESC")
     suspend fun loadNamedBookmarks(bookId: String): List<BookmarkEntity>
 

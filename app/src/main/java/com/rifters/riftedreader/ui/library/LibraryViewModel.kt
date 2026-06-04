@@ -39,7 +39,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.concurrent.ConcurrentHashMap
+import java.util.Collections
+import java.util.LinkedHashMap
 
 data class BookWithProgress(
     val book: Book,
@@ -62,7 +63,13 @@ class LibraryViewModel(
     private val _books = MutableStateFlow<List<Book>>(emptyList())
     val books: StateFlow<List<Book>> = _books.asStateFlow()
 
-    private val chapterCountCache = ConcurrentHashMap<String, Int>()
+    private val chapterCountCache = Collections.synchronizedMap(
+        object : LinkedHashMap<String, Int>(128, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Int>?): Boolean {
+                return size > 256
+            }
+        }
+    )
 
     val continueReadingBooks: StateFlow<List<BookWithProgress>> = repository.allBooks
         .map { allBooks -> buildContinueReadingBooks(allBooks) }
@@ -395,9 +402,11 @@ class LibraryViewModel(
 
     private suspend fun buildContinueReadingBooks(allBooks: List<Book>): List<BookWithProgress> {
         return withContext(Dispatchers.IO) {
+            val lastReadBookmarks = bookmarkRepository.loadLastReads(allBooks.map { it.id })
+
             buildList {
                 for (book in allBooks) {
-                    val bookmark = bookmarkRepository.loadLastRead(book.id)
+                    val bookmark = lastReadBookmarks[book.id]
                     val hasProgress = book.lastOpened > 0L ||
                         bookmark != null ||
                         book.currentChapterIndex > 0 ||

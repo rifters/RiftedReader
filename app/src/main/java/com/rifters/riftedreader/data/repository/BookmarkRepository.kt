@@ -7,6 +7,7 @@ import com.rifters.riftedreader.data.database.entities.BookmarkEntity
 interface BookmarkRepository {
     suspend fun saveLastRead(bookmark: Bookmark)
     suspend fun loadLastRead(bookId: String): Bookmark?
+    suspend fun loadLastReads(bookIds: Collection<String>): Map<String, Bookmark>
     suspend fun saveNamedBookmark(bookmark: Bookmark)
     suspend fun loadNamedBookmarks(bookId: String): List<Bookmark>
     suspend fun delete(bookmark: Bookmark)
@@ -21,6 +22,13 @@ class RoomBookmarkRepository(
 
     override suspend fun loadLastRead(bookId: String): Bookmark? {
         return bookmarkDao.loadLastRead(bookId)?.toBookmark()
+    }
+
+    override suspend fun loadLastReads(bookIds: Collection<String>): Map<String, Bookmark> {
+        if (bookIds.isEmpty()) return emptyMap()
+
+        return bookmarkDao.loadLastReads(bookIds.toList())
+            .associate { entity -> entity.bookId to entity.toBookmark() }
     }
 
     override suspend fun saveNamedBookmark(bookmark: Bookmark) {
