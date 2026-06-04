@@ -175,28 +175,30 @@ class LibraryFragment : Fragment() {
 
         val allChip = Chip(requireContext()).apply {
             id = View.generateViewId()
-            text = "All"
+            text = getString(R.string.library_filter_all_tags)
             isCheckable = true
             isChecked = true
         }
         binding.tagChipGroup.addView(allChip, 0)
 
         viewLifecycleOwner.lifecycleScope.launch {
-            viewModel.availableTags.collect { tags ->
-                binding.tagChipGroup.removeAllViews()
-                binding.tagChipGroup.addView(allChip)
-                allChip.isChecked = viewModel.activeTagFilter.value == null
-                tags.forEach { tag ->
-                    val chip = Chip(requireContext()).apply {
-                        id = View.generateViewId()
-                        text = tag
-                        isCheckable = true
-                        isChecked = viewModel.activeTagFilter.value == tag
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.availableTags.collect { tags ->
+                    binding.tagChipGroup.removeAllViews()
+                    binding.tagChipGroup.addView(allChip)
+                    allChip.isChecked = viewModel.activeTagFilter.value == null
+                    tags.forEach { tag ->
+                        val chip = Chip(requireContext()).apply {
+                            id = View.generateViewId()
+                            text = tag
+                            isCheckable = true
+                            isChecked = viewModel.activeTagFilter.value == tag
+                        }
+                        binding.tagChipGroup.addView(chip)
                     }
-                    binding.tagChipGroup.addView(chip)
+                    binding.tagScrollView.visibility =
+                        if (tags.isEmpty()) View.GONE else View.VISIBLE
                 }
-                binding.tagScrollView.visibility =
-                    if (tags.isEmpty()) View.GONE else View.VISIBLE
             }
         }
 
