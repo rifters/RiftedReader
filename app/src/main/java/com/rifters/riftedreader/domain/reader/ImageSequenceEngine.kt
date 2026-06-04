@@ -70,9 +70,7 @@ class ImageSequenceEngine(
      * matches that convention and scales the rendered bitmap to the target DPI.
      */
     fun scaledDimensions(sourceWidth: Int, sourceHeight: Int, sourceDpi: Int = 72): Pair<Int, Int> {
-        if (sourceWidth <= 0 || sourceHeight <= 0) {
-            return 1 to 1
-        }
+        require(sourceWidth > 0 && sourceHeight > 0) { "Source dimensions must be positive" }
         val scale = renderDpi.toFloat() / sourceDpi.toFloat()
         return (sourceWidth * scale).roundToInt().coerceAtLeast(1) to
             (sourceHeight * scale).roundToInt().coerceAtLeast(1)

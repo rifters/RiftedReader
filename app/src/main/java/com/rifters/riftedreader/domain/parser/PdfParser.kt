@@ -32,7 +32,7 @@ class PdfParser : BookParser {
             format = "PDF",
             size = file.length(),
             totalPages = pageCount,
-            description = "Rendered as image pages in the shared reader stack."
+            description = "PDF pages rendered as images."
         )
     }
     

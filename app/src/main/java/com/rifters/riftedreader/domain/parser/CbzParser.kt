@@ -18,6 +18,7 @@ class CbzParser : BookParser {
     }
 
     private val imageSequenceEngine = ImageSequenceEngine()
+    private val imageEntryCache = mutableMapOf<String, List<String>>()
 
     override fun canParse(file: File): Boolean = file.extension.lowercase() in SUPPORTED_EXTENSIONS
 
@@ -33,10 +34,10 @@ class CbzParser : BookParser {
     }
 
     override suspend fun getPageContent(file: File, page: Int): PageContent = withContext(Dispatchers.IO) {
-        val imageHeader = getImageHeaders(file).getOrNull(page)
+        val imageEntryName = getImageEntryNames(file).getOrNull(page)
             ?: return@withContext placeholderPage(page, "Could not open CBZ")
 
-        val bitmap = decodeBitmap(file, imageHeader)
+        val bitmap = decodeBitmap(file, imageEntryName)
             ?: return@withContext placeholderPage(page, "Could not decode CBZ image")
 
         try {
@@ -44,7 +45,7 @@ class CbzParser : BookParser {
             PageContent(
                 text = "CBZ page ${page + 1}",
                 html = imageSequenceEngine.toHtmlPage(imagePage),
-                title = imageHeader.fileName
+                title = imageEntryName.substringAfterLast('/')
             )
         } finally {
             bitmap.recycle()
@@ -52,13 +53,16 @@ class CbzParser : BookParser {
     }
 
     override suspend fun getPageCount(file: File): Int = withContext(Dispatchers.IO) {
-        val count = getImageHeaders(file).size
+        val count = getImageEntryNames(file).size
         if (count > 0) count else 1
     }
 
     override suspend fun getTableOfContents(file: File): List<TocEntry> = emptyList()
 
-    private fun getImageHeaders(file: File): List<FileHeader> {
+    private fun getImageEntryNames(file: File): List<String> {
+        val cacheKey = cacheKey(file)
+        imageEntryCache[cacheKey]?.let { return it }
+
         return runCatching {
             ZipFile(file).use { zipFile ->
                 zipFile.fileHeaders
@@ -66,19 +70,25 @@ class CbzParser : BookParser {
                     .filter { !it.isDirectory }
                     .filter { isImageFile(it.fileName) }
                     .sortedBy { it.fileName.lowercase() }
+                    .map { it.fileName }
                     .toList()
             }
-        }.getOrDefault(emptyList())
+        }.getOrDefault(emptyList()).also { imageEntryCache[cacheKey] = it }
     }
 
-    private fun decodeBitmap(file: File, header: FileHeader): Bitmap? {
+    private fun decodeBitmap(file: File, entryName: String): Bitmap? {
         return runCatching {
             ZipFile(file).use { zipFile ->
+                val header = zipFile.getFileHeader(entryName) ?: return@use null
                 zipFile.getInputStream(header).use { inputStream ->
                     BitmapFactory.decodeStream(inputStream)
                 }
             }
         }.getOrNull()
+    }
+
+    private fun cacheKey(file: File): String {
+        return "${file.absolutePath}:${file.lastModified()}:${file.length()}"
     }
 
     private fun placeholderPage(page: Int, message: String): PageContent {
