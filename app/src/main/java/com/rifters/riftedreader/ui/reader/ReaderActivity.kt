@@ -248,7 +248,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
             OffscreenSlicingWebView(applicationContext)
         }
         viewModel.setConveyorBeltSystem(conveyorBeltSystem)
-        conveyorBridge = ConveyorBeltIntegrationBridge().attach(viewModel, conveyorBeltSystem)
+        conveyorBridge = ConveyorBeltIntegrationBridge.create(viewModel, conveyorBeltSystem)
         
         // DIAGNOSTICS: Log ConveyorPrimary status at startup
         // Conveyor is now always enabled - minimal paginator is the only system

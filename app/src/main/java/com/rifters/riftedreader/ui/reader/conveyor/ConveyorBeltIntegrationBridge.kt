@@ -39,11 +39,20 @@ import kotlinx.coroutines.launch
  * lifecycle.addObserver(bridge)
  * ```
  */
-class ConveyorBeltIntegrationBridge : DefaultLifecycleObserver {
+class ConveyorBeltIntegrationBridge private constructor() : DefaultLifecycleObserver {
     
     companion object {
         private const val TAG = "ConveyorBridge"
         private const val LOG_PREFIX = "[CONVEYOR_BRIDGE]"
+
+        fun create(
+            readerViewModel: ReaderViewModel,
+            conveyorViewModel: ConveyorBeltSystemViewModel
+        ): ConveyorBeltIntegrationBridge {
+            return ConveyorBeltIntegrationBridge().apply {
+                attach(readerViewModel, conveyorViewModel)
+            }
+        }
     }
     
     private var scope: CoroutineScope? = null
@@ -52,10 +61,13 @@ class ConveyorBeltIntegrationBridge : DefaultLifecycleObserver {
     private var readerViewModel: ReaderViewModel? = null
     private var conveyorViewModel: ConveyorBeltSystemViewModel? = null
 
-    fun attach(
+    private fun attach(
         readerViewModel: ReaderViewModel,
         conveyorViewModel: ConveyorBeltSystemViewModel
     ): ConveyorBeltIntegrationBridge {
+        check(this.readerViewModel == null && this.conveyorViewModel == null) {
+            "ConveyorBeltIntegrationBridge is already attached"
+        }
         this.readerViewModel = readerViewModel
         this.conveyorViewModel = conveyorViewModel
         return this

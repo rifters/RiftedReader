@@ -967,7 +967,7 @@ class EpubParser : BookParser {
                     originalSrc = originalSrc,
                     resolvedPath = imagePath,
                     cacheFile = "",
-                    assetUrl = truncateForDisplay(dataUri),
+                    assetUrl = dataUri,
                     chapterIndex = page
                 )
             )
