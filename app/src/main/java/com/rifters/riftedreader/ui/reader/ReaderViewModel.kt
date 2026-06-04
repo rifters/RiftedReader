@@ -17,6 +17,7 @@ import com.rifters.riftedreader.data.preferences.ReaderPreferences
 import com.rifters.riftedreader.data.preferences.ReaderSettings
 import com.rifters.riftedreader.data.repository.BookmarkRepository
 import com.rifters.riftedreader.data.repository.BookRepository
+import com.rifters.riftedreader.domain.bookmark.BookmarkManager
 import com.rifters.riftedreader.domain.pagination.ChapterIndexProvider
 import com.rifters.riftedreader.domain.pagination.ContinuousPaginator
 import com.rifters.riftedreader.domain.pagination.PageLocation
@@ -89,6 +90,7 @@ class ReaderViewModel(
     private val parser: BookParser,
     private val repository: BookRepository,
     private val bookmarkRepository: BookmarkRepository,
+    private val bookmarkManager: BookmarkManager,
     private val readerPreferences: ReaderPreferences
 ) : ViewModel() {
     companion object {
@@ -1411,7 +1413,7 @@ class ReaderViewModel(
         label: String? = null
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            bookmarkRepository.saveNamedBookmark(
+            saveNamedBookmark(
                 createBookmark(
                     event = event,
                     anchorEntries = anchorEntries,
@@ -1438,7 +1440,7 @@ class ReaderViewModel(
             } else {
                 fromPage
             }
-            resolvedBookmark?.also { bookmarkRepository.saveNamedBookmark(it) }
+            resolvedBookmark?.let { saveNamedBookmark(it) }
         }
         refreshNamedBookmarks()
         return bookmark
@@ -1446,21 +1448,21 @@ class ReaderViewModel(
 
     fun saveNamedBookmark(bookmark: Bookmark) {
         viewModelScope.launch(Dispatchers.IO) {
-            bookmarkRepository.saveNamedBookmark(bookmark)
+            createNamedBookmark(bookmark)
             refreshNamedBookmarks()
         }
     }
 
     fun deleteBookmark(bookmark: Bookmark) {
         viewModelScope.launch(Dispatchers.IO) {
-            bookmarkRepository.delete(bookmark)
+            bookmarkManager.deleteBookmark(bookmark)
             refreshNamedBookmarks()
         }
     }
 
     fun refreshNamedBookmarks() {
         viewModelScope.launch(Dispatchers.IO) {
-            val bookmarks = bookmarkRepository.loadNamedBookmarks(bookId)
+            val bookmarks = bookmarkManager.getBookmarksForBook(bookId)
                 .asSequence()
                 .filter { it.label != MODE_SWITCH_BOOKMARK_LABEL }
                 .sortedByDescending { it.savedAt }
@@ -1474,7 +1476,7 @@ class ReaderViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val currentMode = readerPreferences.settings.value.mode
             latestPageChangedEvent.value?.let { pending ->
-                bookmarkRepository.saveNamedBookmark(
+                saveNamedBookmark(
                     createBookmark(
                         event = pending.event,
                         anchorEntries = pending.anchorEntries,
@@ -1654,6 +1656,23 @@ class ReaderViewModel(
             nearestAnchorText = anchor?.text.orEmpty(),
             savedAt = System.currentTimeMillis(),
             label = null
+        )
+    }
+
+    private suspend fun createNamedBookmark(bookmark: Bookmark): Bookmark {
+        return bookmarkManager.createBookmark(
+            bookId = bookmark.bookId,
+            chapterIndex = bookmark.chapterIndex,
+            inChapterPage = bookmark.pageIndexHint,
+            characterOffset = bookmark.charOffset,
+            chapterTitle = bookmark.nearestAnchorText,
+            pageContent = PageContent.EMPTY,
+            percentageThrough = 0f,
+            fontSize = readerPreferences.settings.value.textSizeSp,
+            nearestAnchorId = bookmark.nearestAnchorId,
+            nearestAnchorText = bookmark.nearestAnchorText,
+            savedAt = bookmark.savedAt,
+            label = bookmark.label
         )
     }
 
@@ -2169,12 +2188,22 @@ class ReaderViewModel(
         private val parser: BookParser,
         private val repository: BookRepository,
         private val bookmarkRepository: BookmarkRepository,
+        private val bookmarkManager: BookmarkManager? = null,
         private val readerPreferences: ReaderPreferences
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(ReaderViewModel::class.java)) {
-                return ReaderViewModel(bookId, bookFile, parser, repository, bookmarkRepository, readerPreferences) as T
+                val bookmarkManager = this.bookmarkManager ?: BookmarkManager(bookmarkRepository)
+                return ReaderViewModel(
+                    bookId,
+                    bookFile,
+                    parser,
+                    repository,
+                    bookmarkRepository,
+                    bookmarkManager,
+                    readerPreferences
+                ) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
         }

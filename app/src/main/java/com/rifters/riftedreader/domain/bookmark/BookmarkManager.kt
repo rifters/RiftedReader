@@ -16,17 +16,21 @@ class BookmarkManager(
         chapterTitle: String,
         pageContent: PageContent,
         percentageThrough: Float,
-        fontSize: Float
+        fontSize: Float,
+        nearestAnchorId: String = "",
+        nearestAnchorText: String = "",
+        savedAt: Long = System.currentTimeMillis(),
+        label: String? = null
     ): Bookmark {
         val bookmark = Bookmark(
             bookId = bookId,
             chapterIndex = chapterIndex,
             charOffset = characterOffset,
             pageIndexHint = inChapterPage,
-            nearestAnchorId = "",
-            nearestAnchorText = "",
-            savedAt = System.currentTimeMillis(),
-            label = null
+            nearestAnchorId = nearestAnchorId,
+            nearestAnchorText = nearestAnchorText,
+            savedAt = savedAt,
+            label = label
         )
 
         bookmarkRepository.saveNamedBookmark(bookmark)
