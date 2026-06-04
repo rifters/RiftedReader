@@ -394,27 +394,27 @@ class LibraryViewModel(
 
     private suspend fun buildContinueReadingBooks(allBooks: List<Book>): List<BookWithProgress> {
         return withContext(Dispatchers.IO) {
-            allBooks
-                .asSequence()
-                .mapNotNull { book ->
+            buildList {
+                for (book in allBooks) {
                     val bookmark = bookmarkRepository.loadLastRead(book.id)
                     val hasProgress = book.lastOpened > 0L ||
                         bookmark != null ||
                         book.currentChapterIndex > 0 ||
                         book.currentCharacterOffset > 0 ||
                         book.percentComplete > 0f
-                    if (!hasProgress) return@mapNotNull null
+                    if (!hasProgress) continue
 
-                    BookWithProgress(
-                        book = book,
-                        lastReadChapterIndex = bookmark?.chapterIndex ?: book.currentChapterIndex,
-                        lastReadCharOffset = bookmark?.charOffset ?: book.currentCharacterOffset,
-                        lastOpenedTimestamp = maxOf(book.lastOpened, bookmark?.savedAt ?: 0L),
-                        totalChapters = resolveTotalChapters(book)
+                    add(
+                        BookWithProgress(
+                            book = book,
+                            lastReadChapterIndex = bookmark?.chapterIndex ?: book.currentChapterIndex,
+                            lastReadCharOffset = bookmark?.charOffset ?: book.currentCharacterOffset,
+                            lastOpenedTimestamp = maxOf(book.lastOpened, bookmark?.savedAt ?: 0L),
+                            totalChapters = resolveTotalChapters(book)
+                        )
                     )
                 }
-                .sortedByDescending { it.lastOpenedTimestamp }
-                .toList()
+            }.sortedByDescending { it.lastOpenedTimestamp }
         }
     }
 
