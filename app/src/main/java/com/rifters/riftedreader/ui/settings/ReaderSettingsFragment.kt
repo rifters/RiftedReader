@@ -83,6 +83,22 @@ class ReaderSettingsFragment : PreferenceFragmentCompat() {
             }
         }
         bindSwitchPreference(
+            key = "reader_keep_screen_on",
+            currentValue = settings.keepScreenOn
+        ) { value ->
+            readerPreferences.updateSettings { it.copy(keepScreenOn = value) }
+        }
+        findPreference<SeekBarPreference>("reader_brightness_percent")
+            ?.let { pref ->
+                pref.value = settings.brightnessPercent
+                pref.setOnPreferenceChangeListener { _, newValue ->
+                    readerPreferences.updateSettings {
+                        it.copy(brightnessPercent = newValue as Int)
+                    }
+                    true
+                }
+            }
+        bindSwitchPreference(
             key = "reader_continuous_streaming",
             currentValue = settings.continuousStreamingEnabled
         ) { isEnabled ->

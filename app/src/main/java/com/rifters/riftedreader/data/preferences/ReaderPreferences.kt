@@ -56,7 +56,9 @@ data class ReaderSettings(
      */
     val debugWindowRenderingEnabled: Boolean = false,
     val fontFamily: String = "sans-serif",
-    val pagePaddingDp: Int = 16
+    val pagePaddingDp: Int = 16,
+    val keepScreenOn: Boolean = false,
+    val brightnessPercent: Int = 0
     // NOTE: enableMinimalPaginator feature flag has been removed
     // minimal_paginator.js with PaginatorBridge is now the ONLY pagination system
 )
@@ -112,6 +114,8 @@ class ReaderPreferences(context: Context) {
         // enableMinimalPaginator removed - minimal paginator is now always used
         val fontFamily = prefs.getString(KEY_FONT_FAMILY, "sans-serif") ?: "sans-serif"
         val pagePaddingDp = prefs.getInt(KEY_PAGE_PADDING_DP, 16)
+        val keepScreenOn = prefs.getBoolean(KEY_KEEP_SCREEN_ON, false)
+        val brightnessPercent = prefs.getInt(KEY_BRIGHTNESS_PERCENT, 0)
         
         // Read chapter visibility settings
         val includeCover = prefs.getBoolean(KEY_INCLUDE_COVER, false)
@@ -135,7 +139,9 @@ class ReaderPreferences(context: Context) {
             chapterVisibility = chapterVisibility,
             debugWindowRenderingEnabled = debugWindowRendering,
             fontFamily = fontFamily,
-            pagePaddingDp = pagePaddingDp
+            pagePaddingDp = pagePaddingDp,
+            keepScreenOn = keepScreenOn,
+            brightnessPercent = brightnessPercent
         )
     }
 
@@ -152,6 +158,8 @@ class ReaderPreferences(context: Context) {
             putBoolean(KEY_DEBUG_WINDOW_RENDERING, settings.debugWindowRenderingEnabled)
             putString(KEY_FONT_FAMILY, settings.fontFamily)
             putInt(KEY_PAGE_PADDING_DP, settings.pagePaddingDp)
+            putBoolean(KEY_KEEP_SCREEN_ON, settings.keepScreenOn)
+            putInt(KEY_BRIGHTNESS_PERCENT, settings.brightnessPercent)
             // enableMinimalPaginator removed - minimal paginator is now always used
             
             // Save chapter visibility settings
@@ -209,6 +217,8 @@ class ReaderPreferences(context: Context) {
         private const val KEY_DEBUG_WINDOW_RENDERING = "debug_window_rendering_enabled"
         private const val KEY_FONT_FAMILY = "reader_font_family"
         private const val KEY_PAGE_PADDING_DP = "reader_page_padding_dp"
+        private const val KEY_KEEP_SCREEN_ON = "reader_keep_screen_on"
+        private const val KEY_BRIGHTNESS_PERCENT = "reader_brightness_percent"
         // KEY_ENABLE_MINIMAL_PAGINATOR removed - minimal paginator is now always used
         private const val KEY_TAP_ACTIONS = "reader_tap_actions"
         

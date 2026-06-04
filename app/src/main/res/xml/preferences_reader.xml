@@ -104,6 +104,20 @@
             android:max="48"
             app:showSeekBarValue="true" />
 
+        <androidx.preference.SwitchPreferenceCompat
+            android:key="reader_keep_screen_on"
+            android:title="Keep Screen On"
+            android:defaultValue="false" />
+
+        <SeekBarPreference
+            android:key="reader_brightness_percent"
+            android:title="Brightness"
+            android:summary="0 = system default"
+            android:defaultValue="0"
+            app:min="0"
+            android:max="100"
+            app:showSeekBarValue="true" />
+
         <ListPreference
             android:key="reader_theme"
             android:title="@string/settings_reader_theme"

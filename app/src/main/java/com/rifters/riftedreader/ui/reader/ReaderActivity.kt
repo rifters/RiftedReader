@@ -11,6 +11,7 @@ import android.view.GestureDetector
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import android.content.pm.ApplicationInfo
@@ -879,6 +880,27 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
     private fun observeViewModel() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    viewModel.readerSettings.collect { settings ->
+                        if (settings.keepScreenOn) {
+                            window.addFlags(
+                                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                            )
+                        } else {
+                            window.clearFlags(
+                                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                            )
+                        }
+                        val lp = window.attributes
+                        lp.screenBrightness = if (settings.brightnessPercent == 0) {
+                            WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                        } else {
+                            settings.brightnessPercent / 100f
+                        }
+                        window.attributes = lp
+                    }
+                }
+
                 launch {
                     TTSStatusNotifier.status.collect { snapshot: TTSStatusSnapshot ->
                         handleTtsStatus(snapshot)
