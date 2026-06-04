@@ -145,6 +145,7 @@ dependencies {
     
     // ZIP handling for EPUB and CBZ
     implementation("net.lingala.zip4j:zip4j:2.11.5")
+    implementation("com.github.junrar:junrar:7.5.5")
     
     // JSON parsing for Room converters
     implementation("com.google.code.gson:gson:2.10.1")
