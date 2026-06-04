@@ -507,7 +507,8 @@ class ReaderViewModel(
      * This enables dynamic visibility changes mid-session without requiring a book reload.
      */
     private fun observeVisibilitySettingsChanges() {
-        viewModelScope.launch {
+        // Collect on a background dispatcher so this long-lived observer doesn't pin the test Main dispatcher.
+        viewModelScope.launch(Dispatchers.Default) {
             readerPreferences.settings
                 .map { it.chapterVisibility }
                 .distinctUntilChanged()

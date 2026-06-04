@@ -91,6 +91,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
     private var autoContinueTts: Boolean = false
     private var pendingTtsResume: Boolean = false
     private var pendingWindowReloadTtsResume: Boolean = false
+    private var lastObservedWindowIndex: Int? = null
     private var usingWebViewSlider: Boolean = false
     private var isReslicingIndicatorVisible: Boolean = false
     private lateinit var layoutManager: LinearLayoutManager
@@ -960,8 +961,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                             )
                             pendingWindowReloadTtsResume = false
                             resumeTtsForCurrentPage()
-                        }
-                        if (pendingTtsResume && autoContinueTts && currentPageText.isNotBlank()) {
+                        } else if (pendingTtsResume && autoContinueTts && currentPageText.isNotBlank()) {
                             AppLogger.d(
                                 "ReaderActivity",
                                 "[TTS_RESUME_TRIGGERED] Conditions met: pendingTtsResume=$pendingTtsResume " +
@@ -994,6 +994,8 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                                 "[TTS_WINDOW_CHANGE] activeWindow=$previousWindowIndex->$windowIndex; pausing TTS until new HTML loads"
                             )
                             pendingWindowReloadTtsResume = true
+                            // Clear the end-of-page resume path so we don't resume twice when the conveyor
+                            // changes windows while TTS is already expecting a page-advance resume.
                             pendingTtsResume = false
                             TTSService.pause(this@ReaderActivity)
                         }
@@ -1998,8 +2000,6 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
         )
         TTSService.start(this, currentPageText, configuration)
     }
-
-    private var lastObservedWindowIndex: Int? = null
 
     private fun updateReaderModeUi() {
         binding.root.post {
