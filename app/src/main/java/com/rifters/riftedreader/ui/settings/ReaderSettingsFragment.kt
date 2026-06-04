@@ -12,6 +12,7 @@ import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.SeekBarPreference
 import androidx.preference.SwitchPreferenceCompat
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.calibre.BookFormat
@@ -63,10 +64,23 @@ class ReaderSettingsFragment : PreferenceFragmentCompat() {
             AppLogger.event("ReaderSettingsFragment", "Theme changed to $theme", "ui/settings/change")
             readerPreferences.updateSettings { it.copy(theme = theme) }
         }
+        bindListPreference(
+            key = "reader_font_family",
+            currentValue = settings.fontFamily
+        ) { value ->
+            readerPreferences.updateSettings { it.copy(fontFamily = value) }
+        }
         bindListPreference("reader_mode", settings.mode.name) { value ->
             val mode = runCatching { ReaderMode.valueOf(value) }.getOrDefault(settings.mode)
             AppLogger.event("ReaderSettingsFragment", "Reader mode changed to $mode", "ui/settings/change")
             readerPreferences.updateSettings { it.copy(mode = mode) }
+        }
+        findPreference<SeekBarPreference>("reader_page_padding_dp")?.let { pref ->
+            pref.value = settings.pagePaddingDp
+            pref.setOnPreferenceChangeListener { _, newValue ->
+                readerPreferences.updateSettings { it.copy(pagePaddingDp = newValue as Int) }
+                true
+            }
         }
         bindSwitchPreference(
             key = "reader_continuous_streaming",

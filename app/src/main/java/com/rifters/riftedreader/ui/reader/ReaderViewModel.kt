@@ -272,8 +272,12 @@ class ReaderViewModel(
                             Resources.getSystem().displayMetrics
                         ).roundToInt().coerceAtLeast(FlexSlicingConfig.MIN_FONT_SIZE_PX),
                         lineHeight = settings.lineHeightMultiplier,
-                        fontFamily = FlexSlicingConfig.READER_FONT_FAMILY_SERIF,
-                        pagePaddingPx = FlexSlicingConfig.DEFAULT_PAGE_PADDING_PX
+                        fontFamily = settings.fontFamily,
+                        pagePaddingPx = TypedValue.applyDimension(
+                            TypedValue.COMPLEX_UNIT_DIP,
+                            settings.pagePaddingDp.toFloat(),
+                            Resources.getSystem().displayMetrics
+                        ).roundToInt()
                     )
                 },
             paginationModeGuard = paginationModeGuard

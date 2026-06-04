@@ -27,6 +27,17 @@
         <item>1.7</item>
     </string-array>
 
+    <string-array name="font_family_entries">
+        <item>Sans-serif</item>
+        <item>Serif</item>
+        <item>Monospace</item>
+    </string-array>
+    <string-array name="font_family_values">
+        <item>sans-serif</item>
+        <item>serif</item>
+        <item>monospace</item>
+    </string-array>
+
     <string-array name="reader_theme_entries">
         <item>@string/reader_theme_light</item>
         <item>@string/reader_theme_dark</item>
