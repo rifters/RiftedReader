@@ -1,12 +1,12 @@
 package com.rifters.riftedreader.domain.parser
 
 import android.text.TextUtils
-import android.util.Xml
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.lingala.zip4j.ZipFile
 import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserFactory
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.Locale
@@ -330,7 +330,10 @@ class Fb2Parser : BookParser {
     }
 
     private fun newParser(bytes: ByteArray): XmlPullParser {
-        return Xml.newPullParser().apply {
+        val factory = XmlPullParserFactory.newInstance().apply {
+            isNamespaceAware = true
+        }
+        return factory.newPullParser().apply {
             setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true)
             setInput(ByteArrayInputStream(bytes), null)
         }
