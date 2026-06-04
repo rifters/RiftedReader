@@ -47,8 +47,16 @@ class CollectionPickerBottomSheet : BottomSheetDialogFragment() {
         val emptyText = view.findViewById<TextView>(R.id.collectionEmpty)
         val goButton = view.findViewById<Button>(R.id.collectionGo)
         val doneButton = view.findViewById<Button>(R.id.collectionDone)
+        val adapter = CollectionCheckAdapter(emptyList(), emptySet()) { id, checked ->
+            if (checked) {
+                selectedIds.add(id)
+            } else {
+                selectedIds.remove(id)
+            }
+        }
 
         recycler.layoutManager = LinearLayoutManager(requireContext())
+        recycler.adapter = adapter
 
         viewLifecycleOwner.lifecycleScope.launch {
             combine(
@@ -69,13 +77,7 @@ class CollectionPickerBottomSheet : BottomSheetDialogFragment() {
                         goButton.visibility = View.GONE
                         recycler.visibility = View.VISIBLE
                         doneButton.visibility = View.VISIBLE
-                        recycler.adapter = CollectionCheckAdapter(all, selectedIds.toSet()) { id, checked ->
-                            if (checked) {
-                                selectedIds.add(id)
-                            } else {
-                                selectedIds.remove(id)
-                            }
-                        }
+                        adapter.update(all, selectedIds.toSet())
                     }
                 }
         }

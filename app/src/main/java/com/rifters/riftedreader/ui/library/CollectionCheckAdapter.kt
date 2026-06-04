@@ -8,10 +8,19 @@ import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.database.entities.CollectionEntity
 
 class CollectionCheckAdapter(
-    private val all: List<CollectionEntity>,
-    private val checked: Set<String>,
+    private var all: List<CollectionEntity>,
+    private var checked: Set<String>,
     private val onToggle: (id: String, checked: Boolean) -> Unit
 ) : RecyclerView.Adapter<CollectionCheckAdapter.CollectionCheckViewHolder>() {
+
+    fun update(
+        all: List<CollectionEntity>,
+        checked: Set<String>
+    ) {
+        this.all = all
+        this.checked = checked
+        notifyDataSetChanged()
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CollectionCheckViewHolder {
         val checkBox = LayoutInflater.from(parent.context)
