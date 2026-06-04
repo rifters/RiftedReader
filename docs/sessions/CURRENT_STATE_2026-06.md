@@ -28,7 +28,7 @@
 
 ## Test status
 
-- Kotlin: 425 tests
+- Kotlin: run `./gradlew :app:testDebugUnitTest`
 - JS: 43 tests after `cd tests/js && npm install` and `npm test -- --runInBand`
 
 ## Next priorities

@@ -134,6 +134,12 @@ Run Android unit tests from the repository root:
 ./gradlew :app:testDebugUnitTest
 ```
 
+Run a faster Kotlin-only compile preflight from the repository root:
+
+```bash
+./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin
+```
+
 ## Carried review follow-ups
 
 - `BookDownloadManager.notifIdFor(url)` currently uses `url.hashCode()`; follow up with a
@@ -180,7 +186,7 @@ Run Android unit tests from the repository root:
 - Fast file scanning
 - Metadata extraction
 - Collections and tags
-- Collections data model & repository ready for UI wiring
+- Collections management and picker UI
 - Advanced search and filtering
 - Library statistics calculator (totals, completion averages)
 - Reading progress tracking
@@ -226,7 +232,8 @@ TBD - Will be determined after initial implementation
 
 ## Contributing
 
-Project is in planning phase. Contributions will be welcome once development begins.
+Project is under active development. Contributions are welcome, but large changes should
+still align with the active roadmap and current implementation docs.
 
 ## Contact
 
