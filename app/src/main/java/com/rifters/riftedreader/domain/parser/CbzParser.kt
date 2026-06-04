@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import com.rifters.riftedreader.domain.reader.ImageSequenceEngine
+import com.rifters.riftedreader.domain.reader.SharedImageSequenceEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.lingala.zip4j.ZipFile
@@ -17,7 +18,7 @@ class CbzParser : BookParser {
         private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif")
     }
 
-    private val imageSequenceEngine = ImageSequenceEngine()
+    private val imageSequenceEngine = SharedImageSequenceEngine.instance
     private val imageEntryCache = ConcurrentHashMap<String, List<String>>()
 
     override fun canParse(file: File): Boolean = file.extension.lowercase() in SUPPORTED_EXTENSIONS

@@ -99,3 +99,7 @@ class ImageSequenceEngine(
         return "data:image/png;base64,$encoded"
     }
 }
+
+object SharedImageSequenceEngine {
+    val instance: ImageSequenceEngine = ImageSequenceEngine()
+}

@@ -5,6 +5,7 @@ import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import com.rifters.riftedreader.domain.reader.ImageSequenceEngine
+import com.rifters.riftedreader.domain.reader.SharedImageSequenceEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -18,7 +19,7 @@ class PdfParser : BookParser {
         private val SUPPORTED_EXTENSIONS = listOf("pdf")
     }
 
-    private val imageSequenceEngine = ImageSequenceEngine()
+    private val imageSequenceEngine = SharedImageSequenceEngine.instance
     
     override fun canParse(file: File): Boolean {
         return file.extension.lowercase() in SUPPORTED_EXTENSIONS
