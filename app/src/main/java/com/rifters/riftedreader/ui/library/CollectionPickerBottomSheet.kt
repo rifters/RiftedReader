@@ -14,8 +14,10 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.repository.CollectionRepository
 import com.rifters.riftedreader.data.database.BookDatabase
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class CollectionPickerBottomSheet : BottomSheetDialogFragment() {
 
@@ -88,12 +90,14 @@ class CollectionPickerBottomSheet : BottomSheetDialogFragment() {
         }
         doneButton.setOnClickListener {
             viewLifecycleOwner.lifecycleScope.launch {
-                val currentIds = collectionRepository.getCollectionIdsForBook(bookId).toSet()
-                (selectedIds - currentIds).forEach { id ->
-                    collectionRepository.addBookToCollection(bookId, id)
-                }
-                (currentIds - selectedIds).forEach { id ->
-                    collectionRepository.removeBookFromCollection(bookId, id)
+                withContext(Dispatchers.IO) {
+                    val currentIds = collectionRepository.getCollectionIdsForBook(bookId).toSet()
+                    (selectedIds - currentIds).forEach { id ->
+                        collectionRepository.addBookToCollection(bookId, id)
+                    }
+                    (currentIds - selectedIds).forEach { id ->
+                        collectionRepository.removeBookFromCollection(bookId, id)
+                    }
                 }
                 dismiss()
             }
