@@ -50,3 +50,13 @@ that still need implementation.
 - [ ] Full OPDS client with feed parsing, pagination, and download integration.
 - [ ] UI flows for cloud account linking, sync toggles, and OPDS catalog browsers.
 - [ ] End-to-end tests covering sync enabling/disabling and error handling.
+
+## Cross-cutting follow-ups
+
+- [ ] Replace `BookDownloadManager.notifIdFor(url) = url.hashCode()` with a collision-resistant
+  notification ID strategy before parallel download UX lands.
+- [ ] Move download failure fallback text such as `"Unknown error"` into string resources.
+- [ ] Revisit the optional `BookmarkManager` factory fallback if dependency wiring is centralized;
+  keep the current fallback until then.
+- [ ] Keep the documented `runCatching` guard around `NotificationManagerCompat.notify(...)`
+  unless notification permission handling changes on Android 13+.

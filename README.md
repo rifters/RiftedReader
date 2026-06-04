@@ -35,6 +35,10 @@ Current status: the reader, parser, bookmark, TOC, Calibre, and settings flows a
 - PreviewParser returns placeholder previews for remaining roadmap formats
 - JS tests require `cd tests/js && npm install` before the first run
 - `MANAGE_EXTERNAL_STORAGE` permission is being replaced
+- Download notifications intentionally swallow `SecurityException` until Android 13+
+  notification permission flows are fully wired
+- Download notification IDs currently use `url.hashCode()`, which is acceptable for
+  today's single-download flow but should be revisited before parallel download UX is added
 
 ## Documentation
 
@@ -130,6 +134,17 @@ Run Android unit tests from the repository root:
 ./gradlew :app:testDebugUnitTest
 ```
 
+## Carried review follow-ups
+
+- `BookDownloadManager.notifIdFor(url)` currently uses `url.hashCode()`; follow up with a
+  collision-resistant strategy before parallel downloads are surfaced in the UI
+- `DownloadNotificationHelper` intentionally wraps `NotificationManagerCompat.notify(...)`
+  in `runCatching` so Android 13+ devices without `POST_NOTIFICATIONS` do not crash
+- `ReaderViewModel.Factory` keeps the optional `BookmarkManager` construction fallback to
+  match the repository's current manual-wiring pattern
+- The `"Unknown error"` fallback used for download failures should eventually move to a
+  string resource for localization consistency
+
 ## Key Features (Planned)
 
 ### Format Support
@@ -218,4 +233,4 @@ Project is in planning phase. Contributions will be welcome once development beg
 For questions or suggestions, please open an issue.
 
 ---
-*Last Updated: 2026-06-03*
+*Last Updated: 2026-06-04*

@@ -65,6 +65,11 @@ This directory contains all project documentation, organized by category for eas
   - WebView lifecycle integration
   - Complete data flow pipeline and component specifications
 
+### [sessions/](sessions/)
+**Current state and handoff notes** - Point-in-time status summaries and carried-forward follow-ups.
+
+- **[CURRENT_STATE_2026-06.md](sessions/CURRENT_STATE_2026-06.md)** - Current implementation snapshot and active follow-ups
+
 ### [implemented/](implemented/)
 **Implementation status and summaries** - Records of what has been completed.
 
@@ -114,4 +119,4 @@ When adding or updating documentation:
 Always update this README when adding significant new documentation.
 
 ---
-*Last Updated: 2025-12-08*
+*Last Updated: 2026-06-04*
