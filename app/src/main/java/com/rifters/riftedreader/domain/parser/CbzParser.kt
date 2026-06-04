@@ -65,6 +65,7 @@ class CbzParser : BookParser {
                     .asSequence()
                     .filter { !it.isDirectory }
                     .filter { isImageFile(it.fileName) }
+                    .sortedBy { it.fileName.lowercase() }
                     .toList()
             }
         }.getOrDefault(emptyList())

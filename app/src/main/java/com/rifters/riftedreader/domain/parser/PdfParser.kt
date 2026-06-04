@@ -2,13 +2,12 @@ package com.rifters.riftedreader.domain.parser
 
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import com.rifters.riftedreader.domain.reader.ImageSequenceEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
-import android.os.ParcelFileDescriptor
 
 /**
  * Parser for PDF format rendered to image pages for the existing WebView reader stack.
@@ -46,8 +45,10 @@ class PdfParser : BookParser {
     override suspend fun getPageCount(file: File): Int {
         return withContext(Dispatchers.IO) {
             runCatching {
-                openRenderer(file).use { renderer ->
+                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                    PdfRenderer(descriptor).use { renderer ->
                     renderer.pageCount.coerceAtLeast(1)
+                    }
                 }
             }.getOrDefault(1)
         }
@@ -59,33 +60,30 @@ class PdfParser : BookParser {
 
     private fun renderPage(file: File, pageIndex: Int): PageContent? {
         return runCatching {
-            openRenderer(file).use { renderer ->
-                if (pageIndex !in 0 until renderer.pageCount) {
-                    return@use null
-                }
+            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                PdfRenderer(descriptor).use { renderer ->
+                    if (pageIndex !in 0 until renderer.pageCount) {
+                        return@use null
+                    }
 
-                renderer.openPage(pageIndex).use { page ->
-                    val (width, height) = imageSequenceEngine.scaledDimensions(page.width, page.height)
-                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                    try {
-                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                        val imagePage = imageSequenceEngine.renderPage(pageIndex, bitmap)
-                        PageContent(
-                            text = "PDF page ${pageIndex + 1}",
-                            html = imageSequenceEngine.toHtmlPage(imagePage),
-                            title = file.nameWithoutExtension.ifBlank { "PDF" }
-                        )
-                    } finally {
-                        bitmap.recycle()
+                    renderer.openPage(pageIndex).use { page ->
+                        val (width, height) = imageSequenceEngine.scaledDimensions(page.width, page.height)
+                        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        try {
+                            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            val imagePage = imageSequenceEngine.renderPage(pageIndex, bitmap)
+                            PageContent(
+                                text = "PDF page ${pageIndex + 1}",
+                                html = imageSequenceEngine.toHtmlPage(imagePage),
+                                title = file.nameWithoutExtension.ifBlank { "PDF" }
+                            )
+                        } finally {
+                            bitmap.recycle()
+                        }
                     }
                 }
             }
         }.getOrNull()
-    }
-
-    private fun openRenderer(file: File): PdfRenderer {
-        val descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-        return PdfRenderer(descriptor)
     }
 
     private fun placeholderPage(page: Int): PageContent {

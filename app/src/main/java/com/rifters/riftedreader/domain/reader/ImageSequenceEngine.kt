@@ -19,8 +19,14 @@ class ImageSequenceEngine(
     private val renderDpi: Int = IMAGE_RENDER_DPI
 ) {
 
-    private val pageCache = object : LinkedHashMap<Int, String>(maxCachePages, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, String>?): Boolean {
+    private data class CachedPage(
+        val width: Int,
+        val height: Int,
+        val dataUri: String
+    )
+
+    private val pageCache = object : LinkedHashMap<Int, CachedPage>(maxCachePages, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, CachedPage>?): Boolean {
             return size > maxCachePages
         }
     }
@@ -34,14 +40,18 @@ class ImageSequenceEngine(
         if (cached != null) {
             return ImagePage(
                 index = pageIndex,
-                width = bitmap.width,
-                height = bitmap.height,
-                dataUri = cached
+                width = cached.width,
+                height = cached.height,
+                dataUri = cached.dataUri
             )
         }
 
         val dataUri = encodeBitmap(bitmap)
-        pageCache[pageIndex] = dataUri
+        pageCache[pageIndex] = CachedPage(
+            width = bitmap.width,
+            height = bitmap.height,
+            dataUri = dataUri
+        )
         return ImagePage(
             index = pageIndex,
             width = bitmap.width,
@@ -51,8 +61,14 @@ class ImageSequenceEngine(
     }
 
     @Synchronized
-    fun cachedPageDataUri(pageIndex: Int): String? = pageCache[pageIndex]
+    fun cachedPageDataUri(pageIndex: Int): String? = pageCache[pageIndex]?.dataUri
 
+    /**
+     * Scale source dimensions using the render DPI.
+     *
+     * PDF pages are typically authored around 72 DPI, so the default sourceDpi
+     * matches that convention and scales the rendered bitmap to the target DPI.
+     */
     fun scaledDimensions(sourceWidth: Int, sourceHeight: Int, sourceDpi: Int = 72): Pair<Int, Int> {
         if (sourceWidth <= 0 || sourceHeight <= 0) {
             return 1 to 1
