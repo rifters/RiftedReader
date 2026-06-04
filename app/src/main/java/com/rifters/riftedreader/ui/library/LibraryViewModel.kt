@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 data class BookWithProgress(
     val book: Book,
@@ -61,7 +62,7 @@ class LibraryViewModel(
     private val _books = MutableStateFlow<List<Book>>(emptyList())
     val books: StateFlow<List<Book>> = _books.asStateFlow()
 
-    private val chapterCountCache = mutableMapOf<String, Int>()
+    private val chapterCountCache = ConcurrentHashMap<String, Int>()
 
     val continueReadingBooks: StateFlow<List<BookWithProgress>> = repository.allBooks
         .map { allBooks -> buildContinueReadingBooks(allBooks) }
@@ -420,6 +421,9 @@ class LibraryViewModel(
 
     private suspend fun resolveTotalChapters(book: Book): Int {
         chapterCountCache[book.id]?.let { return it }
+        if (book.totalPages > 0) {
+            return book.totalPages.also { chapterCountCache[book.id] = it }
+        }
 
         val totalChapters = runCatching {
             val bookFile = File(book.path)
