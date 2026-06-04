@@ -44,6 +44,7 @@ import com.rifters.riftedreader.data.database.entities.BookMeta
 import com.rifters.riftedreader.data.preferences.LibraryPreferences
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.data.repository.CollectionRepository
+import com.rifters.riftedreader.data.repository.RoomBookmarkRepository
 import com.rifters.riftedreader.databinding.DialogMetadataEditorBinding
 import com.rifters.riftedreader.databinding.DialogTextInputBinding
 import com.rifters.riftedreader.databinding.FragmentLibraryBinding
@@ -160,10 +161,17 @@ class LibraryFragment : Fragment() {
 
         val database = BookDatabase.getDatabase(requireContext())
         val repository = BookRepository(database.bookMetaDao())
+        val bookmarkRepository = RoomBookmarkRepository(database.bookmarkDao())
         val collectionRepository = CollectionRepository(database.collectionDao())
         val fileScanner = FileScanner(requireContext(), repository)
         val libraryPreferences = LibraryPreferences(requireContext())
-        viewModel = LibraryViewModel(repository, collectionRepository, fileScanner, libraryPreferences)
+        viewModel = LibraryViewModel(
+            repository = repository,
+            bookmarkRepository = bookmarkRepository,
+            collectionRepository = collectionRepository,
+            fileScanner = fileScanner,
+            libraryPreferences = libraryPreferences
+        )
 
         setupRecyclerView()
         setupSearchView()
