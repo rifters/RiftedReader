@@ -231,6 +231,8 @@ Page %4$d/%5$d (%6$d%%)</string>
     <string name="reader_line_height_default">Default</string>
     <string name="reader_line_height_relaxed">Relaxed</string>
     <string name="reader_line_height_loose">Loose</string>
+    <string name="settings_reader_font_family">Font</string>
+    <string name="settings_reader_page_padding">Page Margins</string>
     <string name="reader_mode_label">Reading mode</string>
     <string name="reader_mode_scroll">Scrolling</string>
     <string name="reader_mode_page">Page flipping</string>
@@ -310,6 +312,9 @@ Page %4$d/%5$d (%6$d%%)</string>
     <string name="settings_reader_line_height">Line spacing</string>
     <string name="settings_reader_theme">Theme</string>
     <string name="settings_reader_mode">Reading mode</string>
+    <string name="settings_reader_keep_screen_on">Keep Screen On</string>
+    <string name="settings_reader_brightness">Brightness</string>
+    <string name="settings_reader_brightness_summary">0 = system default</string>
     <string name="settings_reader_continuous_streaming_title">Continuous pagination streaming (beta)</string>
     <string name="settings_reader_continuous_streaming_summary">Keep nearby chapters streaming in the background. Disable if you notice repeated fallback jumps or prefer the classic chapter-by-chapter loading.</string>
 

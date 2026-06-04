@@ -89,6 +89,36 @@
             app:useSimpleSummaryProvider="true" />
 
         <ListPreference
+            android:key="reader_font_family"
+            android:title="@string/settings_reader_font_family"
+            android:defaultValue="sans-serif"
+            app:entries="@array/font_family_entries"
+            app:entryValues="@array/font_family_values"
+            app:useSimpleSummaryProvider="true" />
+
+        <SeekBarPreference
+            android:key="reader_page_padding_dp"
+            android:title="@string/settings_reader_page_padding"
+            android:defaultValue="16"
+            app:min="0"
+            android:max="48"
+            app:showSeekBarValue="true" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:key="reader_keep_screen_on"
+            android:title="@string/settings_reader_keep_screen_on"
+            android:defaultValue="false" />
+
+        <SeekBarPreference
+            android:key="reader_brightness_percent"
+            android:title="@string/settings_reader_brightness"
+            android:summary="@string/settings_reader_brightness_summary"
+            android:defaultValue="0"
+            app:min="0"
+            android:max="100"
+            app:showSeekBarValue="true" />
+
+        <ListPreference
             android:key="reader_theme"
             android:title="@string/settings_reader_theme"
             android:defaultValue="LIGHT"
