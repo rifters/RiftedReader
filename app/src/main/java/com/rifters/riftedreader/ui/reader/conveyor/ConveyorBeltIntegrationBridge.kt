@@ -58,9 +58,12 @@ class ConveyorBeltIntegrationBridge private constructor() : DefaultLifecycleObse
     private var scope: CoroutineScope? = null
     private var isInitialized = false
     private var lastObservedWindow: Int = -1
+    @Volatile
     private var readerViewModel: ReaderViewModel? = null
+    @Volatile
     private var conveyorViewModel: ConveyorBeltSystemViewModel? = null
 
+    @Synchronized
     private fun attach(
         readerViewModel: ReaderViewModel,
         conveyorViewModel: ConveyorBeltSystemViewModel

@@ -929,15 +929,19 @@ class EpubParser : BookParser {
                 img.attr("xlink:href", assetUrl)
             }
 
-            EpubImageAssetHelper.recordMapping(
-                EpubImageAssetHelper.MappingEntry(
-                    originalSrc = originalSrc,
-                    resolvedPath = imagePath,
-                    cacheFile = cachedImageFile.absolutePath,
-                    assetUrl = assetUrl,
-                    chapterIndex = page
+            runCatching {
+                EpubImageAssetHelper.recordMapping(
+                    EpubImageAssetHelper.MappingEntry(
+                        originalSrc = originalSrc,
+                        resolvedPath = imagePath,
+                        cacheFile = cachedImageFile.absolutePath,
+                        assetUrl = assetUrl,
+                        chapterIndex = page
+                    )
                 )
-            )
+            }.onFailure { mappingError ->
+                AppLogger.w("EpubParser", "Failed to record image mapping: ${mappingError.message}")
+            }
             
             CacheResult(assetUrl, cachedImageFile.absolutePath)
         } catch (e: Exception) {
@@ -962,15 +966,19 @@ class EpubParser : BookParser {
                 img.attr("xlink:href", dataUri)
             }
 
-            EpubImageAssetHelper.recordMapping(
-                EpubImageAssetHelper.MappingEntry(
-                    originalSrc = originalSrc,
-                    resolvedPath = imagePath,
-                    cacheFile = "",
-                    assetUrl = dataUri,
-                    chapterIndex = page
+            runCatching {
+                EpubImageAssetHelper.recordMapping(
+                    EpubImageAssetHelper.MappingEntry(
+                        originalSrc = originalSrc,
+                        resolvedPath = imagePath,
+                        cacheFile = "",
+                        assetUrl = dataUri,
+                        chapterIndex = page
+                    )
                 )
-            )
+            }.onFailure { mappingError ->
+                AppLogger.w("EpubParser", "Failed to record base64 image mapping: ${mappingError.message}")
+            }
             
             CacheResult(truncateForDisplay(dataUri), null)
         }

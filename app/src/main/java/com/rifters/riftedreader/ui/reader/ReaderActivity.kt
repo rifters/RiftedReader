@@ -249,6 +249,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
         }
         viewModel.setConveyorBeltSystem(conveyorBeltSystem)
         conveyorBridge = ConveyorBeltIntegrationBridge.create(viewModel, conveyorBeltSystem)
+        lifecycle.addObserver(conveyorBridge)
         
         // DIAGNOSTICS: Log ConveyorPrimary status at startup
         // Conveyor is now always enabled - minimal paginator is the only system
@@ -265,11 +266,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                     "totalPages=${viewModel.totalPages.value}, " +
                     "bookId=${viewModel.bookId}"
         )
-        
         setupControls(bookTitle)
         setupGestures()
         observeViewModel()
-        lifecycle.addObserver(conveyorBridge)
         
         AppLogger.event("ReaderActivity", "onCreate completed", "ui/ReaderActivity/lifecycle")
     }
