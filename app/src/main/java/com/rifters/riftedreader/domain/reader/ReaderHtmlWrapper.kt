@@ -320,6 +320,25 @@ object ReaderHtmlWrapper {
                         break-inside: avoid;
                         -webkit-column-break-inside: avoid;
                     }
+                    .image-page {
+                        width: 100%;
+                        min-height: 100%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        box-sizing: border-box;
+                    }
+                    .image-page img {
+                        max-width: 100% !important;
+                        max-height: 100vh;
+                        margin: 0 auto;
+                        object-fit: contain;
+                    }
+                    .image-page-error {
+                        flex-direction: column;
+                        align-items: flex-start;
+                        gap: 0.5em;
+                    }
                     /* Window-root specific image styling to prevent overflow-induced layout issues */
                     #window-root img {
                         max-width: 100% !important;
