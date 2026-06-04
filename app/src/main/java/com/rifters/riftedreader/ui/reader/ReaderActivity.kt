@@ -98,7 +98,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
     private var isReslicingIndicatorVisible: Boolean = false
     private lateinit var layoutManager: LinearLayoutManager
     private lateinit var snapHelper: PagerSnapHelper
-    private lateinit var conveyorBeltIntegrationBridge: ConveyorBeltIntegrationBridge
+    private lateinit var conveyorBridge: ConveyorBeltIntegrationBridge
     private var readerBookmarkMenuItem: MenuItem? = null
     private var currentPagerPosition: Int = 0
     private var isUserScrolling: Boolean = false
@@ -248,8 +248,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
             OffscreenSlicingWebView(applicationContext)
         }
         viewModel.setConveyorBeltSystem(conveyorBeltSystem)
-        conveyorBeltIntegrationBridge = ConveyorBeltIntegrationBridge().attach(viewModel, conveyorBeltSystem)
-        lifecycle.addObserver(conveyorBeltIntegrationBridge)
+        conveyorBridge = ConveyorBeltIntegrationBridge().attach(viewModel, conveyorBeltSystem)
         
         // DIAGNOSTICS: Log ConveyorPrimary status at startup
         // Conveyor is now always enabled - minimal paginator is the only system
@@ -270,6 +269,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
         setupControls(bookTitle)
         setupGestures()
         observeViewModel()
+        lifecycle.addObserver(conveyorBridge)
         
         AppLogger.event("ReaderActivity", "onCreate completed", "ui/ReaderActivity/lifecycle")
     }

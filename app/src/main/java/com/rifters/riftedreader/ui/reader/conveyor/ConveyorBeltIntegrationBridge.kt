@@ -49,8 +49,8 @@ class ConveyorBeltIntegrationBridge : DefaultLifecycleObserver {
     private var scope: CoroutineScope? = null
     private var isInitialized = false
     private var lastObservedWindow: Int = -1
-    private lateinit var readerViewModel: ReaderViewModel
-    private lateinit var conveyorViewModel: ConveyorBeltSystemViewModel
+    private var readerViewModel: ReaderViewModel? = null
+    private var conveyorViewModel: ConveyorBeltSystemViewModel? = null
 
     fun attach(
         readerViewModel: ReaderViewModel,
@@ -66,6 +66,10 @@ class ConveyorBeltIntegrationBridge : DefaultLifecycleObserver {
      */
     override fun onStart(owner: LifecycleOwner) {
         super.onStart(owner)
+        if (!isAttached()) {
+            log("START_OBSERVING", "Bridge not attached - skipping")
+            return
+        }
         startObserving()
     }
     
@@ -81,13 +85,17 @@ class ConveyorBeltIntegrationBridge : DefaultLifecycleObserver {
      * Start observing the ReaderViewModel for window changes.
      */
     private fun startObserving() {
-        if (!::readerViewModel.isInitialized || !::conveyorViewModel.isInitialized) {
-            log("START_OBSERVING", "ReaderViewModel not attached - skipping")
+        if (scope != null) {
+            log("START_OBSERVING", "Already observing - skipping")
             return
         }
 
-        if (scope != null) {
-            log("START_OBSERVING", "Already observing - skipping")
+        val readerViewModel = readerViewModel ?: run {
+            log("START_OBSERVING", "ReaderViewModel not attached - skipping")
+            return
+        }
+        val conveyorViewModel = conveyorViewModel ?: run {
+            log("START_OBSERVING", "ConveyorBeltSystemViewModel not attached - skipping")
             return
         }
         
@@ -121,6 +129,8 @@ class ConveyorBeltIntegrationBridge : DefaultLifecycleObserver {
      * Initialize the isolated conveyor system with current book state.
      */
     private fun initializeIsolatedSystem() {
+        val readerViewModel = readerViewModel ?: return
+        val conveyorViewModel = conveyorViewModel ?: return
         val windowCount = readerViewModel.windowCount.value
         val currentWindow = readerViewModel.currentWindowIndex.value
         
@@ -144,6 +154,8 @@ class ConveyorBeltIntegrationBridge : DefaultLifecycleObserver {
      * Handle window index changes from ReaderViewModel.
      */
     private fun onWindowIndexChanged(windowIndex: Int) {
+        val readerViewModel = readerViewModel ?: return
+        val conveyorViewModel = conveyorViewModel ?: return
         // Skip if same window or not initialized
         if (windowIndex == lastObservedWindow) {
             return
@@ -186,6 +198,7 @@ class ConveyorBeltIntegrationBridge : DefaultLifecycleObserver {
      * the ConveyorBeltSystemViewModel state.
      */
     private fun logStateComparison(label: String) {
+        val conveyorViewModel = conveyorViewModel ?: return
         // WindowBufferManager has been deprecated and removed
         val oldPhase = "DEPRECATED"
         val oldActive = "N/A"
@@ -235,6 +248,9 @@ class ConveyorBeltIntegrationBridge : DefaultLifecycleObserver {
      * Check if the bridge is currently observing.
      */
     fun isObserving(): Boolean = scope != null
+
+    private fun isAttached(): Boolean =
+        readerViewModel != null && conveyorViewModel != null
     
     private fun log(event: String, message: String) {
         AppLogger.d(TAG, "$LOG_PREFIX [$event] $message")
