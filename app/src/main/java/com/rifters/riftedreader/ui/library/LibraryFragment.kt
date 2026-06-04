@@ -59,6 +59,7 @@ import com.rifters.riftedreader.ui.reader.ReaderActivity
 import com.rifters.riftedreader.util.AppLogger
 import com.rifters.riftedreader.util.FileScanner
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -179,20 +180,21 @@ class LibraryFragment : Fragment() {
             isCheckable = true
             isChecked = true
         }
-        binding.tagChipGroup.addView(allChip, 0)
 
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.availableTags.collect { tags ->
+                viewModel.availableTags.combine(viewModel.activeTagFilter) { tags, activeTag ->
+                    tags to activeTag
+                }.collect { (tags, activeTag) ->
                     binding.tagChipGroup.removeAllViews()
                     binding.tagChipGroup.addView(allChip)
-                    allChip.isChecked = viewModel.activeTagFilter.value == null
+                    allChip.isChecked = activeTag == null
                     tags.forEach { tag ->
                         val chip = Chip(requireContext()).apply {
                             id = View.generateViewId()
                             text = tag
                             isCheckable = true
-                            isChecked = viewModel.activeTagFilter.value == tag
+                            isChecked = activeTag == tag
                         }
                         binding.tagChipGroup.addView(chip)
                     }
@@ -206,7 +208,7 @@ class LibraryFragment : Fragment() {
             val chip = group.findViewById<Chip>(
                 checkedIds.firstOrNull() ?: return@setOnCheckedStateChangeListener
             )
-            val tag = if (chip == allChip) null else chip.text.toString()
+            val tag = if (chip.id == allChip.id) null else chip.text.toString()
             viewModel.setTagFilter(tag)
         }
     }
