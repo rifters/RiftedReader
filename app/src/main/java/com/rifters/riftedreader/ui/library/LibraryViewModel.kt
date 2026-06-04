@@ -348,13 +348,17 @@ class LibraryViewModel(
 
     fun setBookCollections(bookId: String, selectedIds: Set<String>) {
         viewModelScope.launch {
-            val current = collectionRepository.getCollectionsForBook(bookId).first()
-            val currentIds = current.map { it.id }.toSet()
-            (selectedIds - currentIds).forEach { id ->
-                collectionRepository.addBookToCollection(bookId, id)
-            }
-            (currentIds - selectedIds).forEach { id ->
-                collectionRepository.removeBookFromCollection(bookId, id)
+            try {
+                val current = collectionRepository.getCollectionsForBook(bookId).first()
+                val currentIds = current.map { it.id }.toSet()
+                (selectedIds - currentIds).forEach { id ->
+                    collectionRepository.addBookToCollection(bookId, id)
+                }
+                (currentIds - selectedIds).forEach { id ->
+                    collectionRepository.removeBookFromCollection(bookId, id)
+                }
+            } catch (e: Exception) {
+                _events.emit(LibraryEvent.CollectionOperationFailed)
             }
         }
     }

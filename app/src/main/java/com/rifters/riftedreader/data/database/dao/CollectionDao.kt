@@ -26,6 +26,17 @@ interface CollectionDao {
     @Query("SELECT * FROM collections ORDER BY sortOrder ASC, name COLLATE NOCASE ASC")
     fun observeCollections(): Flow<List<CollectionEntity>>
 
+    @Query(
+        """
+        SELECT collections.* FROM collections
+        INNER JOIN book_collection_cross_ref
+            ON book_collection_cross_ref.collectionId = collections.id
+        WHERE book_collection_cross_ref.bookId = :bookId
+        ORDER BY collections.sortOrder ASC, collections.name COLLATE NOCASE ASC
+        """
+    )
+    fun observeCollectionsForBook(bookId: String): Flow<List<CollectionEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCollection(collection: CollectionEntity)
 

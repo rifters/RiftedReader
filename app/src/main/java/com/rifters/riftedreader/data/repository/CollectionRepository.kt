@@ -5,7 +5,6 @@ import com.rifters.riftedreader.data.database.entities.BookCollectionCrossRef
 import com.rifters.riftedreader.data.database.entities.CollectionEntity
 import com.rifters.riftedreader.data.database.entities.CollectionWithBooks
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 
 /**
  * Repository façade for collection management.
@@ -21,11 +20,7 @@ class CollectionRepository(private val collectionDao: CollectionDao) {
     val collectionsWithBooks: Flow<List<CollectionWithBooks>> = collectionDao.observeCollectionsWithBooks()
 
     fun getCollectionsForBook(bookId: String): Flow<List<CollectionEntity>> =
-        collectionsWithBooks.map { collections ->
-            collections.filter { collectionWithBooks ->
-                collectionWithBooks.books.any { it.id == bookId }
-            }.map { it.collection }
-        }
+        collectionDao.observeCollectionsForBook(bookId)
 
     suspend fun createCollection(name: String, description: String? = null): CollectionEntity {
         val collection = CollectionEntity(name = name.trim(), description = description?.trim())
