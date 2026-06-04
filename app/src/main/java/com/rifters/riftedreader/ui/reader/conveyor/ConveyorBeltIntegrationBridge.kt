@@ -39,20 +39,11 @@ import kotlinx.coroutines.launch
  * lifecycle.addObserver(bridge)
  * ```
  */
-class ConveyorBeltIntegrationBridge private constructor() : DefaultLifecycleObserver {
+class ConveyorBeltIntegrationBridge : DefaultLifecycleObserver {
     
     companion object {
         private const val TAG = "ConveyorBridge"
         private const val LOG_PREFIX = "[CONVEYOR_BRIDGE]"
-
-        fun create(
-            readerViewModel: ReaderViewModel,
-            conveyorViewModel: ConveyorBeltSystemViewModel
-        ): ConveyorBeltIntegrationBridge {
-            return ConveyorBeltIntegrationBridge().apply {
-                attach(readerViewModel, conveyorViewModel)
-            }
-        }
     }
     
     private data class Attachment(
@@ -66,8 +57,7 @@ class ConveyorBeltIntegrationBridge private constructor() : DefaultLifecycleObse
     private var lastObservedWindow: Int = -1
     private var attachment: Attachment? = null
 
-    @Synchronized
-    private fun attach(
+    fun attach(
         readerViewModel: ReaderViewModel,
         conveyorViewModel: ConveyorBeltSystemViewModel
     ): ConveyorBeltIntegrationBridge {

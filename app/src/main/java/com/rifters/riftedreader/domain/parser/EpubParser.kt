@@ -929,23 +929,14 @@ class EpubParser : BookParser {
                 img.attr("xlink:href", assetUrl)
             }
 
-            runCatching {
-                EpubImageAssetHelper.recordMapping(
-                    EpubImageAssetHelper.MappingEntry(
-                        originalSrc = originalSrc,
-                        resolvedPath = imagePath,
-                        cacheFile = cachedImageFile.absolutePath,
-                        assetUrl = assetUrl,
-                        chapterIndex = page
-                    )
-                )
-            }.onFailure { mappingError ->
-                AppLogger.w(
-                    "EpubParser",
-                    "Failed to record image mapping for src=$originalSrc path=$imagePath",
-                    mappingError
-                )
-            }
+            recordImageMappingSafely(
+                originalSrc = originalSrc,
+                imagePath = imagePath,
+                cacheFile = cachedImageFile.absolutePath,
+                assetUrl = assetUrl,
+                chapterIndex = page,
+                errorLabel = "image mapping"
+            )
             
             CacheResult(assetUrl, cachedImageFile.absolutePath)
         } catch (e: Exception) {
@@ -970,25 +961,43 @@ class EpubParser : BookParser {
                 img.attr("xlink:href", dataUri)
             }
 
-            runCatching {
-                EpubImageAssetHelper.recordMapping(
-                    EpubImageAssetHelper.MappingEntry(
-                        originalSrc = originalSrc,
-                        resolvedPath = imagePath,
-                        cacheFile = "",
-                        assetUrl = dataUri,
-                        chapterIndex = page
-                    )
-                )
-            }.onFailure { mappingError ->
-                AppLogger.w(
-                    "EpubParser",
-                    "Failed to record base64 image mapping for src=$originalSrc path=$imagePath",
-                    mappingError
-                )
-            }
+            recordImageMappingSafely(
+                originalSrc = originalSrc,
+                imagePath = imagePath,
+                cacheFile = "",
+                assetUrl = dataUri,
+                chapterIndex = page,
+                errorLabel = "base64 image mapping"
+            )
             
             CacheResult(truncateForDisplay(dataUri), null)
+        }
+    }
+
+    private fun recordImageMappingSafely(
+        originalSrc: String,
+        imagePath: String,
+        cacheFile: String,
+        assetUrl: String,
+        chapterIndex: Int,
+        errorLabel: String
+    ) {
+        runCatching {
+            EpubImageAssetHelper.recordMapping(
+                EpubImageAssetHelper.MappingEntry(
+                    originalSrc = originalSrc,
+                    resolvedPath = imagePath,
+                    cacheFile = cacheFile,
+                    assetUrl = assetUrl,
+                    chapterIndex = chapterIndex
+                )
+            )
+        }.onFailure { mappingError ->
+            AppLogger.w(
+                "EpubParser",
+                "Failed to record $errorLabel for src=$originalSrc path=$imagePath",
+                mappingError
+            )
         }
     }
     

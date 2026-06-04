@@ -248,7 +248,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
             OffscreenSlicingWebView(applicationContext)
         }
         viewModel.setConveyorBeltSystem(conveyorBeltSystem)
-        conveyorBridge = ConveyorBeltIntegrationBridge.create(viewModel, conveyorBeltSystem)
+        conveyorBridge = ConveyorBeltIntegrationBridge().attach(viewModel, conveyorBeltSystem)
         lifecycle.addObserver(conveyorBridge)
         
         // DIAGNOSTICS: Log ConveyorPrimary status at startup
