@@ -89,7 +89,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
     private var currentHighlightRange: IntRange? = null
     internal var readerMode: ReaderMode = ReaderMode.PAGINATED
     private var autoContinueTts: Boolean = false
-    private var pendingTtsResume: Boolean = false
+    private val pendingTtsResume = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val pendingWindowReloadTtsResume = java.util.concurrent.atomic.AtomicBoolean(false)
+    private var lastObservedWindowIndex: Int? = null
+    private val latestTtsPlaybackState = java.util.concurrent.atomic.AtomicReference(TTSPlaybackState.IDLE)
     private var usingWebViewSlider: Boolean = false
     private var isReslicingIndicatorVisible: Boolean = false
     private lateinit var layoutManager: LinearLayoutManager
@@ -909,7 +912,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                                 "[CONTENT_LOADED] Checking gates: page=${viewModel.currentPage.value} " +
                                         "textLength=${pageContent.text.length} hasHtml=${!pageContent.html.isNullOrBlank()} " +
                                         "isWebViewReady=$isWebViewReady isPaginatorInit=$isPaginatorInitialized " +
-                                        "textNonEmpty=$textNonEmpty pendingTtsResume=$pendingTtsResume"
+                                        "textNonEmpty=$textNonEmpty pendingTtsResume=${pendingTtsResume.get()}"
                             )
                         }
                         
@@ -952,19 +955,26 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                             binding.contentTextView.text = spanned
                         }
                         binding.contentScrollView.scrollTo(0, 0)
-                        if (pendingTtsResume && autoContinueTts && currentPageText.isNotBlank()) {
+                        if (pendingWindowReloadTtsResume.get() && currentPageText.isNotBlank()) {
                             AppLogger.d(
                                 "ReaderActivity",
-                                "[TTS_RESUME_TRIGGERED] Conditions met: pendingTtsResume=$pendingTtsResume " +
+                                "[TTS_WINDOW_RELOAD_RESUME] Window content reloaded; resuming TTS from saved position"
+                            )
+                            pendingWindowReloadTtsResume.set(false)
+                            resumeTtsForCurrentPage()
+                        } else if (pendingTtsResume.get() && autoContinueTts && currentPageText.isNotBlank()) {
+                            AppLogger.d(
+                                "ReaderActivity",
+                                "[TTS_RESUME_TRIGGERED] Conditions met: pendingTtsResume=${pendingTtsResume.get()} " +
                                         "autoContinueTts=$autoContinueTts textNotBlank=${currentPageText.isNotBlank()}. " +
                                         "Calling resumeTtsForCurrentPage()"
                             )
-                            pendingTtsResume = false
+                            pendingTtsResume.set(false)
                             resumeTtsForCurrentPage()
                         } else {
                             AppLogger.d(
                                 "ReaderActivity",
-                                "[TTS_RESUME_SKIPPED] Conditions not met: pendingTtsResume=$pendingTtsResume " +
+                                "[TTS_RESUME_SKIPPED] Conditions not met: pendingTtsResume=${pendingTtsResume.get()} " +
                                         "autoContinueTts=$autoContinueTts textNotBlank=${currentPageText.isNotBlank()}"
                             )
                         }
@@ -973,6 +983,24 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                 
                 launch {
                     viewModel.currentWindowIndex.collect { windowIndex ->
+                        val previousWindowIndex = lastObservedWindowIndex
+                        lastObservedWindowIndex = windowIndex
+                        val shouldPauseForWindowReload =
+                            previousWindowIndex != null &&
+                                previousWindowIndex != windowIndex &&
+                                latestTtsPlaybackState.get() == TTSPlaybackState.PLAYING
+                        if (shouldPauseForWindowReload) {
+                            AppLogger.d(
+                                "ReaderActivity",
+                                "[TTS_WINDOW_CHANGE] window=$previousWindowIndex->$windowIndex; pausing TTS until new HTML loads"
+                            )
+                            pendingWindowReloadTtsResume.set(true)
+                            // Clear the end-of-page resume path so we don't resume twice when the conveyor
+                            // changes windows while TTS is already expecting a page-advance resume. The
+                            // explicit window-reload flag above owns the restart once the new HTML loads.
+                            pendingTtsResume.set(false)
+                            TTSService.pause(this@ReaderActivity)
+                        }
                         syncRecyclerViewToWindowId(windowIndex, reason = "currentWindowIndex.collect")
                     }
                 }
@@ -1870,11 +1898,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
     }
 
     private fun handleTtsStatus(snapshot: TTSStatusSnapshot) {
+        latestTtsPlaybackState.set(snapshot.state)
         AppLogger.d(
             "ReaderActivity",
             "[TTS_STATUS_CHANGE] state=${snapshot.state} sentenceIndex=${snapshot.sentenceIndex} " +
                     "sentenceTotal=${snapshot.sentenceTotal} currentPage=${viewModel.currentPage.value} " +
-                    "autoContinueTts=$autoContinueTts pendingTtsResume=$pendingTtsResume"
+                    "autoContinueTts=$autoContinueTts pendingTtsResume=${pendingTtsResume.get()}"
         )
         
         // Update button UI based on TTS state
@@ -1887,7 +1916,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                     "[TTS_STATE_PLAYING] Setting autoContinueTts=true, pendingTtsResume=false"
                 )
                 autoContinueTts = true
-                pendingTtsResume = false
+                pendingTtsResume.set(false)
             }
             TTSPlaybackState.PAUSED -> {
                 AppLogger.d(
@@ -1895,9 +1924,10 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                     "[TTS_STATE_PAUSED] Setting autoContinueTts=false, pendingTtsResume=false"
                 )
                 autoContinueTts = false
-                pendingTtsResume = false
+                pendingTtsResume.set(false)
             }
             TTSPlaybackState.STOPPED -> {
+                pendingWindowReloadTtsResume.set(false)
                 val reachedEnd = snapshot.sentenceTotal > 0 && snapshot.sentenceIndex >= snapshot.sentenceTotal
                 AppLogger.d(
                     "ReaderActivity",
@@ -1909,7 +1939,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                         "ReaderActivity",
                         "[TTS_CHAPTER_ADVANCE] Attempting to advance to next chapter/page. Setting pendingTtsResume=true"
                     )
-                    pendingTtsResume = true
+                    pendingTtsResume.set(true)
                     val advanced = viewModel.nextPage()
                     if (!advanced) {
                         AppLogger.w(
@@ -1917,7 +1947,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                             "[TTS_CHAPTER_ADVANCE_FAILED] No more pages available. Setting autoContinueTts=false, pendingTtsResume=false"
                         )
                         autoContinueTts = false
-                        pendingTtsResume = false
+                        pendingTtsResume.set(false)
                     } else {
                         AppLogger.d(
                             "ReaderActivity",
@@ -1931,16 +1961,17 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                                 "Setting autoContinueTts=false, pendingTtsResume=false"
                     )
                     autoContinueTts = false
-                    pendingTtsResume = false
+                    pendingTtsResume.set(false)
                 }
             }
             TTSPlaybackState.IDLE -> {
+                pendingWindowReloadTtsResume.set(false)
                 AppLogger.d(
                     "ReaderActivity",
                     "[TTS_STATE_IDLE] Setting autoContinueTts=false, pendingTtsResume=false"
                 )
                 autoContinueTts = false
-                pendingTtsResume = false
+                pendingTtsResume.set(false)
             }
         }
     }
