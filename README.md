@@ -27,12 +27,12 @@ Current status: the reader, parser, bookmark, TOC, Calibre, and settings flows a
 - Calibre Content Server integration (browse + download)
 - Calibre-Web in-app browser (WebView + download intercept)
 - Loading overlay, TOC panel, bookmark list, reader settings UI
-- Core parsers for TXT, EPUB, PDF, and HTML
+- Core parsers for TXT, EPUB, PDF, HTML, FB2, and MOBI
 
 ## Known issues
 
 - FlexPaginator is OFF by default; enable it in Reader Settings > Layout
-- PreviewParser returns placeholder previews for MOBI, FB2, and CBZ
+- PreviewParser returns placeholder previews for remaining roadmap formats
 - JS tests require `cd tests/js && npm install` before the first run
 - `MANAGE_EXTERNAL_STORAGE` permission is being replaced
 

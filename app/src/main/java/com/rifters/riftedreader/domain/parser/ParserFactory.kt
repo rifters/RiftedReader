@@ -13,6 +13,8 @@ object ParserFactory {
     init {
         register(TxtParser())
         register(EpubParser())
+        register(MobiParser())
+        register(Fb2Parser())
         register(CbzParser())
         register(PdfParser())
         register(HtmlParser())

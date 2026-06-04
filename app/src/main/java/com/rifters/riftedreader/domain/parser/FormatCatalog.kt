@@ -39,7 +39,6 @@ object FormatCatalog {
             status = FormatSupportStatus.SUPPORTED,
             notes = "Backed by AndroidPdfViewer wrapper as described in LIBRERA_ANALYSIS.md"
         ),
-        // Stage 6 roadmap entries -----------------------------------------------------------
         FormatDescriptor(
             id = "mobi",
             displayName = "MOBI",
@@ -48,15 +47,15 @@ object FormatCatalog {
                 "application/x-mobipocket-ebook",
                 "application/octet-stream"
             ),
-            status = FormatSupportStatus.IN_PROGRESS,
-            notes = "Planned converter using libmobi parity (foobnix/ext/MobiExtract.java)"
+            status = FormatSupportStatus.SUPPORTED,
+            notes = "Best-effort text extractor with MOBI/AZW/AZW3 support"
         ),
         FormatDescriptor(
             id = "fb2",
             displayName = "FB2",
             extensions = setOf("fb2", "fb2.zip"),
             mimeTypes = setOf("application/xml", "application/zip"),
-            status = FormatSupportStatus.IN_PROGRESS,
+            status = FormatSupportStatus.SUPPORTED,
             notes = "XML-based parsing similar to Librera's Fb2Extractor"
         ),
         FormatDescriptor(
