@@ -6,21 +6,25 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
+import androidx.core.os.bundleOf
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.rifters.riftedreader.R
+import com.rifters.riftedreader.data.repository.CollectionRepository
+import com.rifters.riftedreader.data.database.BookDatabase
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 class CollectionPickerBottomSheet : BottomSheetDialogFragment() {
 
-    private var bookId: String = ""
-
     companion object {
+        private const val ARG_BOOK_ID = "arg_book_id"
+        const val REQUEST_KEY_MANAGE_COLLECTIONS = "collection_picker_manage_collections"
+
         fun newInstance(bookId: String) = CollectionPickerBottomSheet().apply {
-            this.bookId = bookId
+            arguments = bundleOf(ARG_BOOK_ID to bookId)
         }
     }
 
@@ -33,11 +37,10 @@ class CollectionPickerBottomSheet : BottomSheetDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val libraryFragment = parentFragment as? LibraryFragment ?: run {
-            dismiss()
-            return
-        }
-        val viewModel = libraryFragment.libraryViewModel
+        val bookId = requireArguments().getString(ARG_BOOK_ID).orEmpty()
+        val collectionRepository = CollectionRepository(
+            BookDatabase.getDatabase(requireContext()).collectionDao()
+        )
         val selectedIds = mutableSetOf<String>()
 
         val recycler = view.findViewById<RecyclerView>(R.id.collectionList)
@@ -49,8 +52,8 @@ class CollectionPickerBottomSheet : BottomSheetDialogFragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             combine(
-                viewModel.collections,
-                viewModel.getCollectionsForBook(bookId)
+                collectionRepository.collections,
+                collectionRepository.getCollectionsForBook(bookId)
             ) { all, assigned -> all to assigned.map { it.id }.toSet() }
                 .collect { (all, assignedIds) ->
                     selectedIds.clear()
@@ -78,11 +81,20 @@ class CollectionPickerBottomSheet : BottomSheetDialogFragment() {
         }
 
         goButton.setOnClickListener {
+            parentFragmentManager.setFragmentResult(REQUEST_KEY_MANAGE_COLLECTIONS, bundleOf())
             dismiss()
         }
         doneButton.setOnClickListener {
-            viewModel.setBookCollections(bookId, selectedIds.toSet())
-            dismiss()
+            viewLifecycleOwner.lifecycleScope.launch {
+                val currentIds = collectionRepository.getCollectionIdsForBook(bookId).toSet()
+                (selectedIds - currentIds).forEach { id ->
+                    collectionRepository.addBookToCollection(bookId, id)
+                }
+                (currentIds - selectedIds).forEach { id ->
+                    collectionRepository.removeBookFromCollection(bookId, id)
+                }
+                dismiss()
+            }
         }
     }
 }
