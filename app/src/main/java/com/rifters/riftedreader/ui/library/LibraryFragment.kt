@@ -43,6 +43,7 @@ import com.rifters.riftedreader.data.database.BookDatabase
 import com.rifters.riftedreader.data.database.entities.CollectionEntity
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import com.rifters.riftedreader.data.preferences.LibraryPreferences
+import com.rifters.riftedreader.data.preferences.libraryDataStore
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.data.repository.CollectionRepository
 import com.rifters.riftedreader.data.repository.RoomBookmarkRepository
@@ -171,11 +172,13 @@ class LibraryFragment : Fragment() {
             bookmarkRepository = bookmarkRepository,
             collectionRepository = collectionRepository,
             fileScanner = fileScanner,
-            libraryPreferences = libraryPreferences
+            libraryPreferences = libraryPreferences,
+            dataStore = requireContext().applicationContext.libraryDataStore
         )
 
         setupRecyclerView()
         setupSearchView()
+        setupSortButton()
         setupFilterControls()
         setupSmartCollectionControls()
         setupSavedSearchControls()
@@ -478,6 +481,22 @@ class LibraryFragment : Fragment() {
             }
         }, viewLifecycleOwner, Lifecycle.State.RESUMED)
     }
+
+    private fun setupSortButton() {
+        binding.sortButton.setOnClickListener {
+            val orders = LibrarySortOrder.entries.toTypedArray()
+            val labels = orders.map(::sortOrderLabel).toTypedArray()
+            val selectedIndex = orders.indexOf(viewModel.activeSortOrder.value)
+
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.sort_by)
+                .setSingleChoiceItems(labels, selectedIndex) { dialog, which ->
+                    viewModel.setSortOrder(orders[which])
+                    dialog.dismiss()
+                }
+                .show()
+        }
+    }
     
     private fun setupFab() {
         binding.scanFab.setOnClickListener {
@@ -552,6 +571,18 @@ class LibraryFragment : Fragment() {
                     }
                 }
             }
+        }
+    }
+
+    private fun sortOrderLabel(order: LibrarySortOrder): String {
+        return when (order) {
+            LibrarySortOrder.TITLE_ASC -> getString(R.string.library_sort_title_asc)
+            LibrarySortOrder.TITLE_DESC -> getString(R.string.library_sort_title_desc)
+            LibrarySortOrder.AUTHOR_ASC -> getString(R.string.library_sort_author_asc)
+            LibrarySortOrder.AUTHOR_DESC -> getString(R.string.library_sort_author_desc)
+            LibrarySortOrder.DATE_ADDED_DESC -> getString(R.string.library_sort_date_added_desc)
+            LibrarySortOrder.DATE_ADDED_ASC -> getString(R.string.library_sort_date_added_asc)
+            LibrarySortOrder.LAST_READ_DESC -> getString(R.string.library_sort_last_read_desc)
         }
     }
 
