@@ -1413,7 +1413,7 @@ class ReaderViewModel(
         label: String? = null
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            createNamedBookmark(
+            persistBookmarkViaManager(
                 createBookmark(
                     event = event,
                     anchorEntries = anchorEntries,
@@ -1440,7 +1440,7 @@ class ReaderViewModel(
             } else {
                 fromPage
             }
-            resolvedBookmark?.let { createNamedBookmark(it) }
+            resolvedBookmark?.let { persistBookmarkViaManager(it) }
         }
         refreshNamedBookmarks()
         return bookmark
@@ -1448,7 +1448,7 @@ class ReaderViewModel(
 
     fun saveNamedBookmark(bookmark: Bookmark) {
         viewModelScope.launch(Dispatchers.IO) {
-            createNamedBookmark(bookmark)
+            persistBookmarkViaManager(bookmark)
             refreshNamedBookmarks()
         }
     }
@@ -1476,7 +1476,7 @@ class ReaderViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val currentMode = readerPreferences.settings.value.mode
             latestPageChangedEvent.value?.let { pending ->
-                createNamedBookmark(
+                persistBookmarkViaManager(
                     createBookmark(
                         event = pending.event,
                         anchorEntries = pending.anchorEntries,
@@ -1659,13 +1659,13 @@ class ReaderViewModel(
         )
     }
 
-    private suspend fun createNamedBookmark(bookmark: Bookmark): Bookmark {
+    private suspend fun persistBookmarkViaManager(bookmark: Bookmark): Bookmark {
         return bookmarkManager.createBookmark(
             bookId = bookmark.bookId,
             chapterIndex = bookmark.chapterIndex,
             inChapterPage = bookmark.pageIndexHint,
             characterOffset = bookmark.charOffset,
-            chapterTitle = bookmark.nearestAnchorText,
+            chapterTitle = "",
             nearestAnchorId = bookmark.nearestAnchorId,
             nearestAnchorText = bookmark.nearestAnchorText,
             savedAt = bookmark.savedAt,
