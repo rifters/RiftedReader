@@ -36,27 +36,32 @@ class BookDownloadManager(
     ): Result<BookMeta> {
         val notifId = notifIdFor(url)
         notifHelper.notifyProgress(notifId, filename)
-        return withContext(Dispatchers.IO) {
-            var downloadedFile: File? = null
-            try {
-                val destination = createDestination(filename)
-                downloadedFile = destination
-                downloadToFile(url, headers, destination)
-                Result.success(importDownloadedBook(destination))
-            } catch (throwable: Throwable) {
-                if (throwable is CancellationException) throw throwable
-                downloadedFile?.delete()
-                Result.failure(throwable)
-            }
-        }.also { result ->
-            result
-                .onSuccess { book -> notifHelper.notifySuccess(notifId, book.title) }
-                .onFailure { error ->
-                    notifHelper.notifyFailure(
-                        notifId,
-                        error.message.orEmpty().ifBlank { "Unknown error" }
-                    )
+        return try {
+            withContext(Dispatchers.IO) {
+                var downloadedFile: File? = null
+                try {
+                    val destination = createDestination(filename)
+                    downloadedFile = destination
+                    downloadToFile(url, headers, destination)
+                    Result.success(importDownloadedBook(destination))
+                } catch (throwable: Throwable) {
+                    if (throwable is CancellationException) throw throwable
+                    downloadedFile?.delete()
+                    Result.failure(throwable)
                 }
+            }.also { result ->
+                result
+                    .onSuccess { book -> notifHelper.notifySuccess(notifId, book.title) }
+                    .onFailure { error ->
+                        notifHelper.notifyFailure(
+                            notifId,
+                            error.message.orEmpty().ifBlank { "Unknown error" }
+                        )
+                    }
+            }
+        } catch (throwable: CancellationException) {
+            notifHelper.cancel(notifId)
+            throw throwable
         }
     }
 
