@@ -1,15 +1,25 @@
 package com.rifters.riftedreader.domain.parser
 
+import android.text.TextUtils
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.nio.charset.Charset
 import java.util.Locale
 
 class MobiParser : BookParser {
 
     private val supportedExtensions = setOf("mobi", "azw", "azw3")
+
+    companion object {
+        private val CONTROL_CHARS_REGEX = Regex("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]")
+        private val STRUCTURAL_TAGS_REGEX = Regex(
+            "</?(html|body|head|div|span|p|h[1-6]|br|blockquote|ul|ol|li|a|img|meta|title)[^>]*>",
+            RegexOption.IGNORE_CASE
+        )
+        private val ALL_TAGS_REGEX = Regex("<[^>]+>")
+        private val WHITESPACE_REGEX = Regex("\\s+")
+    }
 
     override fun canParse(file: File): Boolean {
         return file.extension.lowercase(Locale.getDefault()) in supportedExtensions
@@ -33,7 +43,7 @@ class MobiParser : BookParser {
         val displayText = text.ifBlank { "MOBI text extraction is not available for this file." }
         PageContent(
             text = displayText,
-            html = "<pre>${escapeHtml(displayText)}</pre>",
+            html = "<pre>${TextUtils.htmlEncode(displayText)}</pre>",
             title = file.nameWithoutExtension.ifBlank { "MOBI" }
         )
     }
@@ -48,10 +58,10 @@ class MobiParser : BookParser {
         val bytes = file.readBytes()
         val decoded = decode(bytes)
         return decoded
-            .replace(Regex("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]"), " ")
-            .replace(Regex("</?(html|body|head|div|span|p|h[1-6]|br|blockquote|ul|ol|li|a|img|meta|title)[^>]*>", RegexOption.IGNORE_CASE), "\n")
-            .replace(Regex("<[^>]+>"), " ")
-            .replace(Regex("\\s+"), " ")
+            .replace(CONTROL_CHARS_REGEX, " ")
+            .replace(STRUCTURAL_TAGS_REGEX, "\n")
+            .replace(ALL_TAGS_REGEX, " ")
+            .replace(WHITESPACE_REGEX, " ")
             .trim()
     }
 
@@ -62,18 +72,4 @@ class MobiParser : BookParser {
             ?: runCatching { bytes.toString(Charsets.ISO_8859_1) }.getOrDefault("")
     }
 
-    private fun escapeHtml(text: String): String {
-        return buildString {
-            text.forEach { ch ->
-                when (ch) {
-                    '&' -> append("&amp;")
-                    '<' -> append("&lt;")
-                    '>' -> append("&gt;")
-                    '"' -> append("&quot;")
-                    '\'' -> append("&#39;")
-                    else -> append(ch)
-                }
-            }
-        }
-    }
 }

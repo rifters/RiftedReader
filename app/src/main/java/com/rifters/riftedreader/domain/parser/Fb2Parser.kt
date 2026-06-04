@@ -1,6 +1,6 @@
 package com.rifters.riftedreader.domain.parser
 
-import android.util.Base64
+import android.text.TextUtils
 import android.util.Xml
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import kotlinx.coroutines.Dispatchers
@@ -12,6 +12,10 @@ import java.io.File
 import java.util.Locale
 
 class Fb2Parser : BookParser {
+
+    companion object {
+        private val BASE64_WHITESPACE_REGEX = Regex("\\s+")
+    }
 
     override fun canParse(file: File): Boolean {
         val name = file.name.lowercase(Locale.getDefault())
@@ -62,7 +66,6 @@ class Fb2Parser : BookParser {
         return if (file.name.lowercase(Locale.getDefault()).endsWith(".fb2.zip")) {
             ZipFile(file).use { zip ->
                 val header = zip.fileHeaders.firstOrNull { !it.isDirectory && isFb2Entry(it.fileName) }
-                    ?: zip.fileHeaders.firstOrNull { !it.isDirectory }
                     ?: return null
                 zip.getInputStream(header).use { input ->
                     Fb2Source(input.readBytes())
@@ -172,7 +175,7 @@ class Fb2Parser : BookParser {
                 Fb2Chapter(
                     title = "FB2",
                     text = fallbackText,
-                    html = "<pre>${escapeHtml(fallbackText)}</pre>",
+                    html = "<pre>${TextUtils.htmlEncode(fallbackText)}</pre>",
                     tocEntries = listOf(TocEntry(title = "FB2", pageNumber = 0))
                 )
             )
@@ -207,7 +210,7 @@ class Fb2Parser : BookParser {
                         }
                         if (titleText.isNotBlank()) {
                             html.append("<h").append((level + 1).coerceAtMost(6)).append(">")
-                                .append(escapeHtml(titleText))
+                                .append(TextUtils.htmlEncode(titleText))
                                 .append("</h").append((level + 1).coerceAtMost(6)).append(">")
                         }
                     }
@@ -216,7 +219,7 @@ class Fb2Parser : BookParser {
                         val blockText = readElementText(parser).normalizeWhitespace()
                         if (blockText.isNotBlank()) {
                             text.appendLine(blockText)
-                            html.append("<p>").append(escapeHtml(blockText)).append("</p>")
+                            html.append("<p>").append(TextUtils.htmlEncode(blockText)).append("</p>")
                         }
                     }
 
@@ -252,7 +255,7 @@ class Fb2Parser : BookParser {
                     val raw = parser.text?.trim().orEmpty()
                     if (raw.isNotBlank()) {
                         text.appendLine(raw)
-                        html.append(escapeHtml(raw))
+                        html.append(TextUtils.htmlEncode(raw))
                     }
                 }
             }
@@ -279,7 +282,7 @@ class Fb2Parser : BookParser {
             ?: return ""
         val id = href.removePrefix("#")
         val binary = binaries[id] ?: return "<div class=\"fb2-image fb2-image-missing\">[image missing]</div>"
-        return "<img src=\"data:${binary.contentType};base64,${binary.base64}\" alt=\"${escapeHtml(id)}\" />"
+        return "<img src=\"data:${binary.contentType};base64,${binary.base64}\" alt=\"${TextUtils.htmlEncode(id)}\" />"
     }
 
     private fun collectBinaries(bytes: ByteArray): Map<String, Fb2Binary> {
@@ -291,7 +294,7 @@ class Fb2Parser : BookParser {
                 val id = parser.getAttributeValue(null, "id")?.takeIf { it.isNotBlank() }
                 if (id != null) {
                     val contentType = parser.getAttributeValue(null, "content-type")?.takeIf { it.isNotBlank() } ?: "image/*"
-                    val base64 = readElementText(parser).filterNot { it.isWhitespace() }
+                    val base64 = readElementText(parser).replace(BASE64_WHITESPACE_REGEX, "")
                     if (base64.isNotBlank()) {
                         binaries[id] = Fb2Binary(contentType, base64)
                     }
@@ -341,7 +344,7 @@ class Fb2Parser : BookParser {
         }
         return PageContent(
             text = text,
-            html = "<pre>${escapeHtml(text)}</pre>",
+            html = "<pre>${TextUtils.htmlEncode(text)}</pre>",
             title = file.nameWithoutExtension.ifBlank { "FB2" }
         )
     }
@@ -349,21 +352,6 @@ class Fb2Parser : BookParser {
     private fun isFb2Entry(name: String): Boolean {
         val lower = name.lowercase(Locale.getDefault())
         return lower.endsWith(".fb2") || lower.endsWith(".xml")
-    }
-
-    private fun escapeHtml(text: String): String {
-        return buildString {
-            text.forEach { ch ->
-                when (ch) {
-                    '&' -> append("&amp;")
-                    '<' -> append("&lt;")
-                    '>' -> append("&gt;")
-                    '"' -> append("&quot;")
-                    '\'' -> append("&#39;")
-                    else -> append(ch)
-                }
-            }
-        }
     }
 
     private fun String.normalizeWhitespace(): String {
