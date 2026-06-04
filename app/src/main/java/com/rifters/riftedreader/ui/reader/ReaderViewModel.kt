@@ -89,7 +89,8 @@ class ReaderViewModel(
     private val parser: BookParser,
     private val repository: BookRepository,
     private val bookmarkRepository: BookmarkRepository,
-    private val readerPreferences: ReaderPreferences
+    private val readerPreferences: ReaderPreferences,
+    private val resources: Resources
 ) : ViewModel() {
     companion object {
         private const val MODE_SWITCH_BOOKMARK_LABEL = "_mode_switch"
@@ -269,14 +270,14 @@ class ReaderViewModel(
                         fontSizePx = TypedValue.applyDimension(
                             TypedValue.COMPLEX_UNIT_SP,
                             settings.textSizeSp,
-                            Resources.getSystem().displayMetrics
+                            resources.displayMetrics
                         ).roundToInt().coerceAtLeast(FlexSlicingConfig.MIN_FONT_SIZE_PX),
                         lineHeight = settings.lineHeightMultiplier,
                         fontFamily = settings.fontFamily,
                         pagePaddingPx = TypedValue.applyDimension(
                             TypedValue.COMPLEX_UNIT_DIP,
                             settings.pagePaddingDp.toFloat(),
-                            Resources.getSystem().displayMetrics
+                            resources.displayMetrics
                         ).roundToInt()
                     )
                 },
@@ -2169,12 +2170,21 @@ class ReaderViewModel(
         private val parser: BookParser,
         private val repository: BookRepository,
         private val bookmarkRepository: BookmarkRepository,
-        private val readerPreferences: ReaderPreferences
+        private val readerPreferences: ReaderPreferences,
+        private val resources: Resources
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(ReaderViewModel::class.java)) {
-                return ReaderViewModel(bookId, bookFile, parser, repository, bookmarkRepository, readerPreferences) as T
+                return ReaderViewModel(
+                    bookId,
+                    bookFile,
+                    parser,
+                    repository,
+                    bookmarkRepository,
+                    readerPreferences,
+                    resources
+                ) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
         }

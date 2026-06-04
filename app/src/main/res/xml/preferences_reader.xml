@@ -101,7 +101,7 @@
             android:title="@string/settings_reader_page_padding"
             android:defaultValue="16"
             app:min="0"
-            android:max="48"
+            app:max="48"
             app:showSeekBarValue="true" />
 
         <ListPreference

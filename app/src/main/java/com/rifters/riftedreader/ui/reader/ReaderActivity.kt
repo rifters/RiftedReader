@@ -240,7 +240,15 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
 
         AppLogger.d("ReaderActivity", "Parser loaded: ${parser::class.simpleName}")
         
-        val factory = ReaderViewModel.Factory(bookId, bookFile, parser, repository, bookmarkRepository, readerPreferences)
+        val factory = ReaderViewModel.Factory(
+            bookId,
+            bookFile,
+            parser,
+            repository,
+            bookmarkRepository,
+            readerPreferences,
+            resources
+        )
         viewModel = ViewModelProvider(this, factory)[ReaderViewModel::class.java]
         
         // Instantiate and wire ConveyorBeltSystemViewModel for minimal paginator integration
