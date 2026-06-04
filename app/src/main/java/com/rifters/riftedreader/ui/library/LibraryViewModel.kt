@@ -34,7 +34,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
@@ -349,13 +348,14 @@ class LibraryViewModel(
     fun setBookCollections(bookId: String, selectedIds: Set<String>) {
         viewModelScope.launch {
             try {
-                val current = collectionRepository.getCollectionsForBook(bookId).first()
-                val currentIds = current.map { it.id }.toSet()
-                (selectedIds - currentIds).forEach { id ->
-                    collectionRepository.addBookToCollection(bookId, id)
-                }
-                (currentIds - selectedIds).forEach { id ->
-                    collectionRepository.removeBookFromCollection(bookId, id)
+                withContext(Dispatchers.IO) {
+                    val currentIds = collectionRepository.getCollectionIdsForBook(bookId).toSet()
+                    (selectedIds - currentIds).forEach { id ->
+                        collectionRepository.addBookToCollection(bookId, id)
+                    }
+                    (currentIds - selectedIds).forEach { id ->
+                        collectionRepository.removeBookFromCollection(bookId, id)
+                    }
                 }
             } catch (e: Exception) {
                 _events.emit(LibraryEvent.CollectionOperationFailed)
