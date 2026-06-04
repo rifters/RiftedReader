@@ -35,15 +35,9 @@ import kotlinx.coroutines.launch
  * 
  * ```kotlin
  * // In ReaderActivity or similar
- * val bridge = ConveyorBeltIntegrationBridge(
- *     readerViewModel = viewModel,
- *     conveyorViewModel = conveyorViewModel
- * )
+ * val bridge = ConveyorBeltIntegrationBridge().attach(viewModel, conveyorViewModel)
  * lifecycle.addObserver(bridge)
  * ```
- * 
- * @param readerViewModel The existing ReaderViewModel to observe (non-invasive)
- * @param conveyorViewModel The isolated conveyor system to forward events to
  */
 class ConveyorBeltIntegrationBridge : DefaultLifecycleObserver {
     
