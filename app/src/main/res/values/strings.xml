@@ -365,6 +365,8 @@ Page %4$d/%5$d (%6$d%%)</string>
     <!-- Permissions -->
     <string name="permission_storage_title">Storage Permission Required</string>
     <string name="permission_storage_message">RiftedReader needs access to your storage to scan for ebook files (EPUB, PDF, TXT). You can also import books manually without granting this permission.</string>
+    <string name="permission_notifications_title">Allow notifications</string>
+    <string name="permission_notifications_message">RiftedReader can show download progress and text-to-speech playback controls in notifications. You can continue without granting this permission.</string>
     <string name="permission_grant">Grant Permission</string>
     <string name="permission_denied">Permission Denied</string>
     <string name="permission_all_files_title">Allow full storage access</string>

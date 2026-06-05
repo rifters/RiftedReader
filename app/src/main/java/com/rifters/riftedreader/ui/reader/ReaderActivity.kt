@@ -1,6 +1,8 @@
 package com.rifters.riftedreader.ui.reader
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.text.SpannableString
@@ -12,6 +14,7 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import android.content.pm.ApplicationInfo
@@ -50,6 +53,7 @@ import com.rifters.riftedreader.domain.tts.TTSPlaybackState
 import com.rifters.riftedreader.domain.tts.TTSService
 import com.rifters.riftedreader.domain.tts.TTSStatusNotifier
 import com.rifters.riftedreader.domain.tts.TTSStatusSnapshot
+import com.rifters.riftedreader.ui.shouldRequestPostNotificationsPermission
 import com.rifters.riftedreader.ui.reader.ReaderThemePaletteResolver
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltSystemViewModel
 import com.rifters.riftedreader.ui.reader.conveyor.ConveyorBeltIntegrationBridge
@@ -115,6 +119,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
     // We queue a single navigation attempt and execute it once the paginator is ready.
     private var pendingPagedNavJob: Job? = null
     private var pendingPagedNavToken: Long = 0L
+    private var pendingNotificationPermissionAction: (() -> Unit)? = null
+    private val requestNotificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        continuePendingNotificationPermissionAction()
+    }
 
     private fun queuePagedNavigationUntilReady(windowId: Int, isNext: Boolean, source: String): Boolean {
         if (viewModel.paginationMode != PaginationMode.CONTINUOUS) return false
@@ -2183,7 +2193,9 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                         highlightSentence = ttsPreferences.highlightSentence,
                         languageTag = ttsPreferences.languageTag
                     )
-                    TTSService.start(this, currentPageText, configuration)
+                    requestNotificationPermissionIfNeeded {
+                        TTSService.start(this, currentPageText, configuration)
+                    }
                 }
             }
             TTSPlaybackState.PLAYING -> {
@@ -2192,9 +2204,55 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
             }
             TTSPlaybackState.PAUSED -> {
                 // Resume TTS playback
-                TTSService.resume(this)
+                requestNotificationPermissionIfNeeded {
+                    TTSService.resume(this)
+                }
             }
         }
+    }
+
+    private fun requestNotificationPermissionIfNeeded(action: () -> Unit) {
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        val isGranted = ContextCompat.checkSelfPermission(
+            this,
+            permission
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!shouldRequestPostNotificationsPermission(Build.VERSION.SDK_INT, isGranted)) {
+            action()
+            return
+        }
+
+        pendingNotificationPermissionAction = action
+        when {
+            shouldShowRequestPermissionRationale(permission) -> {
+                showNotificationPermissionRationaleDialog(permission)
+            }
+            else -> {
+                requestNotificationPermissionLauncher.launch(permission)
+            }
+        }
+    }
+
+    private fun showNotificationPermissionRationaleDialog(permission: String) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.permission_notifications_title)
+            .setMessage(R.string.permission_notifications_message)
+            .setPositiveButton(R.string.permission_grant) { _, _ ->
+                requestNotificationPermissionLauncher.launch(permission)
+            }
+            .setNegativeButton(R.string.cancel) { _, _ ->
+                continuePendingNotificationPermissionAction()
+            }
+            .setOnCancelListener {
+                continuePendingNotificationPermissionAction()
+            }
+            .show()
+    }
+
+    private fun continuePendingNotificationPermissionAction() {
+        val action = pendingNotificationPermissionAction
+        pendingNotificationPermissionAction = null
+        action?.invoke()
     }
     
     private fun updateTtsButtonStates(state: TTSPlaybackState) {
