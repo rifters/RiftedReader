@@ -77,6 +77,13 @@ class BookRepository(
         bookMetaDao.updateCoverPath(bookId, null)
         deleteManagedCover(bookId)
     }
+
+    suspend fun updateCoverPath(bookId: String, coverPath: String?) {
+        bookMetaDao.updateCoverPath(bookId, coverPath)
+        if (coverPath == null) {
+            deleteManagedCover(bookId)
+        }
+    }
     
     suspend fun updateReadingProgress(bookId: String, page: Int, totalPages: Int) {
         val percent = if (totalPages > 0) (page.toFloat() / totalPages) * 100 else 0f
