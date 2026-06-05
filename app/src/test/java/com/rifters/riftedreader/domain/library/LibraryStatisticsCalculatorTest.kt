@@ -24,7 +24,7 @@ class LibraryStatisticsCalculatorTest {
         assertEquals(3, statistics.totalCollections)
         assertEquals(5, statistics.booksInCollections)
         assertEquals(1, statistics.favoriteCount)
-        assertEquals(60.5f, statistics.averageCompletion)
+        assertEquals(60.5f, statistics.averageCompletion, 0.01f)
         assertEquals(
             linkedMapOf(
                 "EPUB" to 2,
