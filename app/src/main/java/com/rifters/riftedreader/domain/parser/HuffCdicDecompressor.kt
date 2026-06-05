@@ -13,7 +13,7 @@ internal class HuffCdicDecompressor(
         val maxCode: Long
     )
 
-    private data class DictionaryEntry(
+    private class DictionaryEntry(
         var data: ByteArray,
         var isDecoded: Boolean
     )
@@ -51,10 +51,10 @@ internal class HuffCdicDecompressor(
             var resolvedMaxCode = cached.maxCode
 
             if (!cached.isTerminal) {
-                while (codeLength < minCode.size && code < minCode[codeLength]) {
+                while (codeLength <= MAX_CODE_LENGTH && code < minCode[codeLength]) {
                     codeLength++
                 }
-                require(codeLength in 1..32) { "Invalid HUFF code length" }
+                require(codeLength in 1..MAX_CODE_LENGTH) { "Invalid HUFF code length" }
                 resolvedMaxCode = maxCode[codeLength]
             }
 
@@ -89,9 +89,9 @@ internal class HuffCdicDecompressor(
         return List(256) { index ->
             val rawValue = readUInt32(huffRecord, cacheOffset + index * 4)
             val codeLength = (rawValue and 0x1FL).toInt()
-            require(codeLength in 1..32) { "Invalid HUFF cache entry" }
+            require(codeLength in 1..MAX_CODE_LENGTH) { "Invalid HUFF cache entry" }
             val isTerminal = rawValue and 0x80L != 0L
-            require(codeLength > 8 || isTerminal) { "Short HUFF code must be terminal" }
+            require(codeLength > TERMINAL_CACHE_CODE_LIMIT || isTerminal) { "Short HUFF code must be terminal" }
             CacheEntry(
                 codeLength = codeLength,
                 isTerminal = isTerminal,
@@ -176,6 +176,8 @@ internal class HuffCdicDecompressor(
     }
 
     private companion object {
+        const val MAX_CODE_LENGTH = 32
+        const val TERMINAL_CACHE_CODE_LIMIT = 8
         const val UINT_MASK = 0xFFFF_FFFFL
     }
 }

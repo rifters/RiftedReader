@@ -28,7 +28,7 @@ class HuffCdicDecompressorTest {
     @Test(expected = IllegalArgumentException::class)
     fun rejectsMalformedHuffMagic() {
         val fixture = HuffCdicTestFixtures.singleEntryFixture("ignored")
-        HuffCdicDecompressor("BAD!".toByteArray(Charsets.US_ASCII) + fixture.huffRecord.copyOfRange(4, fixture.huffRecord.size), listOf(fixture.cdicRecord))
+        HuffCdicDecompressor(HuffCdicTestFixtures.withInvalidMagic(fixture.huffRecord), listOf(fixture.cdicRecord))
     }
 
     @Test
@@ -49,30 +49,36 @@ internal object HuffCdicTestFixtures {
     )
 
     fun singleEntryFixture(output: String): Fixture {
+        val outputBytes = output.toByteArray(Charsets.UTF_8)
         return Fixture(
             huffRecord = buildHuffRecord(mapOf(0x00 to 0)),
             cdicRecord = buildCdicRecord(
                 phrases = 1,
                 codeWidth = 0,
-                entries = listOf((0x8000 or output.toByteArray(Charsets.UTF_8).size) to output.toByteArray(Charsets.UTF_8))
+                entries = listOf((0x8000 or outputBytes.size) to outputBytes)
             ),
             compressedRecord = byteArrayOf(0x00)
         )
     }
 
     fun recursiveFixture(output: String): Fixture {
+        val outputBytes = output.toByteArray(Charsets.UTF_8)
         return Fixture(
             huffRecord = buildHuffRecord(mapOf(0x00 to 0, 0x80 to 1)),
             cdicRecord = buildCdicRecord(
                 phrases = 2,
                 codeWidth = 1,
                 entries = listOf(
-                    (0x8000 or output.toByteArray(Charsets.UTF_8).size) to output.toByteArray(Charsets.UTF_8),
-                    output.toByteArray(Charsets.UTF_8).size and 0x7FFF to byteArrayOf(0x00)
+                    (0x8000 or outputBytes.size) to outputBytes,
+                    1 to byteArrayOf(0x00)
                 )
             ),
             compressedRecord = byteArrayOf(0x80.toByte())
         )
+    }
+
+    fun withInvalidMagic(record: ByteArray): ByteArray {
+        return "BAD!".toByteArray(Charsets.US_ASCII) + record.copyOfRange(4, record.size)
     }
 
     private fun buildHuffRecord(indexByTopByte: Map<Int, Int>): ByteArray {

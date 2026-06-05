@@ -115,7 +115,7 @@ class MobiParserTest {
         val record0Buffer = ByteBuffer.wrap(record0).order(ByteOrder.BIG_ENDIAN)
 
         record0Buffer.putShort(0, compression.toShort())
-        record0Buffer.putShort(8, textRecords.size.toShort())
+        record0Buffer.putShort(8, textRecordBytes.size.toShort())
         record0[16] = 'M'.code.toByte()
         record0[17] = 'O'.code.toByte()
         record0[18] = 'B'.code.toByte()

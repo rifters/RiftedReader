@@ -275,12 +275,12 @@ class MobiParser : BookParser {
     private fun extractHtml(raw: ByteArray, header: MobiHeaderData): String {
         val offsets = parsePalmDbHeader(raw)
         if (offsets.size < 2) return ""
-        val huffCdicDecompressor = if (header.compression == 17480) {
+        val huffCdicDecompressor = if (header.compression == COMPRESSION_HUFF_CDIC) {
             createHuffCdicDecompressor(raw, offsets, header)
         } else {
             null
         }
-        if (header.compression == 17480 && huffCdicDecompressor == null) return ""
+        if (header.compression == COMPRESSION_HUFF_CDIC && huffCdicDecompressor == null) return ""
 
         val sb = StringBuilder()
         val lastTextRecord = minOf(header.textRecordCount, offsets.size - 1)
@@ -293,7 +293,7 @@ class MobiParser : BookParser {
             val recBytes = raw.copyOfRange(start, minOf(end, raw.size))
             val decompressed = if (header.compression == 2) {
                 runCatching { PalmDocDecompressor.decompress(recBytes) }.getOrElse { ByteArray(0) }
-            } else if (header.compression == 17480) {
+            } else if (header.compression == COMPRESSION_HUFF_CDIC) {
                 runCatching { huffCdicDecompressor?.decompress(recBytes) ?: ByteArray(0) }.getOrElse { ByteArray(0) }
             } else {
                 recBytes
@@ -448,6 +448,7 @@ class MobiParser : BookParser {
     }
 
     companion object {
+        private const val COMPRESSION_HUFF_CDIC = 17480
         private const val TAG = "MobiParser"
     }
 }
