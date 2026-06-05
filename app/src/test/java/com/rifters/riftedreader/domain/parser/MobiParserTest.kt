@@ -26,7 +26,8 @@ class MobiParserTest {
             author = "Test Author",
             textRecords = listOf(
                 "<html><body><h1>Intro</h1><p>Hello world.</p>",
-                "<h2>Second</h2><p>Next part.</p></body></html>"
+                "<h2>Second</h2><p>Next part.</p>",
+                "<h3>Third</h3><p>Final part.</p></body></html>"
             )
         )
 
@@ -34,9 +35,9 @@ class MobiParserTest {
         assertEquals("Sample MOBI", metadata.title)
         assertEquals("Test Author", metadata.author)
         assertEquals("MOBI", metadata.format)
-        assertEquals(2, metadata.totalPages)
+        assertEquals(3, metadata.totalPages)
 
-        assertEquals(2, parser.getPageCount(file))
+        assertEquals(3, parser.getPageCount(file))
 
         val page0 = parser.getPageContent(file, 0)
         assertEquals("Intro", page0.title)
@@ -48,12 +49,17 @@ class MobiParserTest {
         assertTrue(page1.text.contains("Next part."))
         assertTrue(page1.html?.contains("<h2>Second</h2>") == true)
 
-        val toc = parser.getTableOfContents(file)
-        assertEquals(listOf("Intro", "Second"), toc.map { it.title })
-        assertEquals(listOf(0, 1), toc.map { it.pageNumber })
-        assertEquals(listOf(0, 1), toc.map { it.level })
+        val page2 = parser.getPageContent(file, 2)
+        assertEquals("Third", page2.title)
+        assertTrue(page2.text.contains("Final part."))
+        assertTrue(page2.html?.contains("<h3>Third</h3>") == true)
 
-        assertEquals(PageContent.EMPTY, parser.getPageContent(file, 2))
+        val toc = parser.getTableOfContents(file)
+        assertEquals(listOf("Intro", "Second", "Third"), toc.map { it.title })
+        assertEquals(listOf(0, 1, 2), toc.map { it.pageNumber })
+        assertEquals(listOf(0, 1, 2), toc.map { it.level })
+
+        assertEquals(PageContent.EMPTY, parser.getPageContent(file, 3))
     }
 
     private fun createMobiFile(
