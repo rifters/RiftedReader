@@ -1,6 +1,7 @@
 package com.rifters.riftedreader.data.download
 
 import android.content.Context
+import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.domain.parser.ParserFactory
@@ -55,7 +56,7 @@ class BookDownloadManager(
                     .onFailure { error ->
                         notifHelper.notifyFailure(
                             notifId,
-                            error.message.orEmpty().ifBlank { "Unknown error" }
+                            error.message.orEmpty().ifBlank { appContext.getString(R.string.error_unknown) }
                         )
                     }
             }
@@ -65,7 +66,7 @@ class BookDownloadManager(
         }
     }
 
-    private fun notifIdFor(url: String): Int = url.hashCode()
+    private fun notifIdFor(url: String): Int = (url.hashCode().toLong() and 0xFFFFFFFFL).toInt()
 
     private fun downloadToFile(url: String, headers: Map<String, String>, destination: File) {
         val requestBuilder = Request.Builder()
@@ -80,7 +81,7 @@ class BookDownloadManager(
         client.newCall(requestBuilder.build()).execute().use { response ->
             if (!response.isSuccessful) {
                 throw BookDownloadException(
-                    "Download failed with HTTP ${response.code}: ${response.message.ifBlank { "Unknown error" }}"
+                    "Download failed with HTTP ${response.code}: ${response.message.ifBlank { appContext.getString(R.string.error_unknown) }}"
                 )
             }
             val body = response.body ?: throw BookDownloadException("Download response was empty")
