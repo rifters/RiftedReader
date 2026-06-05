@@ -14,6 +14,9 @@ import com.rifters.riftedreader.data.repository.CollectionRepository
 import com.rifters.riftedreader.databinding.FragmentLibraryStatisticsBinding
 import com.rifters.riftedreader.domain.library.LibraryStatistics
 import com.rifters.riftedreader.domain.library.LibraryStatisticsCalculator
+import com.rifters.riftedreader.domain.library.LibraryStatisticsCalculator.Companion.READING_PROGRESS_COMPLETED
+import com.rifters.riftedreader.domain.library.LibraryStatisticsCalculator.Companion.READING_PROGRESS_IN_PROGRESS
+import com.rifters.riftedreader.domain.library.LibraryStatisticsCalculator.Companion.READING_PROGRESS_UNREAD
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -83,6 +86,8 @@ class LibraryStatisticsFragment : Fragment() {
             statistics.averageCompletion
         )
         binding.averageCompletionValue.text = averageCompletion
+        binding.formatDistributionValue.text = formatDistributionText(statistics)
+        binding.readingProgressValue.text = readingProgressText(statistics)
 
         val lastUpdatedValue = DateFormat.getDateTimeInstance(
             DateFormat.MEDIUM,
@@ -98,6 +103,41 @@ class LibraryStatisticsFragment : Fragment() {
         binding.cardsContainer.isVisible = !showEmptyState
         if (showEmptyState) {
             binding.emptyStateText.text = getString(R.string.library_statistics_empty_state)
+        }
+    }
+
+    private fun formatDistributionText(statistics: LibraryStatistics): String {
+        if (statistics.formatDistribution.isEmpty()) {
+            return getString(R.string.library_statistics_no_breakdown_data)
+        }
+        return statistics.formatDistribution.entries.joinToString(separator = "\n") { entry ->
+            getString(
+                R.string.library_statistics_distribution_entry_format,
+                entry.key,
+                entry.value
+            )
+        }
+    }
+
+    private fun readingProgressText(statistics: LibraryStatistics): String {
+        if (statistics.readingProgressBreakdown.isEmpty()) {
+            return getString(R.string.library_statistics_no_breakdown_data)
+        }
+        return statistics.readingProgressBreakdown.entries.joinToString(separator = "\n") { entry ->
+            getString(
+                R.string.library_statistics_distribution_entry_format,
+                readingProgressLabel(entry.key),
+                entry.value
+            )
+        }
+    }
+
+    private fun readingProgressLabel(key: String): String {
+        return when (key) {
+            READING_PROGRESS_UNREAD -> getString(R.string.library_statistics_progress_unread)
+            READING_PROGRESS_IN_PROGRESS -> getString(R.string.library_statistics_progress_in_progress)
+            READING_PROGRESS_COMPLETED -> getString(R.string.library_statistics_progress_completed)
+            else -> key
         }
     }
 
