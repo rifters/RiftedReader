@@ -55,13 +55,13 @@ class BookRepository(
         val preparedBook = prepareBookForSave(book)
         bookMetaDao.updateBook(preparedBook)
         if (preparedBook.coverPath == null) {
-            coverCache?.deleteCover(book.id) ?: coverManager?.deleteCover(book.id)
+            deleteManagedCover(book.id)
         }
     }
     
     suspend fun deleteBook(book: BookMeta) {
         bookMetaDao.deleteBook(book)
-        coverCache?.deleteCover(book.id) ?: coverManager?.deleteCover(book.id)
+        deleteManagedCover(book.id)
     }
 
     suspend fun saveManualCover(bookId: String, bitmap: Bitmap): String? {
@@ -75,7 +75,7 @@ class BookRepository(
 
     suspend fun removeCover(bookId: String) {
         bookMetaDao.updateCoverPath(bookId, null)
-        coverCache?.deleteCover(bookId) ?: coverManager?.deleteCover(bookId)
+        deleteManagedCover(bookId)
     }
     
     suspend fun updateReadingProgress(bookId: String, page: Int, totalPages: Int) {
@@ -223,6 +223,14 @@ class BookRepository(
             savedPath ?: managedPath
         } finally {
             bitmap.recycle()
+        }
+    }
+
+    private fun deleteManagedCover(bookId: String) {
+        if (coverCache != null) {
+            coverCache.deleteCover(bookId)
+        } else {
+            coverManager?.deleteCover(bookId)
         }
     }
 }

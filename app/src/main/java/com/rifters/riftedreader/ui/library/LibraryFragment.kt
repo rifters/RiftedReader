@@ -1046,7 +1046,7 @@ class LibraryFragment : Fragment() {
 
     private fun decodeCoverBitmap(uri: Uri) = requireContext().contentResolver.openInputStream(uri)?.use { input ->
         BitmapFactory.decodeStream(input)
-    } ?: throw IOException("Unable to decode cover image")
+    } ?: throw IOException("Failed to open or decode cover image from URI")
 
 
     private fun pruneSelection(books: List<BookMeta>) {
