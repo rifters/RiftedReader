@@ -1,122 +1,77 @@
 # RiftedReader
-A modern ebook reader for Android, inspired by LibreraReader
+A modern ebook reader for Android, inspired by LibreraReader.
 
 ## Current Project Status
 
-Current status: the reader, parser, bookmark, TOC, Calibre, and settings flows are implemented. FlexPaginator and vertical scroll mode remain feature-flagged or settings-driven.
+RiftedReader is in active development with the core reading stack already implemented. Stages 1, 2, 3, 5, and 7 are complete; Stage 4 is partial; Stage 6 is nearly complete with HTML support remaining; Stage 8 (Cloud & Sync) has not started yet.
+
+- ✅ Project foundation, database, library management, and core architecture
+- ✅ TXT, EPUB, PDF, MOBI/AZW, AZW3/KF8, FB2, CBZ/CBR, RTF, and DOCX support
+- ✅ Advanced TTS system with replacement rules, background service, notification controls, and sleep timer
+- ✅ Collections, saved searches, cover management, statistics, bookmarks, and reading progress
+- ⚠️ Reader polish features like pinch-to-zoom, full tap-zone configurability, notes/highlights, animations, and two-page tablet mode are still pending
+- ❌ Cloud sync and OPDS/WebDAV integrations have not started
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the full implementation roadmap and project status.
 
 ## Dependencies
 
 - Kotlin
 - Coroutines / Flow
 - Room
+- Hilt
 - AndroidX Navigation, Lifecycle, Preference, DataStore, WebKit, Security, and Media
 - Material Design 3
-- jsoup, Retrofit, OkHttp, Coil, Zip4j, AndroidPdfViewer
-- No Hilt dependency is declared
+- jsoup, Retrofit, OkHttp, Coil, Zip4j, Apache POI, and PDF rendering dependencies
 
 ## What is implemented
 
-- FlexPaginator pipeline (feature-flagged, default OFF)
-- Conveyor belt system (5-slot, phase-managed)
-- Shared typography config (FlexSlicingConfig)
-- Bookmark system (Room-backed, charOffset-stable)
-- TOC anchor navigation (HeadingAnchorSlugger + jumpToAnchor)
-- Vertical scroll mode (ReaderMode.PAGINATED / SCROLL)
-- Re-slicing on typography changes (PaginationModeGuard-wrapped)
-- Calibre Content Server integration (browse + download)
-- Calibre-Web in-app browser (WebView + download intercept)
-- Loading overlay, TOC panel, bookmark list, reader settings UI
-- Core parsers for TXT, EPUB, PDF, HTML, FB2, and MOBI
+- Library scanning and metadata indexing
+- Collections, saved searches, favorites, and statistics
+- Bookmark system and reading progress persistence
+- Reader UI with page and scroll modes
+- Typography customization, themes, and overlay controls
+- TTS engine, replacement rules, TTS settings, and foreground playback service
+- Core parsers for TXT, EPUB, PDF, MOBI/AZW, AZW3/KF8, FB2, CBZ/CBR, RTF, and DOCX
+- Calibre-related browsing and download flows present in the app
 
-## Known issues
+## Known issues / remaining work
 
-- FlexPaginator is OFF by default; enable it in Reader Settings > Layout
-- PreviewParser returns placeholder previews for remaining roadmap formats
+- Pinch-to-zoom is not implemented yet
+- Full tap-zone action mapping UI is still incomplete
+- Notes / highlights should still be treated as pending
+- HTML format support remains the final blocker for Stage 6 closure
+- Cloud sync, OPDS, and provider integrations require a dedicated planning phase before implementation
 - JS tests require `cd tests/js && npm install` before the first run
-- `MANAGE_EXTERNAL_STORAGE` permission is being replaced
-- Download notifications intentionally swallow `SecurityException` until Android 13+
-  notification permission flows are fully wired
-- Download notification IDs currently use `url.hashCode()`, which is acceptable for
-  today's single-download flow but should be revisited before parallel download UX is added
 
 ## Documentation
 
 Documentation is organized in the `docs/` directory by category:
 
-### 📚 Complete Documentation ([docs/complete/](docs/complete/))
-
-Current, finalized documentation for the project:
+### 📚 Core Documentation
 
 1. **[ARCHITECTURE.md](docs/complete/ARCHITECTURE.md)** - System Architecture (Canonical)
-   - Layer diagrams and component relationships
-   - Package structure and dependencies
-   - Data flow and state management
-   - Design patterns and best practices
-
 2. **[DEVELOPMENT_SETUP.md](docs/complete/DEVELOPMENT_SETUP.md)** - Getting Started Guide
-   - Environment setup and prerequisites
-   - Building and running the project
-   - Key concepts overview
-   - Development workflow
-
 3. **[LIBRERA_ANALYSIS.md](docs/complete/LIBRERA_ANALYSIS.md)** - LibreraReader Analysis
-   - Format support and parsing architecture
-   - Database and library management
-   - UI/UX patterns and TTS features
-   - Implementation recommendations
-
 4. **[TTS_IMPLEMENTATION_GUIDE.md](docs/complete/TTS_IMPLEMENTATION_GUIDE.md)** - TTS System Guide
-   - Complete TTS architecture
-   - Advanced replacement/substitution system
-   - Background service setup
-   - Code examples and integration
-
 5. **[UI_UX_DESIGN_GUIDE.md](docs/complete/UI_UX_DESIGN_GUIDE.md)** - UI/UX Specifications
-   - Color schemes and theming
-   - Screen layouts and components
-   - Gesture controls and accessibility
+6. **[ROADMAP.md](docs/ROADMAP.md)** - Current implementation roadmap and project status
 
-6. **[HTML_DEBUG_LOGGING.md](docs/complete/HTML_DEBUG_LOGGING.md)** - HTML Debug Logging Guide
-   - Automatic HTML logging for pagination debugging
-   - Log file formats and locations
-   - Usage guide for developers
-   - Troubleshooting tips
+### 📋 Additional Planning & Technical Docs
 
-7. **[PAGINATOR_API.md](docs/complete/PAGINATOR_API.md)** - JavaScript Paginator API
-   - In-page pagination JavaScript API documentation
-   - Window vs. Chapter mode explanation
-   - Configuration and integration guide
-
-8. **[STABLE_WINDOW_MODEL.md](docs/complete/STABLE_WINDOW_MODEL.md)** - Stable Window Reading Model  **⭐ NEW**
-   - Immutable window architecture for predictable reading
-   - 3-window memory management strategy
-   - Background preloading and atomic transitions
-   - Position mapping and boundary handling
-
-9. **[JS_STREAMING_DISCIPLINE.md](docs/complete/JS_STREAMING_DISCIPLINE.md)** - JavaScript Streaming Discipline  **⭐ NEW**
-   - Construction vs. Active mode enforcement
-   - Streaming operation restrictions
-   - Android ↔ JavaScript integration discipline
-   - Testing and error prevention
-
-### 📋 Planning & Roadmap ([docs/planning/](docs/planning/))
-
-- **[IMPLEMENTATION_ROADMAP.md](docs/planning/IMPLEMENTATION_ROADMAP.md)** - 20-week development plan
-- **[STAGE_6_8_TODO.md](docs/planning/STAGE_6_8_TODO.md)** - Current implementation tasks
-- **[EPUB_IMPROVEMENTS.md](docs/planning/EPUB_IMPROVEMENTS.md)** - EPUB parser enhancements
-- **[WEBVIEW_PAGINATOR_ENHANCEMENTS.md](docs/planning/WEBVIEW_PAGINATOR_ENHANCEMENTS.md)** - Paginator improvements
-
-### 📊 Implementation Status ([docs/implemented/](docs/implemented/))
-
-- **[STAGE_1-3_SUMMARY.md](docs/implemented/STAGE_1-3_SUMMARY.md)** - Initial stages completion
-- **[SLIDING_WINDOW_PAGINATION_STATUS.md](docs/implemented/SLIDING_WINDOW_PAGINATION_STATUS.md)** - Pagination progress
-
-### 🧪 Testing Guides ([docs/testing/](docs/testing/))
-
-- **[CONTINUOUS_PAGINATOR_VERIFICATION.md](docs/testing/CONTINUOUS_PAGINATOR_VERIFICATION.md)** - Pagination testing
-- **[SCROLL_GESTURE_TESTING_GUIDE.md](docs/testing/SCROLL_GESTURE_TESTING_GUIDE.md)** - Gesture testing
-- **[EPUB_COVER_DEBUG_GUIDE.md](docs/testing/EPUB_COVER_DEBUG_GUIDE.md)** - Cover image debugging
+- **[HTML_DEBUG_LOGGING.md](docs/complete/HTML_DEBUG_LOGGING.md)**
+- **[PAGINATOR_API.md](docs/complete/PAGINATOR_API.md)**
+- **[STABLE_WINDOW_MODEL.md](docs/complete/STABLE_WINDOW_MODEL.md)**
+- **[JS_STREAMING_DISCIPLINE.md](docs/complete/JS_STREAMING_DISCIPLINE.md)**
+- **[IMPLEMENTATION_ROADMAP.md](docs/planning/IMPLEMENTATION_ROADMAP.md)**
+- **[STAGE_6_8_TODO.md](docs/planning/STAGE_6_8_TODO.md)**
+- **[EPUB_IMPROVEMENTS.md](docs/planning/EPUB_IMPROVEMENTS.md)**
+- **[WEBVIEW_PAGINATOR_ENHANCEMENTS.md](docs/planning/WEBVIEW_PAGINATOR_ENHANCEMENTS.md)**
+- **[STAGE_1-3_SUMMARY.md](docs/implemented/STAGE_1-3_SUMMARY.md)**
+- **[SLIDING_WINDOW_PAGINATION_STATUS.md](docs/implemented/SLIDING_WINDOW_PAGINATION_STATUS.md)**
+- **[CONTINUOUS_PAGINATOR_VERIFICATION.md](docs/testing/CONTINUOUS_PAGINATOR_VERIFICATION.md)**
+- **[SCROLL_GESTURE_TESTING_GUIDE.md](docs/testing/SCROLL_GESTURE_TESTING_GUIDE.md)**
+- **[EPUB_COVER_DEBUG_GUIDE.md](docs/testing/EPUB_COVER_DEBUG_GUIDE.md)**
 
 ## Running tests
 
@@ -140,74 +95,56 @@ Run a faster Kotlin-only compile preflight from the repository root:
 ./gradlew :app:compileDebugKotlin :app:compileDebugUnitTestKotlin
 ```
 
-## Carried review follow-ups
-
-- `BookDownloadManager.notifIdFor(url)` currently uses `url.hashCode()`; follow up with a
-  collision-resistant strategy before parallel downloads are surfaced in the UI
-- `DownloadNotificationHelper` intentionally wraps `NotificationManagerCompat.notify(...)`
-  in `runCatching` so Android 13+ devices without `POST_NOTIFICATIONS` do not crash
-- `ReaderViewModel.Factory` keeps the optional `BookmarkManager` construction fallback to
-  match the repository's current manual-wiring pattern
-- The `"Unknown error"` fallback used for download failures should eventually move to a
-  string resource for localization consistency
-
-## Key Features (Planned)
+## Key Features
 
 ### Format Support
-- PDF, EPUB, EPUB3, MOBI, AZW, AZW3
-- FB2, TXT, RTF, HTML
-- CBZ, CBR (Comic books)
-- DOC, DOCX
-
-| Format | Status | Notes |
-| --- | --- | --- |
-| TXT | ✅ Supported | Streaming parser in `TxtParser` |
-| EPUB | ✅ Supported | Spine & metadata extraction via JSoup |
-| PDF | ✅ Supported | AndroidPdfViewer wrapper |
-| MOBI / AZW / AZW3 | 🟡 In Progress | Preview parser + roadmap for libmobi integration |
-| FB2 | 🟡 In Progress | XML preview parser scaffolding |
-| CBZ | 🟡 In Progress | Archive preview parser scaffolding |
-| HTML | ✅ Supported | Jsoup-based parser aligned with Librera''s HtmlExtractor |
-| RTF | ✅ Supported | Lightweight converter for paragraphs and basic inline formatting |
-| DOCX | ✅ Supported | Apache POI `poi-ooxml`-based converter for Word paragraphs and runs |
-| CBR | 🔜 Planned | Format descriptor tracked via `FormatCatalog` |
+- TXT, EPUB, PDF
+- MOBI, AZW, AZW3 / KF8
+- FB2, RTF, DOCX
+- CBZ, CBR
+- HTML support planned next
 
 ### Text-to-Speech ⭐ Core Feature
 - Advanced TTS with Android TextToSpeech API
-- **Sophisticated replacement system**:
-  - Simple text replacements
-  - Regular expression support
-  - Special commands (SKIP, STOP, NEXT, PAUSE)
-  - @Voice Reader compatibility
-- Background reading with notification controls
+- Replacement rules with simple, regex, and command types
+- Special commands: SKIP, STOP, NEXT, PAUSE
+- `@Voice` rule import compatibility
+- Background playback service with notification and media controls
 - Customizable speed and pitch
-- Sentence highlighting
-- Auto-scroll during reading
+- Auto-scroll during playback
+- Sleep timer
 
 ### Library Management
 - Fast file scanning
 - Metadata extraction
 - Collections and tags
-- Collections management and picker UI
-- Advanced search and filtering
-- Library statistics calculator (totals, completion averages)
-- Reading progress tracking
+- Saved searches
 - Favorites system
+- Statistics and progress tracking
+- Cover management
 
 ### Reading Experience
-- Highly customizable (fonts, colors, spacing)
-- Multiple themes (Light, Dark, Sepia, Black OLED)
-- Gesture-based navigation
-- Configurable tap zones
+- Custom fonts and typography controls
+- Multiple themes
 - Page and scroll modes
-- Bookmarks and highlights
+- Swipe and volume-button navigation
+- Chapter navigation and bookmarks
+- Overlay controls with auto-hide
+
+### Planned features snapshot
+- HTML format support
+- Pinch-to-zoom and better tap-zone customization
+- Notes and highlights
+- Backup and restore
+- Footnote popups for EPUB
+- Word-highlight TTS / karaoke mode
 
 ### Modern Architecture
-- Clean Architecture (MVVM)
-- Kotlin Coroutines and Flow
+- MVVM + Repository pattern
+- Hilt dependency injection
 - Room Database
+- Coroutines + Flow
 - Material Design 3
-- Jetpack Compose (future consideration)
 
 ## Technology Stack
 
@@ -216,30 +153,29 @@ Run a faster Kotlin-only compile preflight from the repository root:
 - **Target SDK**: 34 (Android 14)
 - **Architecture**: MVVM with Repository pattern
 - **Database**: Room
-- **DI**: manual wiring
+- **DI**: Hilt
 - **Async**: Coroutines + Flow
 - **UI**: Material Design 3 Components
 
-See [IMPLEMENTATION_ROADMAP.md](docs/planning/IMPLEMENTATION_ROADMAP.md) for complete timeline.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the latest implementation status and roadmap details.
 
 ## Inspiration
 
-This project is inspired by [LibreraReader](https://github.com/foobnix/LibreraReader) (GPL v3), a mature and feature-rich ebook reader. RiftedReader aims to bring similar functionality with a modern tech stack and architecture.
+This project is inspired by [LibreraReader](https://github.com/foobnix/LibreraReader) (GPL v3), a mature and feature-rich ebook reader. RiftedReader aims to deliver similar depth with a modern Android architecture and a stronger focus on advanced Text-to-Speech capabilities.
 
 **Note**: RiftedReader is being built from scratch based on feature analysis, not by copying code from LibreraReader.
 
 ## License
 
-TBD - Will be determined after initial implementation
+TBD - Will be determined after initial implementation.
 
 ## Contributing
 
-Project is under active development. Contributions are welcome, but large changes should
-still align with the active roadmap and current implementation docs.
+Project is under active development. Contributions are welcome, but larger changes should align with the active roadmap and supporting documentation.
 
 ## Contact
 
 For questions or suggestions, please open an issue.
 
 ---
-*Last Updated: 2026-06-04*
+*Last Updated: 2026-06-05*
