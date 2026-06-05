@@ -79,8 +79,8 @@ object FormatCatalog {
             displayName = "RTF",
             extensions = setOf("rtf"),
             mimeTypes = setOf("application/rtf", "text/rtf"),
-            status = FormatSupportStatus.PLANNED,
-            notes = "Conversion parity with Librera's RtfExtract"
+            status = FormatSupportStatus.SUPPORTED,
+            notes = "Lightweight rich-text conversion with basic paragraph/bold/italic handling"
         ),
         FormatDescriptor(
             id = "html",
@@ -95,8 +95,8 @@ object FormatCatalog {
             displayName = "DOCX",
             extensions = setOf("docx"),
             mimeTypes = setOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-            status = FormatSupportStatus.PLANNED,
-            notes = "Planned Mammoth-based converter akin to Librera's DocxExtractor"
+            status = FormatSupportStatus.SUPPORTED,
+            notes = "Apache POI-based paragraph/run extraction into clean HTML"
         )
     )
 

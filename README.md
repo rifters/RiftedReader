@@ -168,7 +168,9 @@ Run a faster Kotlin-only compile preflight from the repository root:
 | FB2 | 🟡 In Progress | XML preview parser scaffolding |
 | CBZ | 🟡 In Progress | Archive preview parser scaffolding |
 | HTML | ✅ Supported | Jsoup-based parser aligned with Librera''s HtmlExtractor |
-| CBR, RTF, DOCX | 🔜 Planned | Format descriptors tracked via `FormatCatalog` |
+| RTF | ✅ Supported | Lightweight converter for paragraphs and basic inline formatting |
+| DOCX | ✅ Supported | Apache POI-based converter for Word paragraphs and runs |
+| CBR | 🔜 Planned | Format descriptor tracked via `FormatCatalog` |
 
 ### Text-to-Speech ⭐ Core Feature
 - Advanced TTS with Android TextToSpeech API

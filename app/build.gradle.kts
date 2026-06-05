@@ -139,6 +139,8 @@ dependencies {
     // File format libraries
     // EPUB support (will use custom implementation with JSoup)
     implementation("org.jsoup:jsoup:1.18.3")
+    implementation("org.apache.poi:poi-ooxml:5.2.5")
+    implementation("org.apache.xmlbeans:xmlbeans:5.2.0")
     
     // ZIP handling for EPUB and CBZ
     implementation("net.lingala.zip4j:zip4j:2.11.5")
