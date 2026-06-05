@@ -74,15 +74,16 @@ internal class DownloadNotificationHelper(private val context: Context) {
     }
 
     private fun notifyIfAllowed(notifId: Int, notification: android.app.Notification) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
+            ) != PackageManager.PERMISSION_GRANTED
         ) {
-            runCatching {
-                NotificationManagerCompat.from(context).notify(notifId, notification)
-            }
+            return
+        }
+        runCatching {
+            NotificationManagerCompat.from(context).notify(notifId, notification)
         }
     }
 

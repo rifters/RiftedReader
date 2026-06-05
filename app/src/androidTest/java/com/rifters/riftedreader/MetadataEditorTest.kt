@@ -20,7 +20,6 @@ import com.rifters.riftedreader.domain.library.TagsUpdateMode
 import com.rifters.riftedreader.ui.library.LibraryViewModel
 import com.rifters.riftedreader.util.FileScanner
 import java.io.File
-import java.util.UUID
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -59,7 +58,8 @@ class MetadataEditorTest {
             )
         )
 
-        dataStoreFile = File(context.cacheDir, "metadata-editor-${UUID.randomUUID()}.preferences_pb")
+        dataStoreFile = File(context.cacheDir, DATA_STORE_FILE_NAME)
+        dataStoreFile.delete()
         viewModel = LibraryViewModel(
             repository = repository,
             bookmarkRepository = NoOpBookmarkRepository,
@@ -179,5 +179,6 @@ class MetadataEditorTest {
 
     private companion object {
         const val LIBRARY_PREFS_NAME = "library_preferences"
+        const val DATA_STORE_FILE_NAME = "metadata-editor-test.preferences_pb"
     }
 }
