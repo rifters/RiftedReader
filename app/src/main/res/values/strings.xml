@@ -107,6 +107,7 @@
     <string name="calibre_web_home">Home</string>
     <string name="calibre_web_downloads">Downloads</string>
     <string name="unknown_author">Unknown Author</string>
+    <string name="error_unknown">Unknown error</string>
     <string name="book_cover">Book cover</string>
     <string name="retry">Retry</string>
     
