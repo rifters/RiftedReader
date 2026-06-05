@@ -155,6 +155,12 @@
     <string name="library_metadata_no_changes">Choose at least one update before applying.</string>
     <string name="library_selection_select_all">Select all</string>
     <string name="library_metadata_tags_hint">Separate tags with commas</string>
+    <string name="library_cover_set_action">Set cover</string>
+    <string name="library_cover_remove_action">Remove cover</string>
+    <string name="library_cover_pick_failed">Could not open that image as a cover.</string>
+    <string name="library_cover_update_success">Updated covers for %1$d book(s).</string>
+    <string name="library_cover_remove_success">Removed covers for %1$d book(s).</string>
+    <string name="library_cover_update_failed">Cover update failed. Try again.</string>
     <plurals name="library_selection_count">
         <item quantity="one">%d book selected</item>
         <item quantity="other">%d books selected</item>

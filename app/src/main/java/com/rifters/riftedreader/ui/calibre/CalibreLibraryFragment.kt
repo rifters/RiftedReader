@@ -30,6 +30,8 @@ import com.rifters.riftedreader.data.calibre.CalibreBook
 import com.rifters.riftedreader.data.calibre.CalibreCredentialStore
 import com.rifters.riftedreader.data.calibre.CalibreContentServerRepository
 import com.rifters.riftedreader.data.calibre.DefaultCalibreConnectionRepository
+import com.rifters.riftedreader.data.covers.CoverCache
+import com.rifters.riftedreader.data.covers.CoverManager
 import com.rifters.riftedreader.data.database.BookDatabase
 import com.rifters.riftedreader.data.download.BookDownloadManager
 import com.rifters.riftedreader.data.repository.BookRepository
@@ -80,7 +82,11 @@ class CalibreLibraryFragment : Fragment() {
             credentialStore = credentialStore,
         )
         val database = BookDatabase.getDatabase(requireContext())
-        val bookRepository = BookRepository(database.bookMetaDao())
+        val bookRepository = BookRepository(
+            database.bookMetaDao(),
+            CoverManager.getInstance(requireContext()),
+            CoverCache.getInstance(requireContext())
+        )
         val bookDownloadManager = BookDownloadManager.getInstance(requireContext(), bookRepository)
         viewModel = ViewModelProvider(
             this,

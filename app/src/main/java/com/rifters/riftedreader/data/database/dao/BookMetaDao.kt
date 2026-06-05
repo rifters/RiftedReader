@@ -81,6 +81,9 @@ interface BookMetaDao {
     
     @Query("UPDATE books SET isFavorite = :isFavorite WHERE id = :bookId")
     suspend fun setFavorite(bookId: String, isFavorite: Boolean)
+
+    @Query("UPDATE books SET coverPath = :coverPath WHERE id = :bookId")
+    suspend fun updateCoverPath(bookId: String, coverPath: String?)
     
     @Query("""UPDATE books SET 
         chapterVisibilityIncludeCover = :includeCover, 

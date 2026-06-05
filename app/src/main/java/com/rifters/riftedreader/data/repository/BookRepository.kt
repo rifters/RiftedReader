@@ -1,14 +1,23 @@
 package com.rifters.riftedreader.data.repository
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import com.rifters.riftedreader.data.covers.CoverCache
+import com.rifters.riftedreader.data.covers.CoverManager
 import com.rifters.riftedreader.data.database.dao.BookMetaDao
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import com.rifters.riftedreader.data.preferences.ChapterVisibilitySettings
 import kotlinx.coroutines.flow.Flow
+import java.io.File
 
 /**
  * Repository for managing book metadata
  */
-class BookRepository(private val bookMetaDao: BookMetaDao) {
+class BookRepository(
+    private val bookMetaDao: BookMetaDao,
+    private val coverManager: CoverManager? = null,
+    private val coverCache: CoverCache? = null
+) {
     
     val allBooks: Flow<List<BookMeta>> = bookMetaDao.getAllBooks()
     
@@ -35,19 +44,38 @@ class BookRepository(private val bookMetaDao: BookMetaDao) {
     }
     
     suspend fun insertBook(book: BookMeta) {
-        bookMetaDao.insertBook(book)
+        bookMetaDao.insertBook(prepareBookForSave(book))
     }
     
     suspend fun insertBooks(books: List<BookMeta>) {
-        bookMetaDao.insertBooks(books)
+        bookMetaDao.insertBooks(books.map(::prepareBookForSave))
     }
     
     suspend fun updateBook(book: BookMeta) {
-        bookMetaDao.updateBook(book)
+        val preparedBook = prepareBookForSave(book)
+        bookMetaDao.updateBook(preparedBook)
+        if (preparedBook.coverPath == null) {
+            coverCache?.deleteCover(book.id) ?: coverManager?.deleteCover(book.id)
+        }
     }
     
     suspend fun deleteBook(book: BookMeta) {
         bookMetaDao.deleteBook(book)
+        coverCache?.deleteCover(book.id) ?: coverManager?.deleteCover(book.id)
+    }
+
+    suspend fun saveManualCover(bookId: String, bitmap: Bitmap): String? {
+        val savedPath = (coverCache?.saveCover(bookId, bitmap) ?: coverManager?.saveCover(bookId, bitmap))
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        coverCache?.remember(bookId, savedPath)
+        bookMetaDao.updateCoverPath(bookId, savedPath)
+        return savedPath
+    }
+
+    suspend fun removeCover(bookId: String) {
+        bookMetaDao.updateCoverPath(bookId, null)
+        coverCache?.deleteCover(bookId) ?: coverManager?.deleteCover(bookId)
     }
     
     suspend fun updateReadingProgress(bookId: String, page: Int, totalPages: Int) {
@@ -152,5 +180,49 @@ class BookRepository(private val bookMetaDao: BookMetaDao) {
             includeFrontMatter = book.chapterVisibilityIncludeFrontMatter ?: globalSettings.includeFrontMatter,
             includeNonLinear = book.chapterVisibilityIncludeNonLinear ?: globalSettings.includeNonLinear
         )
+    }
+
+    private fun prepareBookForSave(book: BookMeta): BookMeta {
+        val managedCoverPath = normalizeCoverPath(book)
+        return if (managedCoverPath == book.coverPath) {
+            book
+        } else {
+            book.copy(coverPath = managedCoverPath)
+        }
+    }
+
+    private fun normalizeCoverPath(book: BookMeta): String? {
+        val originalPath = book.coverPath?.takeIf { it.isNotBlank() } ?: return null
+        val manager = coverManager ?: return originalPath
+
+        val managedPath = manager.getCoverPath(book.id)
+        if (managedPath != null && managedPath == originalPath) {
+            coverCache?.remember(book.id, managedPath)
+            return managedPath
+        }
+
+        if (coverCache?.hasCover(book.id) == true) {
+            return coverCache.getCoverPath(book.id)
+        }
+
+        val sourceFile = File(originalPath)
+        if (!sourceFile.exists()) {
+            return managedPath
+        }
+
+        val bitmap = runCatching {
+            BitmapFactory.decodeFile(sourceFile.absolutePath)
+        }.getOrNull() ?: return managedPath
+
+        return try {
+            val savedPath = (coverCache?.saveCover(book.id, bitmap) ?: manager.saveCover(book.id, bitmap))
+                .takeIf { it.isNotBlank() }
+            if (savedPath != null) {
+                coverCache?.remember(book.id, savedPath)
+            }
+            savedPath ?: managedPath
+        } finally {
+            bitmap.recycle()
+        }
     }
 }
