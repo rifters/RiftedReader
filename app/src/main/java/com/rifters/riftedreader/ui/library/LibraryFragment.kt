@@ -1044,9 +1044,14 @@ class LibraryFragment : Fragment() {
         return "import_${System.currentTimeMillis()}${if (extension == "book") "" else ".$extension"}"
     }
 
-    private fun decodeCoverBitmap(uri: Uri) = requireContext().contentResolver.openInputStream(uri)?.use { input ->
-        BitmapFactory.decodeStream(input)
-    } ?: throw IOException("Failed to open or decode cover image from URI")
+    private fun decodeCoverBitmap(uri: Uri): android.graphics.Bitmap {
+        val inputStream = requireContext().contentResolver.openInputStream(uri)
+            ?: throw IOException("Failed to open cover image stream from URI")
+        return inputStream.use { input ->
+            BitmapFactory.decodeStream(input)
+                ?: throw IOException("Failed to decode cover image from URI")
+        }
+    }
 
 
     private fun pruneSelection(books: List<BookMeta>) {
