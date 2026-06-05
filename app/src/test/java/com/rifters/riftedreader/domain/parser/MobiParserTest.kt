@@ -62,15 +62,41 @@ class MobiParserTest {
         assertEquals(PageContent.EMPTY, parser.getPageContent(file, 3))
     }
 
+    @Test
+    fun parsesHuffCdicCompressedAzw3Html() = runBlocking {
+        val fixture = HuffCdicTestFixtures.singleEntryFixture("<html><body><h1>KF8</h1><p>Hello AZW3.</p></body></html>")
+        val file = createMobiFile(
+            name = "sample.azw3",
+            compression = 17480,
+            title = "Sample AZW3",
+            author = "Test Author",
+            textRecords = emptyList(),
+            rawTextRecords = listOf(fixture.compressedRecord),
+            extraRecords = listOf(fixture.huffRecord, fixture.cdicRecord)
+        )
+
+        val metadata = parser.extractMetadata(file)
+        assertEquals("Sample AZW3", metadata.title)
+        assertEquals("Test Author", metadata.author)
+        assertEquals(1, metadata.totalPages)
+
+        val page0 = parser.getPageContent(file, 0)
+        assertEquals("KF8", page0.title)
+        assertTrue(page0.text.contains("Hello AZW3."))
+        assertTrue(page0.html?.contains("<h1>KF8</h1>") == true)
+    }
+
     private fun createMobiFile(
         name: String,
         compression: Int,
         title: String,
         author: String,
-        textRecords: List<String>
+        textRecords: List<String>,
+        rawTextRecords: List<ByteArray> = textRecords.map { it.toByteArray(Charsets.US_ASCII) },
+        extraRecords: List<ByteArray> = emptyList()
     ): File {
         val file = tempFolder.newFile(name)
-        file.writeBytes(buildMobiBytes(compression, title, author, textRecords))
+        file.writeBytes(buildMobiBytes(compression, title, author, rawTextRecords, extraRecords))
         return file
     }
 
@@ -78,7 +104,8 @@ class MobiParserTest {
         compression: Int,
         title: String,
         author: String,
-        textRecords: List<String>
+        textRecordBytes: List<ByteArray>,
+        extraRecords: List<ByteArray>
     ): ByteArray {
         val headerLength = 132
         val authorBytes = author.toByteArray(Charsets.UTF_8)
@@ -88,7 +115,7 @@ class MobiParserTest {
         val record0Buffer = ByteBuffer.wrap(record0).order(ByteOrder.BIG_ENDIAN)
 
         record0Buffer.putShort(0, compression.toShort())
-        record0Buffer.putShort(8, textRecords.size.toShort())
+        record0Buffer.putShort(8, textRecordBytes.size.toShort())
         record0[16] = 'M'.code.toByte()
         record0[17] = 'O'.code.toByte()
         record0[18] = 'B'.code.toByte()
@@ -96,7 +123,7 @@ class MobiParserTest {
         record0Buffer.putInt(20, headerLength)
         record0Buffer.putInt(28, 65001)
         record0Buffer.putInt(96, 0x40)
-        record0Buffer.putInt(132, textRecords.size + 1)
+        record0Buffer.putInt(132, textRecordBytes.size + 1)
 
         val exthOffset = 16 + headerLength
         record0[exthOffset] = 'E'.code.toByte()
@@ -111,8 +138,7 @@ class MobiParserTest {
         exthPos += 8 + authorBytes.size
         writeExthRecord(record0, exthPos, 503, titleBytes)
 
-        val textRecordBytes = textRecords.map { it.toByteArray(Charsets.US_ASCII) }
-        val numRecords = 1 + textRecordBytes.size
+        val numRecords = 1 + textRecordBytes.size + extraRecords.size
         val palmHeaderSize = 78 + numRecords * 8
 
         val offsets = mutableListOf<Int>()
@@ -120,6 +146,10 @@ class MobiParserTest {
         offsets += nextOffset
         nextOffset += record0.size
         textRecordBytes.forEach { bytes ->
+            offsets += nextOffset
+            nextOffset += bytes.size
+        }
+        extraRecords.forEach { bytes ->
             offsets += nextOffset
             nextOffset += bytes.size
         }
@@ -134,6 +164,9 @@ class MobiParserTest {
         System.arraycopy(record0, 0, raw, offsets[0], record0.size)
         textRecordBytes.forEachIndexed { index, bytes ->
             System.arraycopy(bytes, 0, raw, offsets[index + 1], bytes.size)
+        }
+        extraRecords.forEachIndexed { index, bytes ->
+            System.arraycopy(bytes, 0, raw, offsets[1 + textRecordBytes.size + index], bytes.size)
         }
 
         return raw

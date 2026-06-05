@@ -267,16 +267,20 @@ class MobiParser : BookParser {
      *
      * Compression 1 = no decompression needed.
      * Compression 2 = PalmDOC LZ77 via PalmDocDecompressor.
-     * Compression 17480 (HUFF/CDIC / AZW3) = not supported; returns "".
+     * Compression 17480 = HUFF/CDIC decompression for AZW3/KF8 text records.
      *
      * Each record's decompression is wrapped in runCatching so a single
      * corrupt record does not abort the entire extraction.
      */
     private fun extractHtml(raw: ByteArray, header: MobiHeaderData): String {
-        if (header.compression == 17480) return ""
-
         val offsets = parsePalmDbHeader(raw)
         if (offsets.size < 2) return ""
+        val huffCdicDecompressor = if (header.compression == COMPRESSION_HUFF_CDIC) {
+            createHuffCdicDecompressor(raw, offsets, header)
+        } else {
+            null
+        }
+        if (header.compression == COMPRESSION_HUFF_CDIC && huffCdicDecompressor == null) return ""
 
         val sb = StringBuilder()
         val lastTextRecord = minOf(header.textRecordCount, offsets.size - 1)
@@ -289,6 +293,8 @@ class MobiParser : BookParser {
             val recBytes = raw.copyOfRange(start, minOf(end, raw.size))
             val decompressed = if (header.compression == 2) {
                 runCatching { PalmDocDecompressor.decompress(recBytes) }.getOrElse { ByteArray(0) }
+            } else if (header.compression == COMPRESSION_HUFF_CDIC) {
+                runCatching { huffCdicDecompressor?.decompress(recBytes) ?: ByteArray(0) }.getOrElse { ByteArray(0) }
             } else {
                 recBytes
             }
@@ -298,6 +304,40 @@ class MobiParser : BookParser {
         }
 
         return sb.toString()
+    }
+
+    private fun createHuffCdicDecompressor(
+        raw: ByteArray,
+        offsets: List<Int>,
+        header: MobiHeaderData
+    ): HuffCdicDecompressor? {
+        val huffIndex = header.firstNonBookIndex
+        if (huffIndex <= 0 || huffIndex >= offsets.size) return null
+
+        val huffRecord = recordBytes(raw, offsets, huffIndex) ?: return null
+        val cdicRecords = mutableListOf<ByteArray>()
+        var recordIndex = huffIndex + 1
+        while (recordIndex < offsets.size) {
+            val record = recordBytes(raw, offsets, recordIndex) ?: break
+            if (!hasRecordMagic(record, "CDIC")) break
+            cdicRecords += record
+            recordIndex++
+        }
+        if (cdicRecords.isEmpty()) return null
+
+        return runCatching { HuffCdicDecompressor(huffRecord, cdicRecords) }.getOrNull()
+    }
+
+    private fun recordBytes(raw: ByteArray, offsets: List<Int>, recordIndex: Int): ByteArray? {
+        val start = offsets.getOrNull(recordIndex) ?: return null
+        val end = offsets.getOrNull(recordIndex + 1) ?: raw.size
+        if (start < 0 || start >= end || start >= raw.size) return null
+        return raw.copyOfRange(start, minOf(end, raw.size))
+    }
+
+    private fun hasRecordMagic(record: ByteArray, magic: String): Boolean {
+        return record.size >= magic.length &&
+            magic.indices.all { record[it] == magic[it].code.toByte() }
     }
 
     /**
@@ -408,6 +448,7 @@ class MobiParser : BookParser {
     }
 
     companion object {
+        private const val COMPRESSION_HUFF_CDIC = 17480
         private const val TAG = "MobiParser"
     }
 }

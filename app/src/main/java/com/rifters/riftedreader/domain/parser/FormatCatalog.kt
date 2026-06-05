@@ -48,7 +48,7 @@ object FormatCatalog {
                 "application/octet-stream"
             ),
             status = FormatSupportStatus.SUPPORTED,
-            notes = "Best-effort text extractor with MOBI/AZW/AZW3 support"
+            notes = "Best-effort text extractor with PalmDOC MOBI/AZW and HUFF/CDIC AZW3/KF8 support"
         ),
         FormatDescriptor(
             id = "fb2",
