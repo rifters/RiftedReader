@@ -82,6 +82,8 @@ class DocxParser : BookParser {
                     }
                     val fallbackTitle = file.nameWithoutExtension.ifBlank { "DOCX" }
                     val normalizedHtml = html.toString().ifBlank { "<p></p>" }
+                    // If package metadata is absent, prefer the first heading and then the
+                    // first non-blank line as a readable title fallback for the reader UI.
                     val inferredTitle = toc.firstOrNull()?.title
                         ?: text.lines().firstOrNull { it.isNotBlank() }?.normalizeWhitespace()
                     ParsedDocxDocument(

@@ -139,6 +139,7 @@ dependencies {
     // File format libraries
     // EPUB support (will use custom implementation with JSoup)
     implementation("org.jsoup:jsoup:1.18.3")
+    // Keep DOCX support on the lean poi-ooxml package instead of the full POI bundle.
     implementation("org.apache.poi:poi-ooxml:5.2.5")
     implementation("org.apache.xmlbeans:xmlbeans:5.2.0")
     
