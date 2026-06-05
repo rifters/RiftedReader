@@ -38,6 +38,8 @@ import com.google.android.material.snackbar.Snackbar
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.calibre.CalibreConnectionConfig
 import com.rifters.riftedreader.data.calibre.DefaultCalibreConnectionRepository
+import com.rifters.riftedreader.data.covers.CoverCache
+import com.rifters.riftedreader.data.covers.CoverManager
 import com.rifters.riftedreader.data.database.BookDatabase
 import com.rifters.riftedreader.data.download.BookDownloadManager
 import com.rifters.riftedreader.data.repository.BookRepository
@@ -76,7 +78,11 @@ class CalibreWebFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         activity?.title = getString(R.string.calibre_web_title)
         val database = BookDatabase.getDatabase(requireContext())
-        val bookRepository = BookRepository(database.bookMetaDao())
+        val bookRepository = BookRepository(
+            database.bookMetaDao(),
+            CoverManager.getInstance(requireContext()),
+            CoverCache.getInstance(requireContext())
+        )
         bookDownloadManager = BookDownloadManager.getInstance(requireContext(), bookRepository)
         configureWebView()
         setupOverlay()

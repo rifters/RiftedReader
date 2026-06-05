@@ -3,6 +3,7 @@ package com.rifters.riftedreader.ui.library
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -39,6 +40,8 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.rifters.riftedreader.R
+import com.rifters.riftedreader.data.covers.CoverCache
+import com.rifters.riftedreader.data.covers.CoverManager
 import com.rifters.riftedreader.data.database.BookDatabase
 import com.rifters.riftedreader.data.database.entities.CollectionEntity
 import com.rifters.riftedreader.data.database.entities.BookMeta
@@ -86,6 +89,7 @@ class LibraryFragment : Fragment() {
     private var updatingFilters = false
     private var selectionTracker: SelectionTracker<String>? = null
     private var selectionActionMode: ActionMode? = null
+    private var pendingCoverSelectionIds: Set<String> = emptySet()
 
     private val selectionActionModeCallback = object : ActionMode.Callback {
         override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
@@ -102,6 +106,23 @@ class LibraryFragment : Fragment() {
                     val selected = getSelectedBooks()
                     if (selected.isNotEmpty()) {
                         showMetadataEditorDialog(selected)
+                    }
+                    true
+                }
+                R.id.menu_set_cover -> {
+                    val selectedIds = getSelectedBooks().map { it.id }.toSet()
+                    if (selectedIds.isNotEmpty()) {
+                        pendingCoverSelectionIds = selectedIds
+                        coverPickerLauncher.launch(arrayOf("image/*"))
+                        selectionActionMode?.finish()
+                    }
+                    true
+                }
+                R.id.menu_remove_cover -> {
+                    val selectedIds = getSelectedBooks().map { it.id }.toSet()
+                    if (selectedIds.isNotEmpty()) {
+                        viewModel.clearBookCover(selectedIds)
+                        selectionActionMode?.finish()
                     }
                     true
                 }
@@ -148,6 +169,25 @@ class LibraryFragment : Fragment() {
         uri?.let { importBookFromUri(it) }
     }
 
+    private val coverPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        val selectedIds = pendingCoverSelectionIds
+        pendingCoverSelectionIds = emptySet()
+        if (uri == null || selectedIds.isEmpty()) return@registerForActivityResult
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                runCatching { decodeCoverBitmap(uri) }.getOrNull()
+            }
+            if (bitmap == null) {
+                Snackbar.make(binding.root, R.string.library_cover_pick_failed, Snackbar.LENGTH_LONG).show()
+                return@launch
+            }
+            viewModel.updateBookCover(selectedIds, bitmap)
+        }
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -162,7 +202,9 @@ class LibraryFragment : Fragment() {
         AppLogger.event("LibraryFragment", "onViewCreated", "ui/LibraryFragment/lifecycle")
 
         val database = BookDatabase.getDatabase(requireContext())
-        val repository = BookRepository(database.bookMetaDao())
+        val coverManager = CoverManager.getInstance(requireContext())
+        val coverCache = CoverCache.getInstance(requireContext())
+        val repository = BookRepository(database.bookMetaDao(), coverManager, coverCache)
         val bookmarkRepository = RoomBookmarkRepository(database.bookmarkDao())
         val collectionRepository = CollectionRepository(database.collectionDao())
         val fileScanner = FileScanner(requireContext(), repository)
@@ -1002,6 +1044,15 @@ class LibraryFragment : Fragment() {
         return "import_${System.currentTimeMillis()}${if (extension == "book") "" else ".$extension"}"
     }
 
+    private fun decodeCoverBitmap(uri: Uri): android.graphics.Bitmap {
+        val inputStream = requireContext().contentResolver.openInputStream(uri)
+            ?: throw IOException("Failed to open cover image stream from URI")
+        return inputStream.use { input ->
+            BitmapFactory.decodeStream(input)
+                ?: throw IOException("Failed to decode cover image from URI")
+        }
+    }
+
 
     private fun pruneSelection(books: List<BookMeta>) {
         val tracker = selectionTracker ?: return
@@ -1226,6 +1277,9 @@ class LibraryFragment : Fragment() {
             LibraryEvent.ScanFailed -> getString(R.string.library_scan_failed)
             is LibraryEvent.MetadataUpdated -> getString(R.string.library_metadata_update_success, event.count)
             LibraryEvent.MetadataUpdateFailed -> getString(R.string.library_metadata_update_failed)
+            is LibraryEvent.CoverUpdated -> getString(R.string.library_cover_update_success, event.count)
+            is LibraryEvent.CoverRemoved -> getString(R.string.library_cover_remove_success, event.count)
+            LibraryEvent.CoverUpdateFailed -> getString(R.string.library_cover_update_failed)
             is LibraryEvent.CollectionCreated -> getString(R.string.library_collection_created, event.name)
             is LibraryEvent.CollectionRenamed -> getString(R.string.library_collection_renamed, event.name)
             is LibraryEvent.CollectionDeleted -> getString(R.string.library_collection_deleted, event.name)

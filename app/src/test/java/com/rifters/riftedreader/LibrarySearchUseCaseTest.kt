@@ -366,6 +366,7 @@ class TestBookMetaDao(private val books: List<BookMeta>) : BookMetaDao {
         timestamp: Long
     ) {}
     override suspend fun setFavorite(bookId: String, isFavorite: Boolean) {}
+    override suspend fun updateCoverPath(bookId: String, coverPath: String?) {}
     override fun getBooksWithBookmarks(): Flow<List<BookMeta>> = MutableStateFlow(books.filter { it.currentPreviewText != null })
     override suspend fun getBooksWithBookmarksSortedByTitle(): List<BookMeta> = books.filter { it.currentPreviewText != null }.sortedBy { it.title }
     override suspend fun getBooksWithBookmarksSortedByPosition(): List<BookMeta> = books.filter { it.currentPreviewText != null }.sortedWith(

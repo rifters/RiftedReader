@@ -1,5 +1,6 @@
 package com.rifters.riftedreader.ui.library
 
+import android.graphics.Bitmap
 import android.database.sqlite.SQLiteConstraintException
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -447,6 +448,42 @@ class LibraryViewModel(
         }
     }
 
+    fun updateBookCover(bookIds: Set<String>, bitmap: Bitmap) {
+        if (bookIds.isEmpty()) return
+        val selectedBooks = books.value.filter { it.id in bookIds }
+        if (selectedBooks.isEmpty()) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                selectedBooks.forEach { book ->
+                    checkNotNull(repository.saveManualCover(book.id, bitmap))
+                }
+            }.onSuccess {
+                _events.emit(LibraryEvent.CoverUpdated(selectedBooks.size))
+            }.onFailure {
+                _events.emit(LibraryEvent.CoverUpdateFailed)
+            }
+        }
+    }
+
+    fun clearBookCover(bookIds: Set<String>) {
+        if (bookIds.isEmpty()) return
+        val selectedBooks = books.value.filter { it.id in bookIds }
+        if (selectedBooks.isEmpty()) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                selectedBooks.forEach { book ->
+                    repository.removeCover(book.id)
+                }
+            }.onSuccess {
+                _events.emit(LibraryEvent.CoverRemoved(selectedBooks.size))
+            }.onFailure {
+                _events.emit(LibraryEvent.CoverUpdateFailed)
+            }
+        }
+    }
+
     private fun updateFilters(transform: (LibrarySearchFilters) -> LibrarySearchFilters) {
         _filters.update { current ->
             val updated = transform(current)
@@ -560,6 +597,9 @@ sealed interface LibraryEvent {
     object ScanFailed : LibraryEvent
     data class MetadataUpdated(val count: Int) : LibraryEvent
     object MetadataUpdateFailed : LibraryEvent
+    data class CoverUpdated(val count: Int) : LibraryEvent
+    data class CoverRemoved(val count: Int) : LibraryEvent
+    object CoverUpdateFailed : LibraryEvent
     data class CollectionCreated(val name: String) : LibraryEvent
     data class CollectionRenamed(val name: String) : LibraryEvent
     data class CollectionDeleted(val name: String) : LibraryEvent
