@@ -107,6 +107,9 @@ class LibraryStatisticsFragment : Fragment() {
     }
 
     private fun formatDistributionText(statistics: LibraryStatistics): String {
+        if (statistics.formatDistribution.isEmpty()) {
+            return getString(R.string.library_statistics_no_breakdown_data)
+        }
         return statistics.formatDistribution.entries.joinToString(separator = "\n") { entry ->
             getString(
                 R.string.library_statistics_distribution_entry_format,
@@ -117,6 +120,9 @@ class LibraryStatisticsFragment : Fragment() {
     }
 
     private fun readingProgressText(statistics: LibraryStatistics): String {
+        if (statistics.readingProgressBreakdown.isEmpty()) {
+            return getString(R.string.library_statistics_no_breakdown_data)
+        }
         return statistics.readingProgressBreakdown.entries.joinToString(separator = "\n") { entry ->
             getString(
                 R.string.library_statistics_distribution_entry_format,

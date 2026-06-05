@@ -50,7 +50,7 @@ class LibraryStatisticsCalculator(
                 .groupingBy { normalizeFormat(it.format) }
                 .eachCount()
                 .toList()
-                .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
+                .sortedWith(compareByDescending { it.second }.thenBy { it.first })
                 .toMap(linkedMapOf())
 
             val averageCompletion = books.takeIf { it.isNotEmpty() }
