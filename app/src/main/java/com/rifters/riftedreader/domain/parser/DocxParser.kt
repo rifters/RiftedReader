@@ -180,7 +180,7 @@ class DocxParser : BookParser {
             return null
         }
         val numericSuffix = styleName.removePrefix("Heading").trim()
-        val level = numericSuffix.toIntOrNull() ?: return 0
+        val level = numericSuffix.toIntOrNull() ?: return null
         return (level - 1).coerceAtLeast(0)
     }
 

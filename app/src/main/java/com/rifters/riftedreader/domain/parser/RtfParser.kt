@@ -301,7 +301,7 @@ class RtfParser : BookParser {
     }
 
     private fun extractInfoField(source: String, field: String): String? {
-        val regex = Regex("""\\${Regex.escape(field)}\s+([^\\{}]+)""")
+        val regex = Regex("""\\(?:${Regex.escape(field)})(?:\s+)?([^\\{}]+)""")
         return regex.find(source)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }
     }
 

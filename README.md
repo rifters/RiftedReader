@@ -169,7 +169,7 @@ Run a faster Kotlin-only compile preflight from the repository root:
 | CBZ | 🟡 In Progress | Archive preview parser scaffolding |
 | HTML | ✅ Supported | Jsoup-based parser aligned with Librera''s HtmlExtractor |
 | RTF | ✅ Supported | Lightweight converter for paragraphs and basic inline formatting |
-| DOCX | ✅ Supported | Apache POI-based converter for Word paragraphs and runs |
+| DOCX | ✅ Supported | Apache POI `poi-ooxml`-based converter for Word paragraphs and runs |
 | CBR | 🔜 Planned | Format descriptor tracked via `FormatCatalog` |
 
 ### Text-to-Speech ⭐ Core Feature

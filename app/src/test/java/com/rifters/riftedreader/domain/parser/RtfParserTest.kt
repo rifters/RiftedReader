@@ -30,7 +30,7 @@ class RtfParserTest {
 
         val page = parser.getPageContent(file, 0)
         assertEquals("Sample RTF", page.title)
-        assertTrue(page.text.contains("Boldplain"))
+        assertTrue(page.text.contains("Bold plain"))
         assertTrue(page.text.contains("Italic"))
         assertTrue(page.html?.contains("<b>Bold</b>") == true)
         assertTrue(page.html?.contains("<i>Italic</i>") == true)
