@@ -137,9 +137,6 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview-selection:1.1.0")
     
     // File format libraries
-    // PDF support
-    implementation("com.github.mhiew:android-pdf-viewer:3.2.0-beta.1")
-    
     // EPUB support (will use custom implementation with JSoup)
     implementation("org.jsoup:jsoup:1.18.3")
     
