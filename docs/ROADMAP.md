@@ -1,7 +1,7 @@
 # RiftedReader Implementation Roadmap
 
 **Project Goal:** Feature-rich Android ebook reader with best-in-class TTS support, inspired by LibreraReader
-**Language:** Kotlin | **Min SDK:** 24 (Android 7.0) | **Target SDK:** 34 (Android 14)
+**Language:** Kotlin | **Min SDK:** 24 (Android 7.0) | **Target SDK:** 35 (Android 15)
 **Package:** `com.rifters.riftedreader`
 **Revised:** June 5, 2026
 
@@ -33,7 +33,7 @@
 - ✅ CI/CD (GitHub Actions)
 - ✅ `README.md`
 - ✅ Full package architecture: `data/`, `domain/`, `ui/`, `util/`
-- ✅ Dependency injection (Hilt)
+- ✅ Dependency wiring via explicit constructors/ViewModel factories (no DI framework)
 - ✅ Room database configured
 - ✅ ViewModel + Flow architecture
 - ✅ Base classes (`BaseActivity`, `BaseFragment`, `BaseViewModel`)
@@ -326,7 +326,7 @@ Stage 7 is fully closed and exceeded its original scope. Cover management and th
 ### Architecture
 
 - MVVM + Repository pattern throughout
-- Hilt dependency injection
+- Manual dependency wiring (explicit constructors + ViewModel factories)
 - Room + Flow for reactive data
 - Coroutines for all async work
 - `runCatching { }.getOrElse { }` resilience pattern on all parser I/O

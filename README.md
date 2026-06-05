@@ -19,7 +19,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full implementation roadmap and p
 - Kotlin
 - Coroutines / Flow
 - Room
-- Hilt
+- Manual ViewModel/repository wiring (no DI framework yet)
 - AndroidX Navigation, Lifecycle, Preference, DataStore, WebKit, Security, and Media
 - Material Design 3
 - jsoup, Retrofit, OkHttp, Coil, Zip4j, Apache POI, and PDF rendering dependencies
@@ -141,7 +141,7 @@ Run a faster Kotlin-only compile preflight from the repository root:
 
 ### Modern Architecture
 - MVVM + Repository pattern
-- Hilt dependency injection
+- Explicit ViewModel factories and constructor wiring
 - Room Database
 - Coroutines + Flow
 - Material Design 3
@@ -150,10 +150,10 @@ Run a faster Kotlin-only compile preflight from the repository root:
 
 - **Language**: Kotlin
 - **Minimum SDK**: 24 (Android 7.0)
-- **Target SDK**: 34 (Android 14)
+- **Target SDK**: 35 (Android 15)
 - **Architecture**: MVVM with Repository pattern
 - **Database**: Room
-- **DI**: Hilt
+- **DI**: Manual dependency wiring (factory-based)
 - **Async**: Coroutines + Flow
 - **UI**: Material Design 3 Components
 
