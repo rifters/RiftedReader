@@ -37,7 +37,7 @@ object FormatCatalog {
             extensions = setOf("pdf"),
             mimeTypes = setOf("application/pdf"),
             status = FormatSupportStatus.SUPPORTED,
-            notes = "Backed by AndroidPdfViewer wrapper as described in LIBRERA_ANALYSIS.md"
+            notes = "Rendered page-by-page via Android PdfRenderer into image-based PageContent. TOC not available."
         ),
         FormatDescriptor(
             id = "mobi",
