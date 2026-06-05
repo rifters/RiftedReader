@@ -1,8 +1,11 @@
 package com.rifters.riftedreader.ui.calibre
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -21,13 +24,16 @@ import android.webkit.WebViewClient
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.OnBackPressedCallback
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.calibre.CalibreConnectionConfig
@@ -36,6 +42,7 @@ import com.rifters.riftedreader.data.database.BookDatabase
 import com.rifters.riftedreader.data.download.BookDownloadManager
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.databinding.FragmentCalibreWebBinding
+import com.rifters.riftedreader.ui.shouldRequestPostNotificationsPermission
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.ByteArrayInputStream
@@ -53,6 +60,12 @@ class CalibreWebFragment : Fragment() {
     private lateinit var bookDownloadManager: BookDownloadManager
     private var calibreWebUrl = ""
     private val activeDownloads = mutableListOf<ActiveDownload>()
+    private var pendingNotificationPermissionAction: (() -> Unit)? = null
+    private val requestNotificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        continuePendingNotificationPermissionAction()
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentCalibreWebBinding.inflate(inflater, container, false)
@@ -201,27 +214,73 @@ class CalibreWebFragment : Fragment() {
     }
 
     private fun startDownload(request: WebDownloadRequest) {
-        val filename = request.filename
-        Toast.makeText(requireContext(), getString(R.string.calibre_web_downloading, filename), Toast.LENGTH_SHORT).show()
-        val id = UUID.randomUUID().toString()
-        val job = viewLifecycleOwner.lifecycleScope.launch {
-            bookDownloadManager.downloadFromUrl(
-                url = request.url,
-                filename = filename,
-                headers = request.headers,
-            ).fold(
-                onSuccess = {
-                    Snackbar.make(binding.root, getString(R.string.calibre_web_download_complete, filename), Snackbar.LENGTH_LONG).show()
-                },
-                onFailure = {
-                    Snackbar.make(binding.root, getString(R.string.calibre_web_download_failed, filename), Snackbar.LENGTH_LONG).show()
-                }
-            )
-            activeDownloads.removeAll { it.id == id }
+        requestNotificationPermissionIfNeeded {
+            val filename = request.filename
+            Toast.makeText(requireContext(), getString(R.string.calibre_web_downloading, filename), Toast.LENGTH_SHORT).show()
+            val id = UUID.randomUUID().toString()
+            val job = viewLifecycleOwner.lifecycleScope.launch {
+                bookDownloadManager.downloadFromUrl(
+                    url = request.url,
+                    filename = filename,
+                    headers = request.headers,
+                ).fold(
+                    onSuccess = {
+                        Snackbar.make(binding.root, getString(R.string.calibre_web_download_complete, filename), Snackbar.LENGTH_LONG).show()
+                    },
+                    onFailure = {
+                        Snackbar.make(binding.root, getString(R.string.calibre_web_download_failed, filename), Snackbar.LENGTH_LONG).show()
+                    }
+                )
+                activeDownloads.removeAll { it.id == id }
+                updateDownloadBadge()
+            }
+            activeDownloads += ActiveDownload(id, filename, job)
             updateDownloadBadge()
         }
-        activeDownloads += ActiveDownload(id, filename, job)
-        updateDownloadBadge()
+    }
+
+    private fun requestNotificationPermissionIfNeeded(action: () -> Unit) {
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        val isGranted = ContextCompat.checkSelfPermission(
+            requireContext(),
+            permission
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!shouldRequestPostNotificationsPermission(Build.VERSION.SDK_INT, isGranted)) {
+            action()
+            return
+        }
+
+        pendingNotificationPermissionAction = action
+        when {
+            shouldShowRequestPermissionRationale(permission) -> {
+                showNotificationPermissionRationaleDialog(permission)
+            }
+            else -> {
+                requestNotificationPermissionLauncher.launch(permission)
+            }
+        }
+    }
+
+    private fun showNotificationPermissionRationaleDialog(permission: String) {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.permission_notifications_title)
+            .setMessage(R.string.permission_notifications_message)
+            .setPositiveButton(R.string.permission_grant) { _, _ ->
+                requestNotificationPermissionLauncher.launch(permission)
+            }
+            .setNegativeButton(R.string.cancel) { _, _ ->
+                continuePendingNotificationPermissionAction()
+            }
+            .setOnCancelListener {
+                continuePendingNotificationPermissionAction()
+            }
+            .show()
+    }
+
+    private fun continuePendingNotificationPermissionAction() {
+        val action = pendingNotificationPermissionAction
+        pendingNotificationPermissionAction = null
+        action?.invoke()
     }
 
     private fun showActiveDownloadsSheet() {
@@ -293,6 +352,7 @@ class CalibreWebFragment : Fragment() {
         mainHandler.removeCallbacks(hideOverlayRunnable)
         activeDownloads.forEach { it.job.cancel() }
         activeDownloads.clear()
+        pendingNotificationPermissionAction = null
         val webView = binding.calibreWebView
         (webView.parent as? ViewGroup)?.removeView(webView)
         webView.destroy()

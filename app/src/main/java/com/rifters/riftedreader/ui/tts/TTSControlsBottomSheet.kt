@@ -1,13 +1,19 @@
 package com.rifters.riftedreader.ui.tts
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.slider.Slider
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.preferences.TTSPreferences
@@ -15,12 +21,19 @@ import com.rifters.riftedreader.databinding.DialogTtsControlsBinding
 import com.rifters.riftedreader.domain.tts.TTSConfiguration
 import com.rifters.riftedreader.domain.tts.TTSEngine
 import com.rifters.riftedreader.domain.tts.TTSService
+import com.rifters.riftedreader.ui.shouldRequestPostNotificationsPermission
 import java.util.Locale
 
 class TTSControlsBottomSheet : BottomSheetDialogFragment() {
 
     private var _binding: DialogTtsControlsBinding? = null
     private val binding get() = _binding!!
+    private var pendingNotificationPermissionAction: (() -> Unit)? = null
+    private val requestNotificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        continuePendingNotificationPermissionAction()
+    }
 
     private lateinit var preferences: TTSPreferences
     private var ttsEngine: TTSEngine? = null
@@ -75,7 +88,9 @@ class TTSControlsBottomSheet : BottomSheetDialogFragment() {
         binding.playButton.setOnClickListener {
             if (currentText.isNotBlank()) {
                 val configuration = currentConfiguration()
-                TTSService.start(requireContext(), currentText, configuration)
+                requestNotificationPermissionIfNeeded {
+                    TTSService.start(requireContext(), currentText, configuration)
+                }
             } else {
                 binding.statusText.text = ""
             }
@@ -171,8 +186,53 @@ class TTSControlsBottomSheet : BottomSheetDialogFragment() {
         TTSService.updateConfiguration(requireContext(), currentConfiguration())
     }
 
+    private fun requestNotificationPermissionIfNeeded(action: () -> Unit) {
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        val isGranted = ContextCompat.checkSelfPermission(
+            requireContext(),
+            permission
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!shouldRequestPostNotificationsPermission(Build.VERSION.SDK_INT, isGranted)) {
+            action()
+            return
+        }
+
+        pendingNotificationPermissionAction = action
+        when {
+            shouldShowRequestPermissionRationale(permission) -> {
+                showNotificationPermissionRationaleDialog(permission)
+            }
+            else -> {
+                requestNotificationPermissionLauncher.launch(permission)
+            }
+        }
+    }
+
+    private fun showNotificationPermissionRationaleDialog(permission: String) {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.permission_notifications_title)
+            .setMessage(R.string.permission_notifications_message)
+            .setPositiveButton(R.string.permission_grant) { _, _ ->
+                requestNotificationPermissionLauncher.launch(permission)
+            }
+            .setNegativeButton(R.string.cancel) { _, _ ->
+                continuePendingNotificationPermissionAction()
+            }
+            .setOnCancelListener {
+                continuePendingNotificationPermissionAction()
+            }
+            .show()
+    }
+
+    private fun continuePendingNotificationPermissionAction() {
+        val action = pendingNotificationPermissionAction
+        pendingNotificationPermissionAction = null
+        action?.invoke()
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
+        pendingNotificationPermissionAction = null
         ttsEngine?.shutdown()
         ttsEngine = null
         _binding = null

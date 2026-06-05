@@ -1,9 +1,14 @@
 package com.rifters.riftedreader.ui.calibre
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
 import androidx.fragment.app.Fragment
@@ -17,6 +22,8 @@ import coil.load
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
 import com.rifters.riftedreader.R
 import com.rifters.riftedreader.data.calibre.BookFormat
 import com.rifters.riftedreader.data.calibre.CalibreBook
@@ -28,8 +35,8 @@ import com.rifters.riftedreader.data.download.BookDownloadManager
 import com.rifters.riftedreader.data.repository.BookRepository
 import com.rifters.riftedreader.databinding.DialogCalibreBookDetailBinding
 import com.rifters.riftedreader.databinding.FragmentCalibreLibraryBinding
+import com.rifters.riftedreader.ui.shouldRequestPostNotificationsPermission
 import com.rifters.riftedreader.util.AppLogger
-import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -37,6 +44,12 @@ class CalibreLibraryFragment : Fragment() {
 
     private var _binding: FragmentCalibreLibraryBinding? = null
     private val binding get() = _binding!!
+    private var pendingNotificationPermissionAction: (() -> Unit)? = null
+    private val requestNotificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        continuePendingNotificationPermissionAction()
+    }
 
     private lateinit var connectionRepository: DefaultCalibreConnectionRepository
     private lateinit var viewModel: CalibreLibraryViewModel
@@ -222,13 +235,59 @@ class CalibreLibraryFragment : Fragment() {
             val button = MaterialButton(requireContext(), null, buttonStyle(format == preferredFormat)).apply {
                 text = getString(R.string.calibre_download_format, format.name)
                 setOnClickListener {
-                    viewModel.downloadBook(book, format)
+                    requestNotificationPermissionIfNeeded {
+                        viewModel.downloadBook(book, format)
+                    }
                     dialog.dismiss()
                 }
             }
             sheetBinding.formatsContainer.addView(button)
         }
         sheetBinding.formatsContainer.isVisible = sheetBinding.formatsContainer.childCount > 0
+    }
+
+    private fun requestNotificationPermissionIfNeeded(action: () -> Unit) {
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        val isGranted = ContextCompat.checkSelfPermission(
+            requireContext(),
+            permission
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!shouldRequestPostNotificationsPermission(Build.VERSION.SDK_INT, isGranted)) {
+            action()
+            return
+        }
+
+        pendingNotificationPermissionAction = action
+        when {
+            shouldShowRequestPermissionRationale(permission) -> {
+                showNotificationPermissionRationaleDialog(permission)
+            }
+            else -> {
+                requestNotificationPermissionLauncher.launch(permission)
+            }
+        }
+    }
+
+    private fun showNotificationPermissionRationaleDialog(permission: String) {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.permission_notifications_title)
+            .setMessage(R.string.permission_notifications_message)
+            .setPositiveButton(R.string.permission_grant) { _, _ ->
+                requestNotificationPermissionLauncher.launch(permission)
+            }
+            .setNegativeButton(R.string.cancel) { _, _ ->
+                continuePendingNotificationPermissionAction()
+            }
+            .setOnCancelListener {
+                continuePendingNotificationPermissionAction()
+            }
+            .show()
+    }
+
+    private fun continuePendingNotificationPermissionAction() {
+        val action = pendingNotificationPermissionAction
+        pendingNotificationPermissionAction = null
+        action?.invoke()
     }
 
     private fun buttonStyle(isPreferred: Boolean): Int {
@@ -240,6 +299,7 @@ class CalibreLibraryFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        pendingNotificationPermissionAction = null
         binding.booksRecyclerView.adapter = null
         _binding = null
         super.onDestroyView()
