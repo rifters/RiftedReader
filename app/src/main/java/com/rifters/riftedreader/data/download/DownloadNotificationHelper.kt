@@ -1,11 +1,14 @@
 package com.rifters.riftedreader.data.download
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.pm.PackageManager
 import android.content.Context
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 
 internal class DownloadNotificationHelper(private val context: Context) {
 
@@ -45,9 +48,7 @@ internal class DownloadNotificationHelper(private val context: Context) {
             .setProgress(0, 0, true)
             .setOngoing(true)
             .build()
-        runCatching {
-            NotificationManagerCompat.from(context).notify(notifId, n)
-        }
+        notifyIfAllowed(notifId, n)
     }
 
     fun notifySuccess(notifId: Int, bookTitle: String) {
@@ -58,9 +59,7 @@ internal class DownloadNotificationHelper(private val context: Context) {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .build()
-        runCatching {
-            NotificationManagerCompat.from(context).notify(notifId, n)
-        }
+        notifyIfAllowed(notifId, n)
     }
 
     fun notifyFailure(notifId: Int, reason: String) {
@@ -71,8 +70,20 @@ internal class DownloadNotificationHelper(private val context: Context) {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .build()
+        notifyIfAllowed(notifId, n)
+    }
+
+    private fun notifyIfAllowed(notifId: Int, notification: android.app.Notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
         runCatching {
-            NotificationManagerCompat.from(context).notify(notifId, n)
+            NotificationManagerCompat.from(context).notify(notifId, notification)
         }
     }
 
