@@ -1,17 +1,16 @@
 package com.rifters.riftedreader.domain.parser
 
-import android.text.TextUtils
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.apache.poi.xwpf.usermodel.IBodyElement
 import org.apache.poi.xwpf.usermodel.XWPFDocument
 import org.apache.poi.xwpf.usermodel.XWPFParagraph
 import org.apache.poi.xwpf.usermodel.XWPFRun
 import org.apache.poi.xwpf.usermodel.XWPFTable
-import org.jsoup.Jsoup
+import org.jsoup.parser.Parser
 import java.io.File
 import java.util.Locale
+import java.util.zip.ZipInputStream
 
 private data class ParsedDocxDocument(
     val title: String,
@@ -74,6 +73,7 @@ class DocxParser : BookParser {
                     val html = StringBuilder()
                     val text = StringBuilder()
                     val toc = mutableListOf<TocEntry>()
+                    val packageMetadata = readPackageMetadata(file)
                     document.bodyElements.forEach { element ->
                         when (element) {
                             is XWPFParagraph -> renderParagraph(element, html, text, toc)
@@ -82,10 +82,17 @@ class DocxParser : BookParser {
                     }
                     val fallbackTitle = file.nameWithoutExtension.ifBlank { "DOCX" }
                     val normalizedHtml = html.toString().ifBlank { "<p></p>" }
+                    val inferredTitle = toc.firstOrNull()?.title
+                        ?: text.lines().firstOrNull { it.isNotBlank() }?.normalizeWhitespace()
                     ParsedDocxDocument(
-                        title = document.properties.coreProperties.title?.trim().takeUnless { it.isNullOrBlank() } ?: fallbackTitle,
-                        author = document.properties.coreProperties.creator?.trim().takeUnless { it.isNullOrBlank() },
-                        description = document.properties.coreProperties.description?.trim().takeUnless { it.isNullOrBlank() },
+                        title = packageMetadata.title
+                            ?: document.properties.coreProperties.title?.trim().takeUnless { it.isNullOrBlank() }
+                            ?: inferredTitle
+                            ?: fallbackTitle,
+                        author = packageMetadata.author
+                            ?: document.properties.coreProperties.creator?.trim().takeUnless { it.isNullOrBlank() },
+                        description = packageMetadata.description
+                            ?: document.properties.coreProperties.description?.trim().takeUnless { it.isNullOrBlank() },
                         text = text.toString().trim(),
                         html = normalizedHtml,
                         toc = toc
@@ -121,7 +128,7 @@ class DocxParser : BookParser {
     ) {
         val plainText = paragraph.text.normalizeWhitespace()
         val inlineHtml = paragraph.runs.joinToString(separator = "") { renderRun(it) }
-            .ifBlank { TextUtils.htmlEncode(plainText) }
+            .ifBlank { plainText.escapeHtml() }
         val headingLevel = paragraph.headingLevel()
         val tag = if (headingLevel != null) "h${(headingLevel + 1).coerceAtMost(6)}" else "p"
 
@@ -150,7 +157,7 @@ class DocxParser : BookParser {
         if (rawText.isBlank()) {
             return ""
         }
-        val escaped = TextUtils.htmlEncode(rawText)
+        val escaped = rawText.escapeHtml()
             .replace("\n", "<br/>")
             .replace("\t", "&nbsp;&nbsp;&nbsp;&nbsp;")
         return wrapInlineFormatting(escaped, run.isBold, run.isItalic)
@@ -180,4 +187,40 @@ class DocxParser : BookParser {
     private fun String.normalizeWhitespace(): String {
         return trim().replace(Regex("\\s+"), " ")
     }
+
+    private fun String.escapeHtml(): String {
+        return replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;")
+    }
+
+    private fun readPackageMetadata(file: File): DocxPackageMetadata {
+        return runCatching {
+            ZipInputStream(file.inputStream().buffered()).use { zip ->
+                generateSequence { zip.nextEntry }
+                    .firstOrNull { it.name == "docProps/core.xml" }
+                    ?.let {
+                        val xml = zip.readBytes().toString(Charsets.UTF_8)
+                        parseCoreProperties(xml)
+                    }
+            }
+        }.getOrNull() ?: DocxPackageMetadata()
+    }
+
+    private fun parseCoreProperties(xml: String): DocxPackageMetadata {
+        val document = org.jsoup.Jsoup.parse(xml, "", Parser.xmlParser())
+        return DocxPackageMetadata(
+            title = document.selectFirst("dc|title, title")?.text()?.trim()?.takeIf { it.isNotEmpty() },
+            author = document.selectFirst("dc|creator, creator")?.text()?.trim()?.takeIf { it.isNotEmpty() },
+            description = document.selectFirst("dc|description, description")?.text()?.trim()?.takeIf { it.isNotEmpty() }
+        )
+    }
 }
+
+private data class DocxPackageMetadata(
+    val title: String? = null,
+    val author: String? = null,
+    val description: String? = null
+)

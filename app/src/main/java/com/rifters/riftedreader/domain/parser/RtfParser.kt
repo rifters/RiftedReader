@@ -1,6 +1,5 @@
 package com.rifters.riftedreader.domain.parser
 
-import android.text.TextUtils
 import com.rifters.riftedreader.data.database.entities.BookMeta
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -22,6 +21,14 @@ private data class RtfState(
     val unicodeSkipCount: Int = 1
 )
 
+private fun String.escapeHtml(): String {
+    return replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&#39;")
+}
+
 private class RtfHtmlAccumulator {
     private val html = StringBuilder()
     private val text = StringBuilder()
@@ -33,7 +40,7 @@ private class RtfHtmlAccumulator {
         if (value.isEmpty()) return
         ensureParagraph()
         syncFormatting(state)
-        html.append(TextUtils.htmlEncode(value).replace("\n", "<br/>").replace("\t", "&nbsp;&nbsp;&nbsp;&nbsp;"))
+        html.append(value.escapeHtml().replace("\n", "<br/>").replace("\t", "&nbsp;&nbsp;&nbsp;&nbsp;"))
         text.append(value)
     }
 
@@ -294,7 +301,7 @@ class RtfParser : BookParser {
     }
 
     private fun extractInfoField(source: String, field: String): String? {
-        val regex = Regex("""\\$field\s+([^\\{}]+)""")
+        val regex = Regex("""\\${Regex.escape(field)}\s+([^\\{}]+)""")
         return regex.find(source)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }
     }
 
