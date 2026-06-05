@@ -23,9 +23,20 @@ class FormatParserRegistrationTest {
     }
 
     @Test
-    fun fb2AndMobiAreNotPreviewParsers() {
+    fun docxAndRtfAreRegisteredAsSupportedParsers() {
+        assertTrue(ParserFactory.isSupported(File("sample.docx")))
+        assertTrue(ParserFactory.getParser(File("sample.docx")) is DocxParser)
+
+        assertTrue(ParserFactory.isSupported(File("sample.rtf")))
+        assertTrue(ParserFactory.getParser(File("sample.rtf")) is RtfParser)
+    }
+
+    @Test
+    fun fb2MobiDocxAndRtfAreNotPreviewParsers() {
         val previewIds = FormatCatalog.previewParsers().map { it.descriptor.id }
         assertFalse(previewIds.contains("fb2"))
         assertFalse(previewIds.contains("mobi"))
+        assertFalse(previewIds.contains("docx"))
+        assertFalse(previewIds.contains("rtf"))
     }
 }

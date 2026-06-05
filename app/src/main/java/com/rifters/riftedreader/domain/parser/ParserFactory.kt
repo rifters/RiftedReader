@@ -18,6 +18,8 @@ object ParserFactory {
         register(CbzParser())
         register(CbrParser())
         register(PdfParser())
+        register(RtfParser())
+        register(DocxParser())
         register(HtmlParser())
     }
 
