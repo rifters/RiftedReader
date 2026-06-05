@@ -114,7 +114,7 @@
     <!-- Settings -->
     <string name="settings_section_library">Library</string>
     <string name="settings_library_statistics_title">Library statistics</string>
-    <string name="settings_library_statistics_summary">Totals for books, formats, favorites, and collections</string>
+    <string name="settings_library_statistics_summary">Totals, format mix, favorites, collections, and reading progress</string>
 
     <!-- Library statistics -->
     <string name="library_statistics_screen_title">Library statistics</string>
@@ -130,6 +130,12 @@
     <string name="library_statistics_favorites_label">Favorites</string>
     <string name="library_statistics_average_completion_label">Average completion</string>
     <string name="library_statistics_average_completion_format">%1$.1f%%</string>
+    <string name="library_statistics_format_distribution_label">Format distribution</string>
+    <string name="library_statistics_reading_progress_label">Reading progress</string>
+    <string name="library_statistics_distribution_entry_format">%1$s • %2$d</string>
+    <string name="library_statistics_progress_unread">Unread</string>
+    <string name="library_statistics_progress_in_progress">In progress</string>
+    <string name="library_statistics_progress_completed">Completed</string>
     <string name="library_metadata_edit_action">Edit metadata</string>
     <string name="library_metadata_edit_title">Edit metadata</string>
     <string name="library_metadata_edit_single">Editing "%1$s"</string>
