@@ -29,7 +29,6 @@ class FileScanner(
         AppLogger.task("FileScanner", "Starting book scan", "util/FileScanner/scan")
         val startTime = System.currentTimeMillis()
         
-        ParserFactory.enablePreviewParsers()
         val foundBooks = mutableListOf<BookMeta>()
         var scannedCount = 0
         

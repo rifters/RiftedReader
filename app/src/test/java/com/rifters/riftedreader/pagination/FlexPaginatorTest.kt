@@ -202,6 +202,97 @@ class FlexPaginatorTest {
         assertTrue("HTML should not be empty", html.isNotBlank())
         assertTrue("HTML should contain section tag", html.contains("<section"))
     }
+
+    @Test
+    fun `assembleWindow preserves image tags and attributes for image-heavy chapters`() = runTest {
+        val imageChapterHtml = """
+            <div class="illustration">
+                <img src="images/cover.jpg" alt="Cover Art" width="600" height="800" style="height: 800px;" />
+                <p class="caption">Cover Illustration</p>
+                <img src="images/map.png" alt="World Map" />
+            </div>
+        """.trimIndent()
+        parser.addChapter(5, "Cover Illustration", imageChapterHtml)
+
+        val result = flexPaginator.assembleWindow(
+            windowIndex = 1,
+            firstChapter = 5,
+            lastChapter = 5
+        )
+
+        assertNotNull(result)
+        val html = result!!.html
+        assertTrue(html.contains("<section data-chapter=\"5\">"))
+        assertTrue(html.contains("<img src=\"images/cover.jpg\""))
+        assertTrue(html.contains("alt=\"Cover Art\""))
+        assertTrue(html.contains("width=\"600\""))
+        assertTrue(html.contains("height=\"800\""))
+        assertTrue(html.contains("<img src=\"images/map.png\""))
+    }
+
+    @Test
+    fun `assembleWindow enforces distinct section boundaries across multi-chapter windows`() = runTest {
+        parser.addChapter(1, "Chapter 1 Title", "<h1>Chapter 1</h1><p>First chapter body text.</p>")
+        parser.addChapter(2, "Chapter 2 Title", "<h1>Chapter 2</h1><p>Second chapter body text.</p>")
+        parser.addChapter(3, "Chapter 3 Title", "<h1>Chapter 3</h1><p>Third chapter body text.</p>")
+
+        val result = flexPaginator.assembleWindow(
+            windowIndex = 0,
+            firstChapter = 1,
+            lastChapter = 3
+        )
+
+        assertNotNull(result)
+        val html = result!!.html
+        // Verify each chapter is enclosed in its own distinct section
+        val sec1 = "<section data-chapter=\"1\">"
+        val sec2 = "<section data-chapter=\"2\">"
+        val sec3 = "<section data-chapter=\"3\">"
+        val idx1 = html.indexOf(sec1)
+        val idx2 = html.indexOf(sec2)
+        val idx3 = html.indexOf(sec3)
+
+        assertTrue("Section 1 exists", idx1 >= 0)
+        assertTrue("Section 2 exists after Section 1", idx2 > idx1)
+        assertTrue("Section 3 exists after Section 2", idx3 > idx2)
+
+        // Ensure closing section tags exist between chapters
+        val closeSec1 = html.indexOf("</section>", idx1)
+        val closeSec2 = html.indexOf("</section>", idx2)
+        assertTrue(closeSec1 < idx2)
+        assertTrue(closeSec2 < idx3)
+    }
+
+    @Test
+    fun `SliceMetadata isValid correctly validates totalPages and slice count`() {
+        val validSlices = listOf(
+            PageSlice(page = 0, chapter = 1, startChar = 0, endChar = 250, heightPx = 600),
+            PageSlice(page = 1, chapter = 1, startChar = 250, endChar = 500, heightPx = 600)
+        )
+        val validMeta = SliceMetadata(windowIndex = 0, totalPages = 2, slices = validSlices)
+        assertTrue(validMeta.isValid())
+
+        val invalidCountMeta = SliceMetadata(windowIndex = 0, totalPages = 3, slices = validSlices)
+        assertFalse(invalidCountMeta.isValid())
+
+        val zeroPageMeta = SliceMetadata(windowIndex = 0, totalPages = 0, slices = emptyList())
+        assertFalse(zeroPageMeta.isValid())
+    }
+
+    @Test
+    fun `FlexSlicingConfig setDefaultViewportSize updates default values`() {
+        try {
+            FlexSlicingConfig.setDefaultViewportSize(720, 1280)
+            val config = FlexSlicingConfig()
+            assertEquals(720, config.viewportWidthPx)
+            assertEquals(1280, config.viewportHeightPx)
+        } finally {
+            FlexSlicingConfig.setDefaultViewportSize(
+                FlexSlicingConfig.DEFAULT_VIEWPORT_WIDTH_PX,
+                FlexSlicingConfig.DEFAULT_VIEWPORT_HEIGHT_PX
+            )
+        }
+    }
     
     /**
      * Mock BookParser for testing.

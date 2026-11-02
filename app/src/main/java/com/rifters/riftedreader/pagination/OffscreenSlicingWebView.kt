@@ -53,6 +53,7 @@ class OffscreenSlicingWebView(
             require(viewportHeightPx > 0) { "viewportHeightPx must be > 0" }
             defaultViewportWidthPx = viewportWidthPx
             defaultViewportHeightPx = viewportHeightPx
+            FlexSlicingConfig.setDefaultViewportSize(viewportWidthPx, viewportHeightPx)
         }
     }
 
@@ -159,7 +160,11 @@ class OffscreenSlicingWebView(
      * Backward-compatible overload.
      */
     suspend fun sliceWindow(wrappedHtml: String, windowIndex: Int): SliceMetadata {
-        return sliceWindow(wrappedHtml = wrappedHtml, windowIndex = windowIndex, config = FlexSlicingConfig())
+        return sliceWindow(
+            wrappedHtml = wrappedHtml,
+            windowIndex = windowIndex,
+            config = FlexSlicingConfig(viewportWidthPx = viewportWidthPx, viewportHeightPx = viewportHeightPx)
+        )
     }
     
     /**

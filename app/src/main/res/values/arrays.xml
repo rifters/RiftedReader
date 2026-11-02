@@ -89,6 +89,15 @@
         <item>1.2</item>
     </string-array>
 
+    <string-array name="tts_engine_entries">
+        <item>@string/tts_engine_system</item>
+        <item>@string/tts_engine_sherpa_onnx</item>
+    </string-array>
+    <string-array name="tts_engine_values">
+        <item>SYSTEM</item>
+        <item>SHERPA_ONNX</item>
+    </string-array>
+
     <string-array name="calibre_preferred_format_entries">
         <item>@string/calibre_format_epub</item>
         <item>@string/calibre_format_mobi</item>

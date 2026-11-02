@@ -3,6 +3,15 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <ListPreference
+        android:key="tts_selected_engine"
+        android:title="@string/settings_tts_engine"
+        android:summary="@string/settings_tts_engine_summary"
+        android:defaultValue="SYSTEM"
+        app:entries="@array/tts_engine_entries"
+        app:entryValues="@array/tts_engine_values"
+        app:useSimpleSummaryProvider="true" />
+
+    <ListPreference
         android:key="tts_speed"
         android:title="@string/settings_tts_speed"
         android:defaultValue="1.0"

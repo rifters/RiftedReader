@@ -734,9 +734,9 @@ class ReaderPageFragment : Fragment() {
                             // For HTML content with font size change only, use paginator API
                             // This preserves reading position without reloading
                             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Applying font size change without reload")
-                            if (settings.mode != ReaderMode.SCROLL && !settings.flexPaginatorEnabled && isWebViewReady && binding.pageWebView.visibility == View.VISIBLE) {
+                            if (settings.mode != ReaderMode.SCROLL && isWebViewReady && binding.pageWebView.visibility == View.VISIBLE) {
                                 // Apply font size change directly via JavaScript
-                                // minimal_paginator.js handles position preservation automatically
+                                // Paginator handles position preservation automatically
                                 launchIfViewAlive("apply_font_size_change_js") {
                                     try {
                                         com.rifters.riftedreader.util.AppLogger.d(
@@ -744,9 +744,8 @@ class ReaderPageFragment : Fragment() {
                                             "Applying font size change via JS: ${settings.textSizeSp}px"
                                         )
                                         
-                                        // setFontSize in minimal_paginator automatically preserves position via character offsets
                                         binding.pageWebView.evaluateJavascript(
-                                            "if (window.minimalPaginator) { window.minimalPaginator.setFontSize(${settings.textSizeSp.toInt()}); }",
+                                            "if (window.flexPaginator && window.flexPaginator.setFontSize) { window.flexPaginator.setFontSize(${settings.textSizeSp.toInt()}); } else if (window.minimalPaginator) { window.minimalPaginator.setFontSize(${settings.textSizeSp.toInt()}); }",
                                             null
                                         )
                                     } catch (e: Exception) {

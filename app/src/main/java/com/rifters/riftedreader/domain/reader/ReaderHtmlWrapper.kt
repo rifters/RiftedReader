@@ -15,7 +15,7 @@ data class ReaderHtmlConfig(
     val pagePaddingPx: Int = 16,
     val palette: ReaderThemePalette,
     val webViewWidthPx: Int,
-    val useFlexPaginator: Boolean = false,
+    val useFlexPaginator: Boolean = true,
     val readerMode: ReaderMode = ReaderMode.PAGINATED,
     val enableDiagnostics: Boolean = false,
     /**
@@ -141,7 +141,10 @@ object ReaderHtmlWrapper {
                     // Wait for paginator ready before emitting ttsReady
                     // NOTE: #tts-root is already created on DOMContentLoaded, so prepareTtsChunks won't fail
                     function waitForPaginatorThenEmitReady() {
-                        if (window.inpagePaginator && window.inpagePaginator.isReady && window.inpagePaginator.isReady()) {
+                        var paginator = (window.flexPaginator && window.flexPaginator.isReady && window.flexPaginator.isReady())
+                            ? window.flexPaginator
+                            : (window.inpagePaginator && window.inpagePaginator.isReady && window.inpagePaginator.isReady() ? window.inpagePaginator : null);
+                        if (paginator) {
                             emitTtsReady();
                         } else {
                             // Paginator not ready, wait and retry

@@ -70,6 +70,21 @@ class ReaderHtmlWrapperTypographyTest {
         )
 
         assertTrue(html.contains("class=\"mode-paginated\""))
-        assertTrue(html.contains("minimal_paginator.js"))
+        assertTrue(html.contains("flex_paginator.js"))
+
+        val fallbackHtml = ReaderHtmlWrapper.wrap(
+            contentHtml = "<p>test</p>",
+            config = ReaderHtmlConfig(
+                textSizePx = 18f,
+                lineHeightMultiplier = 1.7f,
+                fontFamily = "Bookerly",
+                pagePaddingPx = 20,
+                palette = ReaderThemePalette(backgroundColor = 0xFFFFFF, textColor = 0x000000),
+                webViewWidthPx = 1080,
+                readerMode = ReaderMode.PAGINATED,
+                useFlexPaginator = false
+            )
+        )
+        assertTrue(fallbackHtml.contains("minimal_paginator.js"))
     }
 }

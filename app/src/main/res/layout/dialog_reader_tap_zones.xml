@@ -27,6 +27,136 @@
             android:text="@string/reader_tap_zones_description"
             android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
 
+        <!-- 3x3 Visual Grid representation of the screen -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/visualGridContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="1dp"
+            app:strokeColor="?attr/colorOutlineVariant">
+
+            <TableLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:stretchColumns="0,1,2">
+
+                <!-- Row 1: Top -->
+                <TableRow android:layout_width="match_parent" android:layout_height="wrap_content">
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/gridTopLeft"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_margin="2dp"
+                        android:padding="4dp"
+                        android:textSize="11sp"
+                        android:text="TL"
+                        app:cornerRadius="6dp" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/gridTopCenter"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_margin="2dp"
+                        android:padding="4dp"
+                        android:textSize="11sp"
+                        android:text="TC"
+                        app:cornerRadius="6dp" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/gridTopRight"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_margin="2dp"
+                        android:padding="4dp"
+                        android:textSize="11sp"
+                        android:text="TR"
+                        app:cornerRadius="6dp" />
+                </TableRow>
+
+                <!-- Row 2: Middle -->
+                <TableRow android:layout_width="match_parent" android:layout_height="wrap_content">
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/gridMiddleLeft"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_margin="2dp"
+                        android:padding="4dp"
+                        android:textSize="11sp"
+                        android:text="ML"
+                        app:cornerRadius="6dp" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/gridCenter"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_margin="2dp"
+                        android:padding="4dp"
+                        android:textSize="11sp"
+                        android:text="Center"
+                        app:cornerRadius="6dp" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/gridMiddleRight"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_margin="2dp"
+                        android:padding="4dp"
+                        android:textSize="11sp"
+                        android:text="MR"
+                        app:cornerRadius="6dp" />
+                </TableRow>
+
+                <!-- Row 3: Bottom -->
+                <TableRow android:layout_width="match_parent" android:layout_height="wrap_content">
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/gridBottomLeft"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_margin="2dp"
+                        android:padding="4dp"
+                        android:textSize="11sp"
+                        android:text="BL"
+                        app:cornerRadius="6dp" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/gridBottomCenter"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_margin="2dp"
+                        android:padding="4dp"
+                        android:textSize="11sp"
+                        android:text="BC"
+                        app:cornerRadius="6dp" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/gridBottomRight"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_margin="2dp"
+                        android:padding="4dp"
+                        android:textSize="11sp"
+                        android:text="BR"
+                        app:cornerRadius="6dp" />
+                </TableRow>
+            </TableLayout>
+        </com.google.android.material.card.MaterialCardView>
+
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

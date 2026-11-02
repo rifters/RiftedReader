@@ -32,11 +32,13 @@ class FormatParserRegistrationTest {
     }
 
     @Test
-    fun fb2MobiDocxAndRtfAreNotPreviewParsers() {
-        val previewIds = FormatCatalog.previewParsers().map { it.descriptor.id }
-        assertFalse(previewIds.contains("fb2"))
-        assertFalse(previewIds.contains("mobi"))
-        assertFalse(previewIds.contains("docx"))
-        assertFalse(previewIds.contains("rtf"))
+    fun allCatalogFormatsAreSupportedAndNoPreviewDescriptorsRemain() {
+        assertTrue(FormatCatalog.inProgressDescriptors().isEmpty())
+        assertTrue(FormatCatalog.plannedDescriptors().isEmpty())
+        val supportedIds = FormatCatalog.supportedDescriptors().map { it.id }
+        assertTrue(supportedIds.contains("fb2"))
+        assertTrue(supportedIds.contains("mobi"))
+        assertTrue(supportedIds.contains("docx"))
+        assertTrue(supportedIds.contains("rtf"))
     }
 }
