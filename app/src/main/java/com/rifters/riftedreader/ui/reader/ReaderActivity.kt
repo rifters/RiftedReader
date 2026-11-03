@@ -2044,7 +2044,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                     "autoScroll=${configuration.autoScroll} highlightSentence=${configuration.highlightSentence} " +
                     "languageTag=${configuration.languageTag}. Calling TTSService.start()"
         )
-        TTSService.start(this, currentPageText, configuration)
+        val textToSpeak = if (!ttsPreferences.readFootnotes) {
+            com.rifters.riftedreader.domain.tts.TtsChunkPreparer.filterFootnotesFromText(currentPageText)
+        } else {
+            currentPageText
+        }
+        TTSService.start(this, textToSpeak, configuration)
     }
 
     private fun updateReaderModeUi() {
@@ -2193,7 +2198,12 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
                         languageTag = ttsPreferences.languageTag
                     )
                     requestNotificationPermissionIfNeeded {
-                        TTSService.start(this, currentPageText, configuration)
+                        val textToSpeak = if (!ttsPreferences.readFootnotes) {
+                            com.rifters.riftedreader.domain.tts.TtsChunkPreparer.filterFootnotesFromText(currentPageText)
+                        } else {
+                            currentPageText
+                        }
+                        TTSService.start(this, textToSpeak, configuration)
                     }
                 }
             }

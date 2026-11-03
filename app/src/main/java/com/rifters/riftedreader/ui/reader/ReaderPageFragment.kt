@@ -136,6 +136,7 @@ class ReaderPageFragment : Fragment() {
     // TTS chunk mapping for WebView highlighting
     private data class TtsChunk(val index: Int, val text: String, val startPosition: Int, val endPosition: Int)
     private var ttsChunks: List<TtsChunk> = emptyList()
+    private val ttsPreferences by lazy { com.rifters.riftedreader.data.preferences.TTSPreferences(requireContext().applicationContext) }
 
     private enum class BoundaryDirection {
         NEXT,
@@ -1805,6 +1806,8 @@ class ReaderPageFragment : Fragment() {
             return
         }
         
+        val readFootnotes = if (isAdded) ttsPreferences.readFootnotes else true
+
         // ISSUE 2 FIX: JavaScript with waitForElement guard and retry logic
         binding.pageWebView.evaluateJavascript(
             """
@@ -1814,6 +1817,7 @@ class ReaderPageFragment : Fragment() {
                 var MAX_ATTEMPTS = ${TTS_PREP_MAX_ATTEMPTS};
                 var RETRY_DELAY_MS = ${TTS_PREP_RETRY_DELAY_MS};
                 var attempt = 0;
+                var readFootnotes = $readFootnotes;
                 window.prepareTtsChunks = waitForBodyAndExecute;
                 
                 function waitForBodyAndExecute() {
@@ -1858,7 +1862,20 @@ class ReaderPageFragment : Fragment() {
                         
                         nodes.forEach(function(node) {
                             if (!node) { return; }
-                            var text = node.innerText || '';
+                            if (!readFootnotes && (node.classList.contains('footnote') || node.closest('.footnote'))) {
+                                return;
+                            }
+                            var text;
+                            if (!readFootnotes) {
+                                var clone = node.cloneNode(true);
+                                var footnoteSpans = clone.querySelectorAll('.footnote');
+                                footnoteSpans.forEach(function(fn) {
+                                    fn.remove();
+                                });
+                                text = clone.innerText || clone.textContent || '';
+                            } else {
+                                text = node.innerText || '';
+                            }
                             text = text.replace(/\s+/g, ' ').trim();
                             if (!text) { return; }
                             

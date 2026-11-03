@@ -39,6 +39,13 @@
         android:defaultValue="true"
         app:iconSpaceReserved="false" />
 
+    <SwitchPreferenceCompat
+        android:key="tts_read_footnotes"
+        android:title="@string/settings_tts_read_footnotes"
+        android:summary="@string/settings_tts_read_footnotes_summary"
+        android:defaultValue="true"
+        app:iconSpaceReserved="false" />
+
     <Preference
         android:key="tts_replacements"
         android:title="@string/settings_tts_manage_replacements"
