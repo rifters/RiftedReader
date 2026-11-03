@@ -14,7 +14,7 @@ RiftedReader is in active development with the core reading stack already implem
 - ⚠️ Reader polish features like pinch-to-zoom, notes/highlights, animations, and two-page tablet mode are still pending
 - 🧱 Cloud sync and OPDS/WebDAV: scaffolding packages in place, providers not yet implemented
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the full implementation roadmap and project status.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the full implementation roadmap and project status, and [docs/BACKLOG.md](docs/BACKLOG.md) for designed-but-unbuilt features with their trade-offs.
 
 ## Dependencies
 
