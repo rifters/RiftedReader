@@ -140,7 +140,7 @@
             log('INIT', `Window index: ${state.windowIndex}`);
             
             // Find sections
-            const sections = windowRoot.querySelectorAll('section');
+            const sections = windowRoot.querySelectorAll('section[data-chapter]');
             if (sections.length === 0) {
                 const error = 'No sections found in window-root';
                 log('ERROR', error);

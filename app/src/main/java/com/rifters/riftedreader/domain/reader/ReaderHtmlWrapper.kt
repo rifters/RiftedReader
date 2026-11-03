@@ -15,6 +15,7 @@ data class ReaderHtmlConfig(
     val pagePaddingPx: Int = 16,
     val palette: ReaderThemePalette,
     val webViewWidthPx: Int,
+    val webViewHeightPx: Int = 0,
     val useFlexPaginator: Boolean = true,
     val readerMode: ReaderMode = ReaderMode.PAGINATED,
     val enableDiagnostics: Boolean = false,
@@ -176,7 +177,7 @@ object ReaderHtmlWrapper {
             if (config.useFlexPaginator) {
                 val windowIndex = config.debugWindowInfo?.windowIndex ?: 0
                 val viewportWidth = if (config.webViewWidthPx > 0) config.webViewWidthPx else 360
-                val viewportHeight = 600
+                val viewportHeight = if (config.webViewHeightPx > 0) config.webViewHeightPx else 600
                 val fontSizePx = config.textSizePx
                 val lineHeight = config.lineHeightMultiplier
                 val sanitizedFontFamily = CssSanitizers.sanitizeCssFontFamily(

@@ -1531,13 +1531,22 @@ class ReaderPageFragment : Fragment() {
                     }
                     
                     // Wrap HTML with proper styling using ReaderHtmlWrapper
-                    // Use WebView width if available, otherwise fall back to display width
-                    val webViewWidth = binding.pageWebView.width.let { width ->
-                        if (width > 0) width else {
-                            // Fallback to screen width if WebView hasn't been measured yet
-                            val displayMetrics = resources.displayMetrics
-                            displayMetrics.widthPixels
-                        }
+                    // Use measured WebView dimensions if available, matching OffscreenSlicingWebView
+                    val usableWidth = (binding.pageWebView.width - binding.pageWebView.paddingLeft - binding.pageWebView.paddingRight).coerceAtLeast(0)
+                    val usableHeight = (binding.pageWebView.height - binding.pageWebView.paddingTop - binding.pageWebView.paddingBottom).coerceAtLeast(0)
+                    val webViewWidth = if (usableWidth > 0) {
+                        usableWidth
+                    } else if (hasCapturedSlicingViewport && slicingViewportWidthPx > 0) {
+                        slicingViewportWidthPx
+                    } else {
+                        binding.pageWebView.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+                    }
+                    val webViewHeight = if (usableHeight > 0) {
+                        usableHeight
+                    } else if (hasCapturedSlicingViewport && slicingViewportHeightPx > 0) {
+                        slicingViewportHeightPx
+                    } else {
+                        (binding.pageWebView.height - binding.pageWebView.paddingTop - binding.pageWebView.paddingBottom).takeIf { it > 0 } ?: 0
                     }
                     
                     val typographyConfig = FlexSlicingConfig.getDefaultTypography()
@@ -1548,6 +1557,7 @@ class ReaderPageFragment : Fragment() {
                         pagePaddingPx = typographyConfig.pagePaddingPx,
                         palette = palette,
                         webViewWidthPx = webViewWidth,
+                        webViewHeightPx = webViewHeight,
                         useFlexPaginator = settings.flexPaginatorEnabled,
                         readerMode = settings.mode,
                         enableDiagnostics = settings.paginationDiagnosticsEnabled,
@@ -1725,6 +1735,23 @@ class ReaderPageFragment : Fragment() {
         typography: FlexSlicingConfig,
         palette: ReaderThemePalette
     ): String {
+        val usableWidth = (binding.pageWebView.width - binding.pageWebView.paddingLeft - binding.pageWebView.paddingRight).coerceAtLeast(0)
+        val usableHeight = (binding.pageWebView.height - binding.pageWebView.paddingTop - binding.pageWebView.paddingBottom).coerceAtLeast(0)
+        val webViewWidth = if (usableWidth > 0) {
+            usableWidth
+        } else if (hasCapturedSlicingViewport && slicingViewportWidthPx > 0) {
+            slicingViewportWidthPx
+        } else {
+            binding.pageWebView.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        }
+        val webViewHeight = if (usableHeight > 0) {
+            usableHeight
+        } else if (hasCapturedSlicingViewport && slicingViewportHeightPx > 0) {
+            slicingViewportHeightPx
+        } else {
+            (binding.pageWebView.height - binding.pageWebView.paddingTop - binding.pageWebView.paddingBottom).takeIf { it > 0 } ?: 0
+        }
+
         return com.rifters.riftedreader.domain.reader.ReaderHtmlWrapper.wrap(
             contentHtml = content,
             config = com.rifters.riftedreader.domain.reader.ReaderHtmlConfig(
@@ -1733,7 +1760,8 @@ class ReaderPageFragment : Fragment() {
                 fontFamily = typography.fontFamily,
                 pagePaddingPx = typography.pagePaddingPx,
                 palette = palette,
-                webViewWidthPx = binding.pageWebView.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels,
+                webViewWidthPx = webViewWidth,
+                webViewHeightPx = webViewHeight,
                 useFlexPaginator = readerViewModel.readerSettings.value.flexPaginatorEnabled,
                 readerMode = readerViewModel.readerSettings.value.mode,
                 enableDiagnostics = readerViewModel.readerSettings.value.paginationDiagnosticsEnabled
