@@ -3,16 +3,18 @@ A modern ebook reader for Android, inspired by LibreraReader.
 
 ## Current Project Status
 
-RiftedReader is in active development with the core reading stack already implemented. Stages 1, 2, 3, 5, and 7 are complete; Stage 4 is partial; Stage 6 is nearly complete with HTML support remaining; Stage 8 (Cloud & Sync) has not started yet.
+RiftedReader is in active development with the core reading stack already implemented. Stages 1, 2, 3, 5, 6, and 7 are complete; Stage 4 is partial; Stage 8 (Cloud & Sync) is scaffolded, with implementation gated on planning decisions documented in [docs/stage8-scaffolding.md](docs/stage8-scaffolding.md).
 
 - ✅ Project foundation, database, library management, and core architecture
-- ✅ TXT, EPUB, PDF, MOBI/AZW, AZW3/KF8, FB2, CBZ/CBR, RTF, and DOCX support
+- ✅ TXT, EPUB, PDF, MOBI/AZW, AZW3/KF8, FB2, CBZ/CBR, RTF, DOCX, and HTML support
+- ✅ FlexPaginator is the default pagination engine (Settings toggle; classic pagination retained as an option)
 - ✅ Advanced TTS system with replacement rules, background service, notification controls, and sleep timer
+- ✅ Fully configurable tap zones (3×3 grid, per-zone action mapping)
 - ✅ Collections, saved searches, cover management, statistics, bookmarks, and reading progress
-- ⚠️ Reader polish features like pinch-to-zoom, full tap-zone configurability, notes/highlights, animations, and two-page tablet mode are still pending
-- ❌ Cloud sync and OPDS/WebDAV integrations have not started
+- ⚠️ Reader polish features like pinch-to-zoom, notes/highlights, animations, and two-page tablet mode are still pending
+- 🧱 Cloud sync and OPDS/WebDAV: scaffolding packages in place, providers not yet implemented
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the full implementation roadmap and project status.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the full implementation roadmap and project status, and [docs/BACKLOG.md](docs/BACKLOG.md) for designed-but-unbuilt features with their trade-offs.
 
 ## Dependencies
 
@@ -22,7 +24,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full implementation roadmap and p
 - Manual ViewModel/repository wiring (no DI framework yet)
 - AndroidX Navigation, Lifecycle, Preference, DataStore, WebKit, Security, and Media
 - Material Design 3
-- jsoup, Retrofit, OkHttp, Coil, Zip4j, Apache POI, and PDF rendering dependencies
+- jsoup, Retrofit, OkHttp, Coil, Zip4j, and PDF rendering dependencies (DOCX is handled by an in-repo native parser — no Apache POI)
 
 ## What is implemented
 
@@ -30,18 +32,22 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full implementation roadmap and p
 - Collections, saved searches, favorites, and statistics
 - Bookmark system and reading progress persistence
 - Reader UI with page and scroll modes
+- FlexPaginator pagination (default) on a fixed 5-slot conveyor-belt windowing system, designed to stay fast on older devices (minSdk 24 is a deliberate floor)
 - Typography customization, themes, and overlay controls
+- Fully configurable tap zones with per-zone action mapping
 - TTS engine, replacement rules, TTS settings, and foreground playback service
-- Core parsers for TXT, EPUB, PDF, MOBI/AZW, AZW3/KF8, FB2, CBZ/CBR, RTF, and DOCX
+- ICU BreakIterator sentence splitting for natural TTS phrasing (abbreviations, decimals, citations)
+- TTS engine abstraction with a settings-level engine choice (system engine today; on-device neural engines planned)
+- Core parsers for TXT, EPUB, PDF, MOBI/AZW, AZW3/KF8, FB2, CBZ/CBR, RTF, DOCX, and HTML
+- Native DOCX parser with footnote/endnote support, plus a "Read footnotes" TTS setting (on by default)
 - Calibre-related browsing and download flows present in the app
 
 ## Known issues / remaining work
 
 - Pinch-to-zoom is not implemented yet
-- Full tap-zone action mapping UI is still incomplete
 - Notes / highlights should still be treated as pending
-- HTML format support remains the final blocker for Stage 6 closure
-- Cloud sync, OPDS, and provider integrations require a dedicated planning phase before implementation
+- Calibre tabs are hidden until Calibre is enabled in Reader Settings, which makes the feature hard to discover for new users (fix planned: always-visible tabs with a setup state)
+- Cloud sync, OPDS, and provider integrations require the planning decisions in docs/stage8-scaffolding.md to be settled before implementation
 - JS tests require `cd tests/js && npm install` before the first run
 
 ## Documentation
@@ -56,6 +62,7 @@ Documentation is organized in the `docs/` directory by category:
 4. **[TTS_IMPLEMENTATION_GUIDE.md](docs/complete/TTS_IMPLEMENTATION_GUIDE.md)** - TTS System Guide
 5. **[UI_UX_DESIGN_GUIDE.md](docs/complete/UI_UX_DESIGN_GUIDE.md)** - UI/UX Specifications
 6. **[ROADMAP.md](docs/ROADMAP.md)** - Current implementation roadmap and project status
+7. **[docs/history/](docs/history/)** - Archived snapshots of how the project got here. Preserved for the record; **not** current status — this README and ROADMAP.md are.
 
 ### 📋 Additional Planning & Technical Docs
 
@@ -100,9 +107,9 @@ Run a faster Kotlin-only compile preflight from the repository root:
 ### Format Support
 - TXT, EPUB, PDF
 - MOBI, AZW, AZW3 / KF8
-- FB2, RTF, DOCX
+- FB2, RTF, DOCX (with footnotes/endnotes)
 - CBZ, CBR
-- HTML support planned next
+- HTML
 
 ### Text-to-Speech ⭐ Core Feature
 - Advanced TTS with Android TextToSpeech API
@@ -113,6 +120,8 @@ Run a faster Kotlin-only compile preflight from the repository root:
 - Customizable speed and pitch
 - Auto-scroll during playback
 - Sleep timer
+- ICU sentence splitting that respects abbreviations, decimals, and citations
+- Optional footnote/endnote reading (TTS setting, on by default)
 
 ### Library Management
 - Fast file scanning
@@ -127,17 +136,21 @@ Run a faster Kotlin-only compile preflight from the repository root:
 - Custom fonts and typography controls
 - Multiple themes
 - Page and scroll modes
+- FlexPaginator paged reading (default) or continuous scroll mode
 - Swipe and volume-button navigation
+- Configurable tap zones
 - Chapter navigation and bookmarks
 - Overlay controls with auto-hide
 
 ### Planned features snapshot
-- HTML format support
-- Pinch-to-zoom and better tap-zone customization
+- Pinch-to-zoom
 - Notes and highlights
 - Backup and restore
 - Footnote popups for EPUB
 - Word-highlight TTS / karaoke mode
+- On-device neural TTS voices (engine scaffolding in place)
+- Calibre tab discoverability fix
+- Stage 8 providers (sync / OPDS), pending planning decisions
 
 ### Modern Architecture
 - MVVM + Repository pattern
@@ -178,4 +191,4 @@ Project is under active development. Contributions are welcome, but larger chang
 For questions or suggestions, please open an issue.
 
 ---
-*Last Updated: 2026-06-05*
+*Last Updated: 2026-11-03*
