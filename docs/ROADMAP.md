@@ -3,13 +3,13 @@
 **Project Goal:** Feature-rich Android ebook reader with best-in-class TTS support, inspired by LibreraReader
 **Language:** Kotlin | **Min SDK:** 24 (Android 7.0) | **Target SDK:** 35 (Android 15)
 **Package:** `com.rifters.riftedreader`
-**Revised:** June 5, 2026
+**Revised:** November 3, 2026
 
 ---
 
 ## Current Status Summary
 
-> **Test Suite:** 456 JVM unit tests passing | androidTest suite bootstrapped and compiling
+> **Test Suite:** 500 JVM unit tests in source | androidTest suite bootstrapped and compiling
 
 | Stage | Description | Status |
 | --- | --- | --- |
@@ -18,10 +18,12 @@
 | **Stage 3** | Basic Parsing (TXT, EPUB, PDF) | ✅ COMPLETE |
 | **Stage 4** | Enhanced Reader UI | ⚠️ PARTIAL |
 | **Stage 5** | TTS System | ✅ COMPLETE |
-| **Stage 6** | Advanced Format Parsing | ⚠️ PARTIAL (HTML pending) |
+| **Stage 6** | Advanced Format Parsing | ✅ COMPLETE |
 | **Stage 7** | Library Features | ✅ COMPLETE |
-| **Stage 8** | Cloud & Sync | ❌ NOT STARTED |
+| **Stage 8** | Cloud & Sync | 🧱 SCAFFOLDED (decisions pending) |
 | **Post-MVP** | Polish, Annotations, Release | ❌ NOT STARTED |
+
+*Status as of November 3, 2026, reconciled against the code. Earlier roadmap versions and the change history are preserved in `docs/history/` — they describe the journey, not the current state.*
 
 ---
 
@@ -76,7 +78,7 @@ Note: the original `android-pdf-viewer` dependency was removed (abandoned upstre
 
 ## Stage 4: Enhanced Reader UI ⚠️ PARTIAL
 
-> **Blocking stage closure:** gesture-based zoom, full tap zone configurability, notes/highlights, page turning animations, tablet two-page mode.
+> **Blocking stage closure:** gesture-based zoom, notes/highlights, page turning animations, tablet two-page mode.
 
 ### Completed
 
@@ -86,7 +88,8 @@ Note: the original `android-pdf-viewer` dependency was removed (abandoned upstre
 - ✅ Hyphenation toggle
 - ✅ Swipe navigation
 - ✅ Volume button navigation
-- ✅ Tap zones — partially implemented (3×3 grid exists; action mapping UI incomplete)
+- ✅ Tap zones — fully implemented (3×3 grid with complete per-zone action mapping UI)
+- ✅ FlexPaginator — the default pagination engine: fixed 5-slot conveyor-belt windowing with on-demand slicing and height estimation, built to stay fast on minSdk 24 devices; classic pagination retained as a selectable fallback
 - ✅ Scroll mode (continuous)
 - ✅ Page mode (paginated)
 - ✅ Auto-scroll (active during TTS playback)
@@ -98,8 +101,7 @@ Note: the original `android-pdf-viewer` dependency was removed (abandoned upstre
 ### Remaining / Pending
 
 - ❌ Pinch to zoom (text size via gesture)
-- ❌ Full tap zone action configurability (action mapping UI incomplete)
-- ❌ Notes / highlights — status uncertain; treat as pending
+- ❌ Notes / highlights — confirmed not implemented; treat as pending
 - ❌ Page turning animations
 - ❌ Two-page mode (tablet support)
 
@@ -119,11 +121,15 @@ Note: the original `android-pdf-viewer` dependency was removed (abandoned upstre
 - ✅ Auto-scroll synced to TTS playback
 - ✅ Sleep timer
 
+- ✅ Sentence splitting via ICU `BreakIterator` (respects abbreviations, decimals, and citations)
+- ✅ TTS engine abstraction: `TTSAudioEngineProvider` + `selectedEngine` preference; the system engine is the only shipping engine, and the sherpa-onnx provider is an inert stub for future neural voices
+- ✅ "Read footnotes" preference (default on) — DOCX footnotes/endnotes are spoken in context unless the user turns them off
+
 ---
 
-## Stage 6: Advanced Format Parsing ⚠️ PARTIAL
+## Stage 6: Advanced Format Parsing ✅ COMPLETE
 
-8 of 9 planned formats complete. AZW3/KF8 added beyond original roadmap scope. HTML is the only remaining item blocking stage closure.
+All 10 formats complete. AZW3/KF8 added beyond original roadmap scope.
 
 | Format | Status | Notes |
 | --- | --- | --- |
@@ -135,8 +141,8 @@ Note: the original `android-pdf-viewer` dependency was removed (abandoned upstre
 | **FB2** | ✅ COMPLETE | XML parse, metadata, base64 images, formatted output |
 | **CBZ / CBR** | ✅ COMPLETE | Archive extraction, page order, image viewer mode |
 | **RTF** | ✅ COMPLETE | Lightweight in-repo parser; control words, bold/italic/underline, Unicode escapes |
-| **DOCX** | ✅ COMPLETE | Apache POI (`poi-ooxml 5.2.5`), paragraph/run traversal, heading TOC, metadata |
-| **HTML** | ❌ PENDING | Not yet implemented — sole remaining item for Stage 6 closure |
+| **DOCX** | ✅ COMPLETE | Native in-repo parser (ZIP + XmlPullParser); paragraphs/runs/tables, heading TOC, metadata, footnotes/endnotes |
+| **HTML** | ✅ COMPLETE | Jsoup-based `HtmlParser`, registered in `ParserFactory` |
 
 `FormatCatalog` updated to reflect all live statuses.
 
@@ -166,9 +172,25 @@ Stage 7 is fully closed and exceeded its original scope. Cover management and th
 
 ---
 
-## Stage 8: Cloud & Sync ❌ NOT STARTED
+## Calibre Integration (implemented — outside the stage plan)
 
-> **Do not begin implementation without a dedicated planning session.** Authentication flows, offline queue design, and conflict resolution strategy all need to be scoped before a single line of Stage 8 code is written.
+Built outside the stage structure:
+
+- ✅ Calibre content-server client: connection config + credential store, library browsing (`CalibreLibraryFragment`), web view (`CalibreWebFragment`), book downloads
+- ✅ Settings toggles in Reader Settings (`contentServerEnabled`, `calibreWebEnabled`, both default off)
+- ⚠️ **Known issue:** the bottom-navigation Calibre tabs stay hidden until the feature is enabled in Reader Settings, so new users cannot discover the feature. Planned fix: always-visible tabs whose screens show a setup state while unconfigured.
+
+---
+
+## Stage 8: Cloud & Sync 🧱 SCAFFOLDED
+
+> **Do not begin implementation until the planning decisions are settled.** Authentication flows, offline queue design, and conflict resolution strategy all need decisions before provider code is written. The open decisions are listed in `docs/stage8-scaffolding.md`.
+
+### Scaffolding in place
+
+- ✅ Inert `sync/` and `opds/` package structure (interfaces/models only, `NotImplementedError` stubs, no dependencies, nothing wired into app code)
+- ✅ `docs/stage8-scaffolding.md` — per-provider auth options, conflict strategy (furthest-reading-position-wins is the leading candidate for position sync), and sync-scope decisions awaiting sign-off
+- ❌ No provider implemented; no accounts, no network sync code
 
 ### Planned Scope
 
@@ -196,11 +218,9 @@ Stage 7 is fully closed and exceeded its original scope. Cover management and th
 ### Reader UI Polish (Next Priority)
 
 - ❌ Pinch to zoom gesture
-- ❌ Full tap zone action configurability
 - ❌ Notes and highlights system
 - ❌ Page turning animations
 - ❌ Two-page mode (tablet support)
-- ❌ HTML format support
 
 ### Advanced Features
 
@@ -250,6 +270,8 @@ Stage 7 is fully closed and exceeded its original scope. Cover management and th
 ---
 
 #### 3. Footnote Popups
+
+> Note: DOCX footnotes/endnotes are supported as inline end-of-paragraph notes with a TTS on/off setting. This item is specifically about *EPUB* footnote popups, which remain future work.
 
 **What it is:** When a reader taps a footnote link inside an EPUB, instead of navigating away from the current reading position, the footnote content opens in a small BottomSheet overlay. The reader stays on the same page and dismisses the popup when done.
 
@@ -333,9 +355,9 @@ Stage 7 is fully closed and exceeded its original scope. Cover management and th
 
 ### Testing
 
-- 456 JVM unit tests passing
+- 500 JVM unit tests in source
 - androidTest suite bootstrapped (`CollectionWorkflowTest`, `LibrarySearchFilterTest`, `MetadataEditorTest`)
-- Parser contract tests for all 9 formats
+- Parser contract tests for all 10 formats
 - Goal: instrumented test coverage across all critical user flows before beta
 
 ### 16 KB Page Size (Android 15+ Requirement)
@@ -351,18 +373,19 @@ Stage 7 is fully closed and exceeded its original scope. Cover management and th
 
 ---
 
-## What Changed From the Original Roadmap
-
-| Original Plan | Actual Outcome |
-| --- | --- |
-| DOCX listed as "optional" | ✅ Implemented — Apache POI (`poi-ooxml 5.2.5`) |
+--- | --- |
+| DOCX listed as "optional" | ✅ Implemented — originally Apache POI; rewritten as a native in-repo parser (Nov 2026), POI removed |
 | RTF listed as "if needed" | ✅ Implemented — lightweight in-repo parser |
 | AZW3 / KF8 not mentioned | ✅ Added — full HUFF-CDIC decompressor, scope expansion |
 | `android-pdf-viewer` dependency | ❌ Removed — dead dependency; replaced with working implementation |
 | Timeline: 20–24 weeks MVP | Development is ongoing; Stages 1–7 complete |
 | Stage 7 listed as Week 17–18 scope | ✅ Complete — includes cover management and instrumented tests not in original plan |
 | `POST_NOTIFICATIONS` not in roadmap | ✅ Implemented — Android 13+ runtime permission guard, 4 UI sites |
+| HTML listed as pending | ✅ Implemented — Jsoup `HtmlParser` registered since Nov 2025; the "pending" status in these docs was stale until the Nov 2026 reconciliation |
+| Tap zones listed as partial | ✅ Completed Nov 2026 — full action mapping UI |
+| Regex sentence splitting in TTS | ✅ Replaced Nov 2026 — ICU `BreakIterator` |
+| FlexPaginator as an experiment behind a flag | ✅ Promoted Nov 2026 — default pagination engine with a Settings toggle |
 
 ---
 
-*This document reflects actual project status as of June 5, 2026. Stage 8 and Post-MVP sections require dedicated planning before work begins.*
+*This document reflects actual project status as of November 3, 2026. Previous versions and the original-plan comparison are archived in `docs/history/`. Stage 8 implementation requires the planning decisions in docs/stage8-scaffolding.md to be settled first.*
