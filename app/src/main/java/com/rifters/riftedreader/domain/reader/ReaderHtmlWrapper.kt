@@ -173,12 +173,34 @@ object ReaderHtmlWrapper {
         val paginatorScriptTag = if (isScrollMode) {
             ""
         } else {
-            val paginatorScriptUrl = if (config.useFlexPaginator) {
-                EpubImageAssetHelper.FLEX_PAGINATOR_SCRIPT_URL
+            if (config.useFlexPaginator) {
+                val windowIndex = config.debugWindowInfo?.windowIndex ?: 0
+                val viewportWidth = if (config.webViewWidthPx > 0) config.webViewWidthPx else 360
+                val viewportHeight = 600
+                val fontSizePx = config.textSizePx
+                val lineHeight = config.lineHeightMultiplier
+                val sanitizedFontFamily = CssSanitizers.sanitizeCssFontFamily(
+                    config.fontFamily,
+                    "serif"
+                )
+                val pagePaddingPx = config.pagePaddingPx
+                val flexScriptUrl = EpubImageAssetHelper.FLEX_PAGINATOR_SCRIPT_URL
+                """
+                <script>
+                    window.FLEX_WINDOW_INDEX = $windowIndex;
+                    window.FLEX_VIEWPORT_WIDTH = $viewportWidth;
+                    window.FLEX_VIEWPORT_HEIGHT = $viewportHeight;
+                    window.FLEX_FONT_SIZE_PX = $fontSizePx;
+                    window.FLEX_LINE_HEIGHT = $lineHeight;
+                    window.FLEX_FONT_FAMILY = '$sanitizedFontFamily';
+                    window.FLEX_PAGE_PADDING_PX = $pagePaddingPx;
+                </script>
+                <script src="$flexScriptUrl"></script>
+                """.trimIndent()
             } else {
-                EpubImageAssetHelper.PAGINATOR_SCRIPT_URL
+                val paginatorScriptUrl = EpubImageAssetHelper.PAGINATOR_SCRIPT_URL
+                """<script src="$paginatorScriptUrl"></script>"""
             }
-            """<script src="$paginatorScriptUrl"></script>"""
         }
 
         val modeBodyClass = if (isScrollMode) "mode-scroll" else "mode-paginated"

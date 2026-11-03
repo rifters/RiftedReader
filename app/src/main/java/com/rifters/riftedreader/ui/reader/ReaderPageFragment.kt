@@ -293,6 +293,7 @@ class ReaderPageFragment : Fragment() {
                             "[SLICING_COMPLETE] windowIndex=$wIdx totalPages=${metadata.totalPages}"
                         )
                         readerViewModel.onWindowPaginationReady(metadata.windowIndex, metadata.totalPages)
+                        prepareTtsChunks()
                     },
                     onSlicingError = { wIdx, message ->
                         com.rifters.riftedreader.util.AppLogger.e(
@@ -1785,6 +1786,7 @@ class ReaderPageFragment : Fragment() {
                 var MAX_ATTEMPTS = ${TTS_PREP_MAX_ATTEMPTS};
                 var RETRY_DELAY_MS = ${TTS_PREP_RETRY_DELAY_MS};
                 var attempt = 0;
+                window.prepareTtsChunks = waitForBodyAndExecute;
                 
                 function waitForBodyAndExecute() {
                     attempt++;

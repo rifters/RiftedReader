@@ -139,6 +139,15 @@
             
             log('INIT', `Window index: ${state.windowIndex}`);
             
+            // Find sections
+            const sections = windowRoot.querySelectorAll('section');
+            if (sections.length === 0) {
+                const error = 'No sections found in window-root';
+                log('ERROR', error);
+                callAndroidBridge('onSlicingError', error);
+                return;
+            }
+
             // Cache sections data so dynamic re-slicing (resize, font-size changes) works
             originalSectionsData = [];
             for (let i = 0; i < sections.length; i++) {
@@ -276,6 +285,121 @@
             accumulatedHeight = 0;
             currentPageIndex++;
         }
+
+        function getActiveTarget(targetParent) {
+            if (!targetParent || targetParent === currentPage) {
+                return currentPage;
+            }
+            if (targetParent.closest && targetParent.closest('.page') === currentPage) {
+                return targetParent;
+            }
+            const clonedParent = document.createElement(targetParent.tagName);
+            for (let i = 0; i < targetParent.attributes.length; i++) {
+                const attr = targetParent.attributes[i];
+                clonedParent.setAttribute(attr.name, attr.value);
+            }
+            if (targetParent.style.cssText) {
+                clonedParent.style.cssText = targetParent.style.cssText;
+            }
+            currentPage.appendChild(clonedParent);
+            return clonedParent;
+        }
+
+        function walkAndSlice(node, targetParent, chapterIndex) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                const text = node.textContent || '';
+                if (text.length > 0) {
+                    let height = 0;
+                    if (text.trim().length > 0) {
+                        const lines = Math.max(1, Math.ceil(text.length / CHARS_PER_LINE));
+                        height = lines * LINE_HEIGHT_PX;
+                    }
+
+                    // Decide page break BEFORE appending content
+                    if (height > 0 && accumulatedHeight > 0 && (accumulatedHeight + height > state.viewportHeight)) {
+                        startNewPage(chapterIndex);
+                    }
+
+                    const textNode = document.createTextNode(text);
+                    const dest = getActiveTarget(targetParent);
+                    dest.appendChild(textNode);
+                    accumulatedHeight += height;
+                    currentChapterCharOffset += text.length;
+
+                    if (accumulatedHeight >= state.viewportHeight) {
+                        startNewPage(chapterIndex);
+                    }
+                }
+                return;
+            }
+
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                const element = node;
+                const tagName = element.tagName.toLowerCase();
+
+                let estimatedHeight = 0;
+                let isImage = false;
+                if (tagName === 'p') {
+                    estimatedHeight = PARAGRAPH_HEIGHT_PX;
+                } else if (tagName === 'h1') {
+                    estimatedHeight = HEADING1_HEIGHT_PX;
+                } else if (tagName === 'h2') {
+                    estimatedHeight = HEADING2_HEIGHT_PX;
+                } else if (tagName === 'h3') {
+                    estimatedHeight = HEADING3_HEIGHT_PX;
+                } else if (tagName === 'img') {
+                    isImage = true;
+                    estimatedHeight = IMAGE_HEIGHT_PX;
+                    const attrHeight = parseInt(element.getAttribute('height'), 10);
+                    const attrWidth = parseInt(element.getAttribute('width'), 10);
+                    if (!isNaN(attrHeight) && attrHeight > 0) {
+                        if (!isNaN(attrWidth) && attrWidth > 0 && state.viewportWidth > 0) {
+                            const availWidth = Math.max(1, state.viewportWidth - 32);
+                            const scale = Math.min(1.0, availWidth / attrWidth);
+                            estimatedHeight = Math.round(attrHeight * scale);
+                        } else {
+                            estimatedHeight = attrHeight;
+                        }
+                    } else if (element.style.height && element.style.height.endsWith('px')) {
+                        const pxHeight = parseInt(element.style.height, 10);
+                        if (!isNaN(pxHeight) && pxHeight > 0) {
+                            estimatedHeight = pxHeight;
+                        }
+                    }
+                    const maxAllowedImgHeight = Math.max(1, state.viewportHeight - 32);
+                    estimatedHeight = Math.min(estimatedHeight, maxAllowedImgHeight);
+                } else if (tagName === 'br') {
+                    estimatedHeight = BR_HEIGHT_PX;
+                }
+
+                // Decide page break BEFORE appending content
+                if (estimatedHeight > 0 && accumulatedHeight > 0 && (accumulatedHeight + estimatedHeight > state.viewportHeight)) {
+                    startNewPage(chapterIndex);
+                }
+
+                const clonedElement = document.createElement(element.tagName);
+                for (let i = 0; i < element.attributes.length; i++) {
+                    const attr = element.attributes[i];
+                    clonedElement.setAttribute(attr.name, attr.value);
+                }
+                if (element.style.cssText) {
+                    clonedElement.style.cssText = element.style.cssText;
+                }
+
+                const dest = getActiveTarget(targetParent);
+                dest.appendChild(clonedElement);
+                accumulatedHeight += estimatedHeight;
+
+                for (let i = 0; i < element.childNodes.length; i++) {
+                    walkAndSlice(element.childNodes[i], clonedElement, chapterIndex);
+                }
+
+                if (isImage && estimatedHeight >= state.viewportHeight * 0.75) {
+                    startNewPage(chapterIndex);
+                }
+                return;
+            }
+        }
         
         // Process each section
         for (let sectionIdx = 0; sectionIdx < sectionsData.length; sectionIdx++) {
@@ -294,16 +418,7 @@
             tempDiv.innerHTML = section.html || '';
             
             for (let c = 0; c < tempDiv.childNodes.length; c++) {
-                walkNodes(tempDiv.childNodes[c], currentPage, (height, textLength, isImage) => {
-                    if (accumulatedHeight > 0 && (accumulatedHeight + height > state.viewportHeight)) {
-                        startNewPage(chapterIndex);
-                    }
-                    accumulatedHeight += height;
-                    currentChapterCharOffset += textLength;
-                    if (isImage && height >= state.viewportHeight * 0.75) {
-                        startNewPage(chapterIndex);
-                    }
-                });
+                walkAndSlice(tempDiv.childNodes[c], currentPage, chapterIndex);
             }
         }
         
@@ -346,6 +461,7 @@
 
         state.currentPage = validIndex;
         notifyPageChanged(validIndex);
+        notifyBoundaryIfNeeded(validIndex);
         log('NAV', `navigateToPage(${pageIndex}) -> ${validIndex}`);
         return true;
     }
@@ -503,6 +619,14 @@
         if (!slice) return;
 
         callAndroidBridge('onPageChanged', slice.page, slice.chapter, slice.startChar);
+    }
+
+    function notifyBoundaryIfNeeded(pageIndex) {
+        if (pageIndex === 0) {
+            callAndroidBridge('onBoundaryReached', 'backward');
+        } else if (pageIndex === state.slices.length - 1) {
+            callAndroidBridge('onBoundaryReached', 'forward');
+        }
     }
 
     function setupNavigationHandlers(flexContainer) {
@@ -721,16 +845,96 @@
         console.log(`[FLEX:${tag}] ${message}`);
     }
 
+    function runChunkPreparation() {
+        try {
+            const styleId = 'tts-chunk-style';
+            if (!document.getElementById(styleId)) {
+                const style = document.createElement('style');
+                style.id = styleId;
+                style.innerHTML = '[data-tts-chunk]{cursor:pointer;transition:background-color 0.2s ease-in-out;} .tts-highlight{background-color: rgba(255, 213, 79, 0.4) !important;}';
+                document.head.appendChild(style);
+            }
+
+            const existing = document.querySelectorAll('[data-tts-chunk]');
+            existing.forEach(node => {
+                node.classList.remove('tts-highlight');
+                node.removeAttribute('data-tts-chunk');
+            });
+
+            const selectors = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre, article, section';
+            const nodes = document.querySelectorAll(selectors);
+            const chunks = [];
+            let index = 0;
+            let currentPos = 0;
+
+            nodes.forEach(node => {
+                if (!node) return;
+                let text = node.innerText || '';
+                text = text.replace(/\s+/g, ' ').trim();
+                if (!text) return;
+
+                node.setAttribute('data-tts-chunk', index);
+                chunks.push({
+                    index: index,
+                    text: text,
+                    startPosition: currentPos
+                });
+
+                currentPos += text.length + 1;
+                index++;
+            });
+
+            if (!window.__ttsTapHandlerAttached) {
+                document.addEventListener('click', function(event) {
+                    const target = event.target.closest('[data-tts-chunk]');
+                    if (!target) return;
+                    const idx = parseInt(target.getAttribute('data-tts-chunk'), 10);
+                    if (isNaN(idx)) return;
+                    if (window.AndroidTtsBridge && AndroidTtsBridge.onChunkTapped) {
+                        AndroidTtsBridge.onChunkTapped(idx);
+                    }
+                }, false);
+                window.__ttsTapHandlerAttached = true;
+            }
+
+            if (window.AndroidTtsBridge && AndroidTtsBridge.onChunksPrepared) {
+                AndroidTtsBridge.onChunksPrepared(JSON.stringify(chunks));
+            }
+        } catch (e) {
+            console.error('[FLEX] prepareTtsChunks error:', e);
+        }
+    }
+
     function rebuildSlicesFromSavedSections() {
         if (!originalSectionsData || originalSectionsData.length === 0) return;
         sliceSections(originalSectionsData);
         const metadata = buildMetadata();
         sendMetadataToAndroid(metadata);
+        if (typeof window.prepareTtsChunks === 'function') {
+            window.prepareTtsChunks();
+        } else {
+            runChunkPreparation();
+        }
     }
 
     function setFontSize(fontSizePx) {
         if (typeof fontSizePx !== 'number' || fontSizePx <= 0) return;
-        LINE_HEIGHT_PX = Math.max(1, Math.round(fontSizePx * (window.FLEX_LINE_HEIGHT || 1.6)));
+
+        // Update actual CSS font size and line height on root and body
+        const lineHeight = (typeof window.FLEX_LINE_HEIGHT === 'number' && window.FLEX_LINE_HEIGHT > 0)
+            ? window.FLEX_LINE_HEIGHT
+            : 1.6;
+        document.documentElement.style.fontSize = fontSizePx + 'px';
+        document.documentElement.style.setProperty('--flex-font-size', fontSizePx + 'px');
+        document.documentElement.style.lineHeight = String(lineHeight);
+        document.documentElement.style.setProperty('--flex-line-height', String(lineHeight));
+        if (document.body) {
+            document.body.style.fontSize = fontSizePx + 'px';
+            document.body.style.lineHeight = String(lineHeight);
+        }
+        window.FLEX_FONT_SIZE_PX = fontSizePx;
+
+        LINE_HEIGHT_PX = Math.max(1, Math.round(fontSizePx * lineHeight));
         BR_HEIGHT_PX = LINE_HEIGHT_PX;
         PARAGRAPH_HEIGHT_PX = LINE_HEIGHT_PX * 2;
         HEADING1_HEIGHT_PX = Math.round(LINE_HEIGHT_PX * 2.5);
@@ -763,7 +967,9 @@
         resizeTimer = setTimeout(function() {
             if (!state.isInitialized || originalSectionsData.length === 0) return;
             const newWidth = Math.max(window.innerWidth, MIN_VIEWPORT_WIDTH);
-            const newHeight = Math.max(window.innerHeight, DEFAULT_VIEWPORT_HEIGHT_PX);
+            const newHeight = (typeof window.innerHeight === 'number' && window.innerHeight > 0)
+                ? window.innerHeight
+                : DEFAULT_VIEWPORT_HEIGHT_PX;
             if (newWidth === state.viewportWidth && newHeight === state.viewportHeight) return;
 
             log('RESIZE', `Window resized to ${newWidth}x${newHeight}px; re-slicing`);
