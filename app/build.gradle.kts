@@ -156,6 +156,8 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     testImplementation("net.sf.kxml:kxml2:2.3.0")
+    // android.icu is stubbed on the JVM; icu4j mirrors it for SentenceSplitter tests
+    testImplementation("com.ibm.icu:icu4j:76.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.room:room-testing:2.6.1")
