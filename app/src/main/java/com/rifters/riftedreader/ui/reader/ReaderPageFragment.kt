@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.RenderProcessGoneDetail
@@ -543,12 +544,13 @@ class ReaderPageFragment : Fragment() {
                 
                 override fun onReceivedError(
                     view: WebView?,
-                    errorCode: Int,
-                    description: String?,
-                    failingUrl: String?
+                    request: WebResourceRequest?,
+                    error: WebResourceError?
                 ) {
-                    super.onReceivedError(view, errorCode, description, failingUrl)
+                    super.onReceivedError(view, request, error)
                     // Log error but don't crash
+                    val description = error?.description?.toString() ?: "Unknown error"
+                    val errorCode = error?.errorCode ?: -1
                     android.util.Log.e("ReaderPageFragment", "WebView error: $description")
                     com.rifters.riftedreader.util.AppLogger.e("ReaderPageFragment", "WebView error: $description", Exception("WebView error code: $errorCode"))
                 }
