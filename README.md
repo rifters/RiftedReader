@@ -46,7 +46,6 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full implementation roadmap and p
 
 - Pinch-to-zoom is not implemented yet
 - Notes / highlights should still be treated as pending
-- Calibre tabs are hidden until Calibre is enabled in Reader Settings, which makes the feature hard to discover for new users (fix planned: always-visible tabs with a setup state)
 - Cloud sync, OPDS, and provider integrations require the planning decisions in docs/stage8-scaffolding.md to be settled before implementation
 - JS tests require `cd tests/js && npm install` before the first run
 
@@ -134,7 +133,7 @@ Run a faster Kotlin-only compile preflight from the repository root:
 
 ### Reading Experience
 - Custom fonts and typography controls
-- Multiple themes
+- Multiple themes; app theme preference (Dark / Light / System) in Settings > Appearance, dark by default
 - Page and scroll modes
 - FlexPaginator paged reading (default) or continuous scroll mode
 - Swipe and volume-button navigation
@@ -149,7 +148,6 @@ Run a faster Kotlin-only compile preflight from the repository root:
 - Footnote popups for EPUB
 - Word-highlight TTS / karaoke mode
 - On-device neural TTS voices (engine scaffolding in place)
-- Calibre tab discoverability fix
 - Stage 8 providers (sync / OPDS), pending planning decisions
 
 ### Modern Architecture
