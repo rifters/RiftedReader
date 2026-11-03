@@ -567,9 +567,7 @@ class TTSService : Service() {
     }
 
     private fun splitIntoSentences(text: String): List<String> {
-        return text.split(Regex("(?<=[.!?])\\s+"))
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
+        return SentenceSplitter.split(text, preferences.languageTag)
     }
 
     private fun buildNotification(): Notification {

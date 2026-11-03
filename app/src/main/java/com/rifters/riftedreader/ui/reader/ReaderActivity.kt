@@ -48,6 +48,7 @@ import com.rifters.riftedreader.domain.pagination.PaginationMode
 import com.rifters.riftedreader.domain.parser.ParserFactory
 import com.rifters.riftedreader.domain.reader.AnchorEntry
 import com.rifters.riftedreader.pagination.OffscreenSlicingWebView
+import com.rifters.riftedreader.domain.tts.SentenceSplitter
 import com.rifters.riftedreader.domain.tts.TTSConfiguration
 import com.rifters.riftedreader.domain.tts.TTSPlaybackState
 import com.rifters.riftedreader.domain.tts.TTSService
@@ -2160,9 +2161,7 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
     private fun buildSentenceBoundaries(text: String): List<IntRange> {
         if (text.isBlank()) return emptyList()
 
-        val sentences = text.split(SENTENCE_REGEX)
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
+        val sentences = SentenceSplitter.split(text, ttsPreferences.languageTag)
 
         if (sentences.isEmpty()) return emptyList()
 
@@ -2482,4 +2481,3 @@ class ReaderActivity : AppCompatActivity(), ReaderPreferencesOwner, BookmarkList
 
 }
 
-private val SENTENCE_REGEX = Regex("(?<=[.!?])\\s+")
