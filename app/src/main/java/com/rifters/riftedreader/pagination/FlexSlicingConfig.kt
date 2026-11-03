@@ -11,8 +11,8 @@ import java.util.concurrent.atomic.AtomicReference
  * generate SliceMetadata.
  */
 data class FlexSlicingConfig(
-    val viewportWidthPx: Int = DEFAULT_VIEWPORT_WIDTH_PX,
-    val viewportHeightPx: Int = DEFAULT_VIEWPORT_HEIGHT_PX,
+    val viewportWidthPx: Int = getDefaultViewportWidthPx(),
+    val viewportHeightPx: Int = getDefaultViewportHeightPx(),
     val fontSizePx: Int = getDefaultFontSizePx(),
     val lineHeight: Float = getDefaultLineHeight(),
     val fontFamily: String = getDefaultFontFamily(),
@@ -71,11 +71,22 @@ data class FlexSlicingConfig(
             )
         }
 
+        private val viewportDefaultsRef = AtomicReference(
+            Pair(DEFAULT_VIEWPORT_WIDTH_PX, DEFAULT_VIEWPORT_HEIGHT_PX)
+        )
+
+        fun setDefaultViewportSize(viewportWidthPx: Int, viewportHeightPx: Int) {
+            require(viewportWidthPx > 0) { "viewportWidthPx must be > 0" }
+            require(viewportHeightPx > 0) { "viewportHeightPx must be > 0" }
+            viewportDefaultsRef.set(Pair(viewportWidthPx, viewportHeightPx))
+        }
+
         fun getDefaultTypography(): FlexSlicingConfig {
             val typography = typographyDefaultsRef.get()
+            val viewport = viewportDefaultsRef.get()
             return FlexSlicingConfig(
-                viewportWidthPx = DEFAULT_VIEWPORT_WIDTH_PX,
-                viewportHeightPx = DEFAULT_VIEWPORT_HEIGHT_PX,
+                viewportWidthPx = viewport.first,
+                viewportHeightPx = viewport.second,
                 fontSizePx = typography.fontSizePx,
                 lineHeight = typography.lineHeight,
                 fontFamily = typography.fontFamily,
@@ -83,6 +94,8 @@ data class FlexSlicingConfig(
             )
         }
 
+        private fun getDefaultViewportWidthPx(): Int = viewportDefaultsRef.get().first
+        private fun getDefaultViewportHeightPx(): Int = viewportDefaultsRef.get().second
         private fun getDefaultFontSizePx(): Int = typographyDefaultsRef.get().fontSizePx
         private fun getDefaultLineHeight(): Float = typographyDefaultsRef.get().lineHeight
         private fun getDefaultFontFamily(): String = typographyDefaultsRef.get().fontFamily

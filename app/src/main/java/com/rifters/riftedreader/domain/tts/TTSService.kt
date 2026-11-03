@@ -38,7 +38,7 @@ import java.util.UUID
 
 class TTSService : Service() {
 
-    private lateinit var ttsEngine: TTSEngine
+    private lateinit var ttsEngine: TTSAudioEngineProvider
     private lateinit var replacementEngine: TTSReplacementEngine
     private lateinit var preferences: TTSPreferences
     private lateinit var audioManager: AudioManager
@@ -148,7 +148,7 @@ class TTSService : Service() {
             })
         }
 
-        ttsEngine = TTSEngine(this)
+        ttsEngine = createTTSEngine()
         ttsEngine.initialize { success ->
             if (!success) {
                 stopSelf()
@@ -167,6 +167,16 @@ class TTSService : Service() {
             }
         }
         createNotificationChannel()
+    }
+
+    private fun createTTSEngine(): TTSAudioEngineProvider {
+        return when (preferences.selectedEngine) {
+            TTSEngineType.SHERPA_ONNX -> {
+                val sherpa = SherpaOnnxTTSProvider(this)
+                if (sherpa.isAvailable()) sherpa else TTSEngine(this)
+            }
+            TTSEngineType.SYSTEM -> TTSEngine(this)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

@@ -24,8 +24,6 @@ class RiftedReaderApplication : Application() {
         AppLogger.startSession(this)
         AppLogger.event("Application", "RiftedReader application started", "app/lifecycle")
 
-        ParserFactory.enablePreviewParsers()
-
         // Dedicated conveyor buffer log (separate from AppLogger session log)
         BufferLogger.init(this)
         BufferLogger.startSession(this)

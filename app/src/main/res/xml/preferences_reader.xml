@@ -135,10 +135,21 @@
             app:useSimpleSummaryProvider="true" />
 
         <androidx.preference.SwitchPreferenceCompat
+            android:key="reader_flex_paginator"
+            android:title="@string/settings_reader_flex_paginator_title"
+            android:summary="@string/settings_reader_flex_paginator_summary"
+            android:defaultValue="true" />
+
+        <androidx.preference.SwitchPreferenceCompat
             android:key="reader_continuous_streaming"
             android:title="@string/settings_reader_continuous_streaming_title"
             android:summary="@string/settings_reader_continuous_streaming_summary"
             android:defaultValue="true" />
+
+        <Preference
+            android:key="reader_tap_zones"
+            android:title="@string/reader_tap_zones"
+            android:summary="@string/reader_tap_zones_description" />
 
     </PreferenceCategory>
 
