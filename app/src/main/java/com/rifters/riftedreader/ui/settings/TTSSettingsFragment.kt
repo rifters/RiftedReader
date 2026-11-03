@@ -17,6 +17,12 @@ class TTSSettingsFragment : PreferenceFragmentCompat() {
         setPreferencesFromResource(R.xml.preferences_tts, rootKey)
         activity?.title = getString(R.string.settings_tts_title)
 
+        bindListPreference("tts_selected_engine", ttsPreferences.selectedEngine.name) { value ->
+            val engine = runCatching {
+                com.rifters.riftedreader.domain.tts.TTSEngineType.valueOf(value)
+            }.getOrDefault(com.rifters.riftedreader.domain.tts.TTSEngineType.SYSTEM)
+            ttsPreferences.selectedEngine = engine
+        }
         bindListPreference("tts_speed", ttsPreferences.speed.toString()) { value ->
             value.toFloatOrNull()?.let { ttsPreferences.speed = it }
         }

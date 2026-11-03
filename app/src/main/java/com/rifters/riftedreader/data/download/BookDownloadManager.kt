@@ -29,13 +29,25 @@ class BookDownloadManager(
     private val notifHelper = DownloadNotificationHelper(appContext)
     // Serializes metadata insertion so duplicate checks and inserts cannot interleave.
     private val importMutex = Mutex()
+    private val notificationIdCounter = java.util.concurrent.atomic.AtomicInteger(
+        ((System.currentTimeMillis() and 0xFFFF).toInt() + 1000).coerceAtLeast(1000)
+    )
+
+    fun nextNotificationId(): Int {
+        val next = notificationIdCounter.incrementAndGet()
+        return if (next <= 0) {
+            notificationIdCounter.set(1000)
+            1000
+        } else next
+    }
 
     suspend fun downloadFromUrl(
         url: String,
         filename: String,
         headers: Map<String, String> = emptyMap(),
+        customNotifId: Int? = null,
     ): Result<BookMeta> {
-        val notifId = notifIdFor(url)
+        val notifId = customNotifId ?: nextNotificationId()
         notifHelper.notifyProgress(notifId, filename)
         return try {
             withContext(Dispatchers.IO) {
@@ -65,8 +77,6 @@ class BookDownloadManager(
             throw throwable
         }
     }
-
-    private fun notifIdFor(url: String): Int = (url.hashCode().toLong() and 0xFFFFFFFFL).toInt()
 
     private fun downloadToFile(url: String, headers: Map<String, String>, destination: File) {
         val requestBuilder = Request.Builder()

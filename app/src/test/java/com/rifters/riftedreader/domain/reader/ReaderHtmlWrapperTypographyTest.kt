@@ -70,6 +70,50 @@ class ReaderHtmlWrapperTypographyTest {
         )
 
         assertTrue(html.contains("class=\"mode-paginated\""))
-        assertTrue(html.contains("minimal_paginator.js"))
+        assertTrue(html.contains("flex_paginator.js"))
+
+        val fallbackHtml = ReaderHtmlWrapper.wrap(
+            contentHtml = "<p>test</p>",
+            config = ReaderHtmlConfig(
+                textSizePx = 18f,
+                lineHeightMultiplier = 1.7f,
+                fontFamily = "Bookerly",
+                pagePaddingPx = 20,
+                palette = ReaderThemePalette(backgroundColor = 0xFFFFFF, textColor = 0x000000),
+                webViewWidthPx = 1080,
+                readerMode = ReaderMode.PAGINATED,
+                useFlexPaginator = false
+            )
+        )
+        assertTrue(fallbackHtml.contains("minimal_paginator.js"))
+    }
+
+    @Test
+    fun `wrap emits measured FLEX_VIEWPORT_HEIGHT and falls back when not positive`() {
+        val customHeightHtml = ReaderHtmlWrapper.wrap(
+            contentHtml = "<p>test</p>",
+            config = ReaderHtmlConfig(
+                textSizePx = 16f,
+                lineHeightMultiplier = 1.5f,
+                palette = ReaderThemePalette(backgroundColor = 0xFFFFFF, textColor = 0x000000),
+                webViewWidthPx = 1080,
+                webViewHeightPx = 1920,
+                useFlexPaginator = true
+            )
+        )
+        assertTrue(customHeightHtml.contains("window.FLEX_VIEWPORT_HEIGHT = 1920;"))
+
+        val fallbackHeightHtml = ReaderHtmlWrapper.wrap(
+            contentHtml = "<p>test</p>",
+            config = ReaderHtmlConfig(
+                textSizePx = 16f,
+                lineHeightMultiplier = 1.5f,
+                palette = ReaderThemePalette(backgroundColor = 0xFFFFFF, textColor = 0x000000),
+                webViewWidthPx = 1080,
+                webViewHeightPx = 0,
+                useFlexPaginator = true
+            )
+        )
+        assertTrue(fallbackHeightHtml.contains("window.FLEX_VIEWPORT_HEIGHT = 600;"))
     }
 }

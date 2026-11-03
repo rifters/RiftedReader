@@ -294,6 +294,7 @@ class ReaderPageFragment : Fragment() {
                             "[SLICING_COMPLETE] windowIndex=$wIdx totalPages=${metadata.totalPages}"
                         )
                         readerViewModel.onWindowPaginationReady(metadata.windowIndex, metadata.totalPages)
+                        prepareTtsChunks()
                     },
                     onSlicingError = { wIdx, message ->
                         com.rifters.riftedreader.util.AppLogger.e(
@@ -735,9 +736,9 @@ class ReaderPageFragment : Fragment() {
                             // For HTML content with font size change only, use paginator API
                             // This preserves reading position without reloading
                             com.rifters.riftedreader.util.AppLogger.d("ReaderPageFragment", "Applying font size change without reload")
-                            if (settings.mode != ReaderMode.SCROLL && !settings.flexPaginatorEnabled && isWebViewReady && binding.pageWebView.visibility == View.VISIBLE) {
+                            if (settings.mode != ReaderMode.SCROLL && isWebViewReady && binding.pageWebView.visibility == View.VISIBLE) {
                                 // Apply font size change directly via JavaScript
-                                // minimal_paginator.js handles position preservation automatically
+                                // Paginator handles position preservation automatically
                                 launchIfViewAlive("apply_font_size_change_js") {
                                     try {
                                         com.rifters.riftedreader.util.AppLogger.d(
@@ -745,9 +746,8 @@ class ReaderPageFragment : Fragment() {
                                             "Applying font size change via JS: ${settings.textSizeSp}px"
                                         )
                                         
-                                        // setFontSize in minimal_paginator automatically preserves position via character offsets
                                         binding.pageWebView.evaluateJavascript(
-                                            "if (window.minimalPaginator) { window.minimalPaginator.setFontSize(${settings.textSizeSp.toInt()}); }",
+                                            "if (window.flexPaginator && window.flexPaginator.setFontSize) { window.flexPaginator.setFontSize(${settings.textSizeSp.toInt()}); } else if (window.minimalPaginator) { window.minimalPaginator.setFontSize(${settings.textSizeSp.toInt()}); }",
                                             null
                                         )
                                     } catch (e: Exception) {
@@ -1532,13 +1532,22 @@ class ReaderPageFragment : Fragment() {
                     }
                     
                     // Wrap HTML with proper styling using ReaderHtmlWrapper
-                    // Use WebView width if available, otherwise fall back to display width
-                    val webViewWidth = binding.pageWebView.width.let { width ->
-                        if (width > 0) width else {
-                            // Fallback to screen width if WebView hasn't been measured yet
-                            val displayMetrics = resources.displayMetrics
-                            displayMetrics.widthPixels
-                        }
+                    // Use measured WebView dimensions if available, matching OffscreenSlicingWebView
+                    val usableWidth = (binding.pageWebView.width - binding.pageWebView.paddingLeft - binding.pageWebView.paddingRight).coerceAtLeast(0)
+                    val usableHeight = (binding.pageWebView.height - binding.pageWebView.paddingTop - binding.pageWebView.paddingBottom).coerceAtLeast(0)
+                    val webViewWidth = if (usableWidth > 0) {
+                        usableWidth
+                    } else if (hasCapturedSlicingViewport && slicingViewportWidthPx > 0) {
+                        slicingViewportWidthPx
+                    } else {
+                        binding.pageWebView.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+                    }
+                    val webViewHeight = if (usableHeight > 0) {
+                        usableHeight
+                    } else if (hasCapturedSlicingViewport && slicingViewportHeightPx > 0) {
+                        slicingViewportHeightPx
+                    } else {
+                        (binding.pageWebView.height - binding.pageWebView.paddingTop - binding.pageWebView.paddingBottom).takeIf { it > 0 } ?: 0
                     }
                     
                     val typographyConfig = FlexSlicingConfig.getDefaultTypography()
@@ -1549,6 +1558,7 @@ class ReaderPageFragment : Fragment() {
                         pagePaddingPx = typographyConfig.pagePaddingPx,
                         palette = palette,
                         webViewWidthPx = webViewWidth,
+                        webViewHeightPx = webViewHeight,
                         useFlexPaginator = settings.flexPaginatorEnabled,
                         readerMode = settings.mode,
                         enableDiagnostics = settings.paginationDiagnosticsEnabled,
@@ -1726,6 +1736,23 @@ class ReaderPageFragment : Fragment() {
         typography: FlexSlicingConfig,
         palette: ReaderThemePalette
     ): String {
+        val usableWidth = (binding.pageWebView.width - binding.pageWebView.paddingLeft - binding.pageWebView.paddingRight).coerceAtLeast(0)
+        val usableHeight = (binding.pageWebView.height - binding.pageWebView.paddingTop - binding.pageWebView.paddingBottom).coerceAtLeast(0)
+        val webViewWidth = if (usableWidth > 0) {
+            usableWidth
+        } else if (hasCapturedSlicingViewport && slicingViewportWidthPx > 0) {
+            slicingViewportWidthPx
+        } else {
+            binding.pageWebView.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        }
+        val webViewHeight = if (usableHeight > 0) {
+            usableHeight
+        } else if (hasCapturedSlicingViewport && slicingViewportHeightPx > 0) {
+            slicingViewportHeightPx
+        } else {
+            (binding.pageWebView.height - binding.pageWebView.paddingTop - binding.pageWebView.paddingBottom).takeIf { it > 0 } ?: 0
+        }
+
         return com.rifters.riftedreader.domain.reader.ReaderHtmlWrapper.wrap(
             contentHtml = content,
             config = com.rifters.riftedreader.domain.reader.ReaderHtmlConfig(
@@ -1734,7 +1761,8 @@ class ReaderPageFragment : Fragment() {
                 fontFamily = typography.fontFamily,
                 pagePaddingPx = typography.pagePaddingPx,
                 palette = palette,
-                webViewWidthPx = binding.pageWebView.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels,
+                webViewWidthPx = webViewWidth,
+                webViewHeightPx = webViewHeight,
                 useFlexPaginator = readerViewModel.readerSettings.value.flexPaginatorEnabled,
                 readerMode = readerViewModel.readerSettings.value.mode,
                 enableDiagnostics = readerViewModel.readerSettings.value.paginationDiagnosticsEnabled
@@ -1790,6 +1818,7 @@ class ReaderPageFragment : Fragment() {
                 var RETRY_DELAY_MS = ${TTS_PREP_RETRY_DELAY_MS};
                 var attempt = 0;
                 var readFootnotes = $readFootnotes;
+                window.prepareTtsChunks = waitForBodyAndExecute;
                 
                 function waitForBodyAndExecute() {
                     attempt++;

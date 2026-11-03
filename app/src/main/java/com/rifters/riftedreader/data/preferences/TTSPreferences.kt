@@ -58,6 +58,15 @@ class TTSPreferences(
             }.apply()
         }
 
+    var selectedEngine: com.rifters.riftedreader.domain.tts.TTSEngineType
+        get() {
+            val name = prefs.getString(KEY_SELECTED_ENGINE, com.rifters.riftedreader.domain.tts.TTSEngineType.SYSTEM.name)
+            return runCatching {
+                com.rifters.riftedreader.domain.tts.TTSEngineType.valueOf(name ?: com.rifters.riftedreader.domain.tts.TTSEngineType.SYSTEM.name)
+            }.getOrDefault(com.rifters.riftedreader.domain.tts.TTSEngineType.SYSTEM)
+        }
+        set(value) = prefs.edit().putString(KEY_SELECTED_ENGINE, value.name).apply()
+
     fun saveReplacementRules(rules: String) {
         getReplacementRulesFile().writeText(rules)
     }
@@ -91,6 +100,7 @@ class TTSPreferences(
         private const val KEY_HIGHLIGHT = "tts_highlight"
         private const val KEY_LANGUAGE_TAG = "tts_language_tag"
         const val KEY_READ_FOOTNOTES = "tts_read_footnotes"
+        private const val KEY_SELECTED_ENGINE = "tts_selected_engine"
 
         private const val RULES_DIR_NAME = "tts_rules"
         private const val DEFAULT_RULES_FILE = "default_rules.txt"

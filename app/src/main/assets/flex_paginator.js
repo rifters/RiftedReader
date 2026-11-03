@@ -65,6 +65,7 @@
         currentPage: 0,
         isInitialized: false
     };
+    let originalSectionsData = [];
     
     // ========================================================================
     // INITIALIZATION
@@ -138,19 +139,28 @@
             
             log('INIT', `Window index: ${state.windowIndex}`);
             
-            // Find all sections (chapters)
+            // Find sections
             const sections = windowRoot.querySelectorAll('section[data-chapter]');
             if (sections.length === 0) {
-                const error = 'No sections with data-chapter found';
+                const error = 'No sections found in window-root';
                 log('ERROR', error);
                 callAndroidBridge('onSlicingError', error);
                 return;
             }
-            
+
+            // Cache sections data so dynamic re-slicing (resize, font-size changes) works
+            originalSectionsData = [];
+            for (let i = 0; i < sections.length; i++) {
+                originalSectionsData.push({
+                    chapter: parseInt(sections[i].getAttribute('data-chapter'), 10),
+                    html: sections[i].innerHTML
+                });
+            }
+
             log('INIT', `Found ${sections.length} sections to slice`);
             
             // Slice each section into pages
-            sliceSections(sections);
+            sliceSections(originalSectionsData);
             
             // Build metadata and send to Android
             const metadata = buildMetadata();
@@ -185,7 +195,8 @@
      * 
      * @param {NodeList} sections Array of <section> elements
      */
-    function sliceSections(sections) {
+    function sliceSections(sectionsData) {
+        state.slices = [];
         let currentPage = null;
         let currentPageIndex = 0;
         let accumulatedHeight = 0;
@@ -195,6 +206,22 @@
         
         // Clear document body
         document.body.innerHTML = '';
+
+        // Inject responsive image safety style into head if missing
+        const styleId = 'flex-paginator-img-styles';
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = `
+                .page img {
+                    max-width: 100% !important;
+                    max-height: calc(100% - 16px) !important;
+                    object-fit: contain !important;
+                    height: auto !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
         
         // Create flex container for pages
         const flexContainer = document.createElement('div');
@@ -210,10 +237,13 @@
         `;
         document.body.appendChild(flexContainer);
         
-        // Helper to start a new page
-        function startNewPage(chapterIndex) {
-            if (currentPage) {
-                // Finalize previous page
+        function finalizeCurrentPage() {
+            if (!currentPage) return;
+            const hasChildren = currentPage.childNodes.length > 0;
+            const hasChars = currentChapterCharOffset > sliceStartChar;
+            const hasHeight = accumulatedHeight > 0;
+            // Only keep page if it contains content or is the only page in the window
+            if (hasChildren || hasChars || hasHeight || state.slices.length === 0) {
                 const slice = {
                     page: currentPageIndex - 1,
                     chapter: currentChapter,
@@ -223,7 +253,16 @@
                 };
                 state.slices.push(slice);
                 log('SLICE', `Page ${slice.page}: chapter=${slice.chapter}, chars=${slice.startChar}-${slice.endChar}`);
+            } else {
+                if (currentPage.parentNode) {
+                    currentPage.parentNode.removeChild(currentPage);
+                }
+                currentPageIndex--;
             }
+        }
+
+        function startNewPage(chapterIndex) {
+            finalizeCurrentPage();
             
             // Create new page
             currentPage = document.createElement('div');
@@ -246,48 +285,147 @@
             accumulatedHeight = 0;
             currentPageIndex++;
         }
+
+        function getActiveTarget(targetParent) {
+            if (!targetParent || targetParent === currentPage) {
+                return currentPage;
+            }
+            if (targetParent.closest && targetParent.closest('.page') === currentPage) {
+                return targetParent;
+            }
+            const clonedParent = document.createElement(targetParent.tagName);
+            for (let i = 0; i < targetParent.attributes.length; i++) {
+                const attr = targetParent.attributes[i];
+                clonedParent.setAttribute(attr.name, attr.value);
+            }
+            if (targetParent.style.cssText) {
+                clonedParent.style.cssText = targetParent.style.cssText;
+            }
+            currentPage.appendChild(clonedParent);
+            return clonedParent;
+        }
+
+        function walkAndSlice(node, targetParent, chapterIndex) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                const text = node.textContent || '';
+                if (text.length > 0) {
+                    let height = 0;
+                    if (text.trim().length > 0) {
+                        const lines = Math.max(1, Math.ceil(text.length / CHARS_PER_LINE));
+                        height = lines * LINE_HEIGHT_PX;
+                    }
+
+                    // Decide page break BEFORE appending content
+                    if (height > 0 && accumulatedHeight > 0 && (accumulatedHeight + height > state.viewportHeight)) {
+                        startNewPage(chapterIndex);
+                    }
+
+                    const textNode = document.createTextNode(text);
+                    const dest = getActiveTarget(targetParent);
+                    dest.appendChild(textNode);
+                    accumulatedHeight += height;
+                    currentChapterCharOffset += text.length;
+
+                    if (accumulatedHeight >= state.viewportHeight) {
+                        startNewPage(chapterIndex);
+                    }
+                }
+                return;
+            }
+
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                const element = node;
+                const tagName = element.tagName.toLowerCase();
+
+                let estimatedHeight = 0;
+                let isImage = false;
+                if (tagName === 'p') {
+                    estimatedHeight = PARAGRAPH_HEIGHT_PX;
+                } else if (tagName === 'h1') {
+                    estimatedHeight = HEADING1_HEIGHT_PX;
+                } else if (tagName === 'h2') {
+                    estimatedHeight = HEADING2_HEIGHT_PX;
+                } else if (tagName === 'h3') {
+                    estimatedHeight = HEADING3_HEIGHT_PX;
+                } else if (tagName === 'img') {
+                    isImage = true;
+                    estimatedHeight = IMAGE_HEIGHT_PX;
+                    const attrHeight = parseInt(element.getAttribute('height'), 10);
+                    const attrWidth = parseInt(element.getAttribute('width'), 10);
+                    if (!isNaN(attrHeight) && attrHeight > 0) {
+                        if (!isNaN(attrWidth) && attrWidth > 0 && state.viewportWidth > 0) {
+                            const availWidth = Math.max(1, state.viewportWidth - 32);
+                            const scale = Math.min(1.0, availWidth / attrWidth);
+                            estimatedHeight = Math.round(attrHeight * scale);
+                        } else {
+                            estimatedHeight = attrHeight;
+                        }
+                    } else if (element.style.height && element.style.height.endsWith('px')) {
+                        const pxHeight = parseInt(element.style.height, 10);
+                        if (!isNaN(pxHeight) && pxHeight > 0) {
+                            estimatedHeight = pxHeight;
+                        }
+                    }
+                    const maxAllowedImgHeight = Math.max(1, state.viewportHeight - 32);
+                    estimatedHeight = Math.min(estimatedHeight, maxAllowedImgHeight);
+                } else if (tagName === 'br') {
+                    estimatedHeight = BR_HEIGHT_PX;
+                }
+
+                // Decide page break BEFORE appending content
+                if (estimatedHeight > 0 && accumulatedHeight > 0 && (accumulatedHeight + estimatedHeight > state.viewportHeight)) {
+                    startNewPage(chapterIndex);
+                }
+
+                const clonedElement = document.createElement(element.tagName);
+                for (let i = 0; i < element.attributes.length; i++) {
+                    const attr = element.attributes[i];
+                    clonedElement.setAttribute(attr.name, attr.value);
+                }
+                if (element.style.cssText) {
+                    clonedElement.style.cssText = element.style.cssText;
+                }
+
+                const dest = getActiveTarget(targetParent);
+                dest.appendChild(clonedElement);
+                accumulatedHeight += estimatedHeight;
+
+                for (let i = 0; i < element.childNodes.length; i++) {
+                    walkAndSlice(element.childNodes[i], clonedElement, chapterIndex);
+                }
+
+                if (isImage && estimatedHeight >= state.viewportHeight * 0.75) {
+                    startNewPage(chapterIndex);
+                }
+                return;
+            }
+        }
         
         // Process each section
-        for (let sectionIdx = 0; sectionIdx < sections.length; sectionIdx++) {
-            const section = sections[sectionIdx];
-            const chapterIndex = parseInt(section.getAttribute('data-chapter'), 10);
+        for (let sectionIdx = 0; sectionIdx < sectionsData.length; sectionIdx++) {
+            const section = sectionsData[sectionIdx];
+            const chapterIndex = section.chapter;
             
-            log('SECTION', `Processing chapter ${chapterIndex} (section ${sectionIdx + 1}/${sections.length})`);
+            log('SECTION', `Processing chapter ${chapterIndex} (section ${sectionIdx + 1}/${sectionsData.length})`);
             
-            // Force hard break: always start a new page at section boundary
-            // (unless this is the very first section and we haven't created a page yet)
-            // Start new page for this chapter
+            // Force hard break at chapter boundary
             startNewPage(chapterIndex);
-            // PageSlice start/end offsets are chapter-local; reset at chapter boundaries.
             sliceStartChar = 0;
             currentChapterCharOffset = 0;
             
-            // Walk nodes in this section
-            walkNodes(section, currentPage, (height, textLength) => {
-                accumulatedHeight += height;
-                currentChapterCharOffset += textLength;
-                
-                // Check if we need to start a new page
-                if (accumulatedHeight >= state.viewportHeight) {
-                    startNewPage(chapterIndex);
-                }
-            });
+            // Parse section HTML into a temporary container
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = section.html || '';
+            
+            for (let c = 0; c < tempDiv.childNodes.length; c++) {
+                walkAndSlice(tempDiv.childNodes[c], currentPage, chapterIndex);
+            }
         }
         
         // Finalize last page
-        if (currentPage) {
-            const slice = {
-                page: currentPageIndex - 1,
-                chapter: currentChapter,
-                startChar: sliceStartChar,
-                endChar: currentChapterCharOffset,
-                heightPx: accumulatedHeight
-            };
-            state.slices.push(slice);
-            log('SLICE', `Page ${slice.page}: chapter=${slice.chapter}, chars=${slice.startChar}-${slice.endChar} (final page)`);
-        }
+        finalizeCurrentPage();
         
-        log('SLICING', `Complete: ${state.slices.length} pages from ${sections.length} chapters`);
+        log('SLICING', `Complete: ${state.slices.length} pages from ${sectionsData.length} chapters`);
         setupNavigationHandlers(flexContainer);
     }
 
@@ -397,10 +535,22 @@
     }
 
     function nextPage() {
+        if (!state.isInitialized || state.slices.length === 0) return false;
+        if (state.currentPage >= state.slices.length - 1) {
+            log('BOUNDARY', 'nextPage: at last page, emitting forward boundary');
+            callAndroidBridge('onBoundaryReached', 'forward');
+            return false;
+        }
         return navigateToPage(state.currentPage + 1);
     }
 
     function prevPage() {
+        if (!state.isInitialized || state.slices.length === 0) return false;
+        if (state.currentPage <= 0) {
+            log('BOUNDARY', 'prevPage: at first page, emitting backward boundary');
+            callAndroidBridge('onBoundaryReached', 'backward');
+            return false;
+        }
         return navigateToPage(state.currentPage - 1);
     }
 
@@ -490,12 +640,23 @@
             scrollTimer = setTimeout(function() {
                 if (!state.isInitialized || state.viewportWidth <= 0 || state.slices.length === 0) return;
 
+                const maxScroll = (state.slices.length - 1) * state.viewportWidth;
+                if (flexContainer.scrollLeft > maxScroll + 30) {
+                    log('BOUNDARY', 'Scroll overscroll forward detected');
+                    callAndroidBridge('onBoundaryReached', 'forward');
+                    return;
+                }
+                if (flexContainer.scrollLeft < -30) {
+                    log('BOUNDARY', 'Scroll overscroll backward detected');
+                    callAndroidBridge('onBoundaryReached', 'backward');
+                    return;
+                }
+
                 const pageIndex = Math.round(flexContainer.scrollLeft / state.viewportWidth);
                 const validIndex = Math.max(0, Math.min(pageIndex, state.slices.length - 1));
                 if (validIndex !== state.currentPage) {
                     state.currentPage = validIndex;
                     notifyPageChanged(validIndex);
-                    notifyBoundaryIfNeeded(validIndex);
                 }
             }, 100);
         });
@@ -515,14 +676,18 @@
         // Text node
         if (node.nodeType === Node.TEXT_NODE) {
             const text = node.textContent || '';
-            if (text.trim().length > 0) {
+            if (text.length > 0) {
                 const textNode = document.createTextNode(text);
                 targetPage.appendChild(textNode);
                 
                 // Estimate height (rough approximation)
-                const lines = Math.max(1, Math.ceil(text.length / CHARS_PER_LINE));
-                const height = lines * LINE_HEIGHT_PX;
-                onContentAdded(height, text.length);
+                if (text.trim().length > 0) {
+                    const lines = Math.max(1, Math.ceil(text.length / CHARS_PER_LINE));
+                    const height = lines * LINE_HEIGHT_PX;
+                    onContentAdded(height, text.length, false);
+                } else {
+                    onContentAdded(0, text.length, false);
+                }
             }
             return;
         }
@@ -530,6 +695,7 @@
         // Element node
         if (node.nodeType === Node.ELEMENT_NODE) {
             const element = node;
+            const tagName = element.tagName.toLowerCase();
             
             // Clone element (without children)
             const clonedElement = document.createElement(element.tagName);
@@ -554,7 +720,7 @@
             
             // Estimate element height based on tag
             let estimatedHeight = 0;
-            const tagName = element.tagName.toLowerCase();
+            let isImage = false;
             if (tagName === 'p') {
                 estimatedHeight = PARAGRAPH_HEIGHT_PX;
             } else if (tagName === 'h1') {
@@ -564,13 +730,32 @@
             } else if (tagName === 'h3') {
                 estimatedHeight = HEADING3_HEIGHT_PX;
             } else if (tagName === 'img') {
+                isImage = true;
                 estimatedHeight = IMAGE_HEIGHT_PX;
+                const attrHeight = parseInt(element.getAttribute('height'), 10);
+                const attrWidth = parseInt(element.getAttribute('width'), 10);
+                if (!isNaN(attrHeight) && attrHeight > 0) {
+                    if (!isNaN(attrWidth) && attrWidth > 0 && state.viewportWidth > 0) {
+                        const availWidth = Math.max(1, state.viewportWidth - 32);
+                        const scale = Math.min(1.0, availWidth / attrWidth);
+                        estimatedHeight = Math.round(attrHeight * scale);
+                    } else {
+                        estimatedHeight = attrHeight;
+                    }
+                } else if (element.style.height && element.style.height.endsWith('px')) {
+                    const pxHeight = parseInt(element.style.height, 10);
+                    if (!isNaN(pxHeight) && pxHeight > 0) {
+                        estimatedHeight = pxHeight;
+                    }
+                }
+                const maxAllowedImgHeight = Math.max(1, state.viewportHeight - 32);
+                estimatedHeight = Math.min(estimatedHeight, maxAllowedImgHeight);
             } else if (tagName === 'br') {
                 estimatedHeight = BR_HEIGHT_PX;
             }
             
             if (estimatedHeight > 0) {
-                onContentAdded(estimatedHeight, 0);
+                onContentAdded(estimatedHeight, 0, isImage);
             }
             
             return;
@@ -660,6 +845,154 @@
         console.log(`[FLEX:${tag}] ${message}`);
     }
 
+    function runChunkPreparation() {
+        try {
+            const styleId = 'tts-chunk-style';
+            if (!document.getElementById(styleId)) {
+                const style = document.createElement('style');
+                style.id = styleId;
+                style.innerHTML = '[data-tts-chunk]{cursor:pointer;transition:background-color 0.2s ease-in-out;} .tts-highlight{background-color: rgba(255, 213, 79, 0.4) !important;}';
+                document.head.appendChild(style);
+            }
+
+            const existing = document.querySelectorAll('[data-tts-chunk]');
+            existing.forEach(node => {
+                node.classList.remove('tts-highlight');
+                node.removeAttribute('data-tts-chunk');
+            });
+
+            const selectors = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre, article, section';
+            const nodes = document.querySelectorAll(selectors);
+            const chunks = [];
+            let index = 0;
+            let currentPos = 0;
+
+            nodes.forEach(node => {
+                if (!node) return;
+                let text = node.innerText || '';
+                text = text.replace(/\s+/g, ' ').trim();
+                if (!text) return;
+
+                node.setAttribute('data-tts-chunk', index);
+                chunks.push({
+                    index: index,
+                    text: text,
+                    startPosition: currentPos
+                });
+
+                currentPos += text.length + 1;
+                index++;
+            });
+
+            if (!window.__ttsTapHandlerAttached) {
+                document.addEventListener('click', function(event) {
+                    const target = event.target.closest('[data-tts-chunk]');
+                    if (!target) return;
+                    const idx = parseInt(target.getAttribute('data-tts-chunk'), 10);
+                    if (isNaN(idx)) return;
+                    if (window.AndroidTtsBridge && AndroidTtsBridge.onChunkTapped) {
+                        AndroidTtsBridge.onChunkTapped(idx);
+                    }
+                }, false);
+                window.__ttsTapHandlerAttached = true;
+            }
+
+            if (window.AndroidTtsBridge && AndroidTtsBridge.onChunksPrepared) {
+                AndroidTtsBridge.onChunksPrepared(JSON.stringify(chunks));
+            }
+        } catch (e) {
+            console.error('[FLEX] prepareTtsChunks error:', e);
+        }
+    }
+
+    function rebuildSlicesFromSavedSections() {
+        if (!originalSectionsData || originalSectionsData.length === 0) return;
+        sliceSections(originalSectionsData);
+        const metadata = buildMetadata();
+        sendMetadataToAndroid(metadata);
+        if (typeof window.prepareTtsChunks === 'function') {
+            window.prepareTtsChunks();
+        } else {
+            runChunkPreparation();
+        }
+    }
+
+    function setFontSize(fontSizePx) {
+        if (typeof fontSizePx !== 'number' || fontSizePx <= 0) return;
+
+        // Update actual CSS font size and line height on root and body
+        const lineHeight = (typeof window.FLEX_LINE_HEIGHT === 'number' && window.FLEX_LINE_HEIGHT > 0)
+            ? window.FLEX_LINE_HEIGHT
+            : 1.6;
+        document.documentElement.style.fontSize = fontSizePx + 'px';
+        document.documentElement.style.setProperty('--flex-font-size', fontSizePx + 'px');
+        document.documentElement.style.lineHeight = String(lineHeight);
+        document.documentElement.style.setProperty('--flex-line-height', String(lineHeight));
+        if (document.body) {
+            document.body.style.fontSize = fontSizePx + 'px';
+            document.body.style.lineHeight = String(lineHeight);
+        }
+        window.FLEX_FONT_SIZE_PX = fontSizePx;
+
+        LINE_HEIGHT_PX = Math.max(1, Math.round(fontSizePx * lineHeight));
+        BR_HEIGHT_PX = LINE_HEIGHT_PX;
+        PARAGRAPH_HEIGHT_PX = LINE_HEIGHT_PX * 2;
+        HEADING1_HEIGHT_PX = Math.round(LINE_HEIGHT_PX * 2.5);
+        HEADING2_HEIGHT_PX = Math.round(LINE_HEIGHT_PX * 2.0);
+        HEADING3_HEIGHT_PX = Math.round(LINE_HEIGHT_PX * 1.5);
+
+        if (state.isInitialized && originalSectionsData.length > 0) {
+            log('FONT', `Font size updated to ${fontSizePx}px; re-slicing`);
+            const prevSlice = state.slices[state.currentPage];
+            const prevChapter = prevSlice ? prevSlice.chapter : 0;
+            const prevChar = prevSlice ? prevSlice.startChar : 0;
+
+            rebuildSlicesFromSavedSections();
+
+            let targetPage = 0;
+            for (let i = 0; i < state.slices.length; i++) {
+                const s = state.slices[i];
+                if (s.chapter === prevChapter && s.startChar <= prevChar) {
+                    targetPage = i;
+                }
+            }
+            navigateToPage(targetPage);
+        }
+    }
+
+    // Window resize / orientation change listener
+    let resizeTimer = null;
+    window.addEventListener('resize', function() {
+        if (resizeTimer !== null) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+            if (!state.isInitialized || originalSectionsData.length === 0) return;
+            const newWidth = Math.max(window.innerWidth, MIN_VIEWPORT_WIDTH);
+            const newHeight = (typeof window.innerHeight === 'number' && window.innerHeight > 0)
+                ? window.innerHeight
+                : DEFAULT_VIEWPORT_HEIGHT_PX;
+            if (newWidth === state.viewportWidth && newHeight === state.viewportHeight) return;
+
+            log('RESIZE', `Window resized to ${newWidth}x${newHeight}px; re-slicing`);
+            const prevSlice = state.slices[state.currentPage];
+            const prevChapter = prevSlice ? prevSlice.chapter : 0;
+            const prevChar = prevSlice ? prevSlice.startChar : 0;
+
+            state.viewportWidth = newWidth;
+            state.viewportHeight = newHeight;
+
+            rebuildSlicesFromSavedSections();
+
+            let targetPage = 0;
+            for (let i = 0; i < state.slices.length; i++) {
+                const s = state.slices[i];
+                if (s.chapter === prevChapter && s.startChar <= prevChar) {
+                    targetPage = i;
+                }
+            }
+            navigateToPage(targetPage);
+        }, 150);
+    });
+
     // ========================================================================
     // EXPORT PUBLIC API
     // ========================================================================
@@ -673,8 +1006,11 @@
         getCurrentPage,
         getPageCount,
         getCharacterOffsetForPage,
+        setFontSize,
         isReady
     };
+    // Alias for backwards compatibility with readers expecting inpagePaginator
+    window.inpagePaginator = window.flexPaginator;
     
     // ========================================================================
     // AUTO-INITIALIZE

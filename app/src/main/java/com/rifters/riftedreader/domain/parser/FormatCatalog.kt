@@ -124,8 +124,6 @@ object FormatCatalog {
     fun inProgressDescriptors(): List<FormatDescriptor> = descriptors.filter { it.status == FormatSupportStatus.IN_PROGRESS }
 
     fun plannedDescriptors(): List<FormatDescriptor> = descriptors.filter { it.status == FormatSupportStatus.PLANNED }
-
-    fun previewParsers(): List<PreviewParser> = inProgressDescriptors().map { PreviewParser(it) }
 }
 
 enum class FormatSupportStatus {

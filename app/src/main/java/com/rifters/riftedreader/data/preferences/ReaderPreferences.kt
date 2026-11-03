@@ -41,7 +41,7 @@ data class ReaderSettings(
     val mode: ReaderMode = ReaderMode.PAGINATED,
     val paginationMode: PaginationMode = PaginationMode.CONTINUOUS,
     val continuousStreamingEnabled: Boolean = true,
-    val flexPaginatorEnabled: Boolean = false,
+    val flexPaginatorEnabled: Boolean = true,
     val paginationDiagnosticsEnabled: Boolean = false,
     val chapterVisibility: ChapterVisibilitySettings = ChapterVisibilitySettings.DEFAULT,
     /**
@@ -108,7 +108,7 @@ class ReaderPreferences(context: Context) {
         val paginationMode = runCatching { PaginationMode.valueOf(paginationModeName) }
             .getOrDefault(PaginationMode.CONTINUOUS)
         val streamingEnabled = prefs.getBoolean(KEY_CONTINUOUS_STREAMING, true)
-        val flexPaginatorEnabled = prefs.getBoolean(KEY_FLEX_PAGINATOR_ENABLED, false)
+        val flexPaginatorEnabled = prefs.getBoolean(KEY_FLEX_PAGINATOR_ENABLED, true)
         val diagnosticsEnabled = prefs.getBoolean(KEY_PAGINATION_DIAGNOSTICS, false)
         val debugWindowRendering = prefs.getBoolean(KEY_DEBUG_WINDOW_RENDERING, false)
         // enableMinimalPaginator removed - minimal paginator is now always used

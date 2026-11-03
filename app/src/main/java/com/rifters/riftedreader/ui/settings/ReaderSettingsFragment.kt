@@ -99,6 +99,17 @@ class ReaderSettingsFragment : PreferenceFragmentCompat() {
                 }
             }
         bindSwitchPreference(
+            key = "reader_flex_paginator",
+            currentValue = settings.flexPaginatorEnabled
+        ) { isEnabled ->
+            AppLogger.event(
+                "ReaderSettingsFragment",
+                "Flex paginator toggled to $isEnabled",
+                "ui/settings/change"
+            )
+            readerPreferences.updateSettings { it.copy(flexPaginatorEnabled = isEnabled) }
+        }
+        bindSwitchPreference(
             key = "reader_continuous_streaming",
             currentValue = settings.continuousStreamingEnabled
         ) { isEnabled ->
@@ -108,6 +119,11 @@ class ReaderSettingsFragment : PreferenceFragmentCompat() {
                 "ui/settings/change"
             )
             readerPreferences.updateSettings { it.copy(continuousStreamingEnabled = isEnabled) }
+        }
+
+        findPreference<Preference>("reader_tap_zones")?.setOnPreferenceClickListener {
+            com.rifters.riftedreader.ui.reader.ReaderTapZonesBottomSheet.show(parentFragmentManager)
+            true
         }
 
         bindChapterVisibilitySettings(settings.chapterVisibility)
