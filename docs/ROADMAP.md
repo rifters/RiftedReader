@@ -41,7 +41,7 @@
 - ✅ Base classes (`BaseActivity`, `BaseFragment`, `BaseViewModel`)
 - ✅ `MainActivity` with Navigation component
 - ✅ Bottom navigation bar
-- ✅ Material Design theme (light/dark switching)
+- ✅ Material Design theme (light/dark switching; app theme preference in Settings > Appearance, dark by default)
 - ✅ `LibraryFragment` with RecyclerView book grid
 - ✅ Search, filter, sort UI
 
@@ -178,7 +178,7 @@ Built outside the stage structure:
 
 - ✅ Calibre content-server client: connection config + credential store, library browsing (`CalibreLibraryFragment`), web view (`CalibreWebFragment`), book downloads
 - ✅ Settings toggles in Reader Settings (`contentServerEnabled`, `calibreWebEnabled`, both default off)
-- ⚠️ **Known issue:** the bottom-navigation Calibre tabs stay hidden until the feature is enabled in Reader Settings, so new users cannot discover the feature. Planned fix: always-visible tabs whose screens show a setup state while unconfigured.
+- ✅ Tab discoverability: the bottom-navigation Calibre tabs are always visible; while a feature is not enabled, its screen shows a setup state with a shortcut to the Reader Settings Calibre section (the Reader Settings toggles remain the source of truth, both default off)
 
 ---
 
