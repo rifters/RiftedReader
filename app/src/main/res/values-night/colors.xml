@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Semantic Colors (Dark / Night) -->
+    <color name="app_background">@color/background_dark</color>
+    <color name="app_surface">@color/surface_dark</color>
+    <color name="app_surface_container">@color/surface_container_dark</color>
+    <color name="app_text_primary">@color/text_primary_dark</color>
+    <color name="app_text_secondary">@color/text_secondary_dark</color>
+    <color name="toolbar_background">#1F1A2C</color>
+    <color name="toolbar_text">#FFFFFF</color>
+</resources>

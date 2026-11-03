@@ -37,7 +37,7 @@ data class ChapterVisibilitySettings(
 data class ReaderSettings(
     val textSizeSp: Float = DEFAULT_TEXT_SIZE_SP,
     val lineHeightMultiplier: Float = DEFAULT_LINE_HEIGHT_MULTIPLIER,
-    val theme: ReaderTheme = ReaderTheme.LIGHT,
+    val theme: ReaderTheme = ReaderTheme.DARK,
     val mode: ReaderMode = ReaderMode.PAGINATED,
     val paginationMode: PaginationMode = PaginationMode.CONTINUOUS,
     val continuousStreamingEnabled: Boolean = true,
@@ -99,8 +99,8 @@ class ReaderPreferences(context: Context) {
     private fun readSettings(): ReaderSettings {
         val size = prefs.getFloat(KEY_TEXT_SIZE, DEFAULT_TEXT_SIZE_SP)
         val lineHeight = prefs.getFloat(KEY_LINE_HEIGHT, DEFAULT_LINE_HEIGHT_MULTIPLIER)
-        val themeName = prefs.getString(KEY_THEME, ReaderTheme.LIGHT.name) ?: ReaderTheme.LIGHT.name
-        val theme = runCatching { ReaderTheme.valueOf(themeName) }.getOrDefault(ReaderTheme.LIGHT)
+        val themeName = prefs.getString(KEY_THEME, ReaderTheme.DARK.name) ?: ReaderTheme.DARK.name
+        val theme = runCatching { ReaderTheme.valueOf(themeName) }.getOrDefault(ReaderTheme.DARK)
         val modeName = prefs.getString(KEY_MODE, ReaderMode.PAGINATED.name) ?: ReaderMode.PAGINATED.name
         val mode = parseReaderMode(modeName)
         val paginationModeName = prefs.getString(KEY_PAGINATION_MODE, PaginationMode.CONTINUOUS.name) 

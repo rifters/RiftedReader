@@ -2,24 +2,18 @@ package com.rifters.riftedreader.ui
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
 import com.rifters.riftedreader.R
-import com.rifters.riftedreader.data.calibre.DefaultCalibreConnectionRepository
 import com.rifters.riftedreader.databinding.ActivityMainBinding
 import com.rifters.riftedreader.util.AppLogger
-import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     
     private lateinit var binding: ActivityMainBinding
     private lateinit var navController: NavController
-    private val calibreRepository by lazy { DefaultCalibreConnectionRepository(this) }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,32 +30,8 @@ class MainActivity : AppCompatActivity() {
         
         setupActionBarWithNavController(navController)
         binding.bottomNavigation.setupWithNavController(navController)
-        binding.bottomNavigation.menu.findItem(R.id.calibreLibraryFragment)?.isVisible = false
-        binding.bottomNavigation.menu.findItem(R.id.calibreWebFragment)?.isVisible = false
-        observeCalibreNavigation()
         
         AppLogger.event("MainActivity", "onCreate completed", "ui/MainActivity/lifecycle")
-    }
-
-    private fun observeCalibreNavigation() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                calibreRepository.configFlow().collect { config ->
-                    binding.bottomNavigation.menu.findItem(R.id.calibreLibraryFragment)?.isVisible = config.contentServerEnabled
-                    binding.bottomNavigation.menu.findItem(R.id.calibreWebFragment)?.isVisible = config.calibreWebEnabled
-                    if (!config.contentServerEnabled && !config.calibreWebEnabled) {
-                        if (navController.currentDestination?.id == R.id.calibreLibraryFragment ||
-                            navController.currentDestination?.id == R.id.calibreWebFragment
-                        ) {
-                            val returnedToLibrary = navController.popBackStack(R.id.libraryFragment, false)
-                            if (!returnedToLibrary) {
-                                navController.navigate(R.id.libraryFragment)
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
     
     override fun onStart() {

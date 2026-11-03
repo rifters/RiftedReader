@@ -54,7 +54,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-                android:textColor="@color/text_secondary_light"
+                android:textColor="?attr/colorOnSurfaceVariant"
                 tools:text="EPUB • 2.5 MB • 45%" />
 
             <com.google.android.material.progressindicator.LinearProgressIndicator

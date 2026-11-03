@@ -19,6 +19,9 @@ class RiftedReaderApplication : Application() {
 
         installUncaughtExceptionLogger()
         
+        // Apply default/saved app theme (defaults to Dark theme)
+        com.rifters.riftedreader.data.preferences.AppThemePreferences(this).applyTheme()
+
         // Initialize logger
         AppLogger.init(this)
         AppLogger.startSession(this)
