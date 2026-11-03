@@ -66,6 +66,13 @@ class TTSSettingsFragment : PreferenceFragmentCompat() {
         }
     }
 
+    override fun onViewCreated(view: android.view.View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        val backgroundColor = androidx.core.content.ContextCompat.getColor(requireContext(), R.color.app_background)
+        view.setBackgroundColor(backgroundColor)
+        listView.setBackgroundColor(backgroundColor)
+    }
+
     companion object {
         private const val PREF_REPLACEMENTS = "tts_replacements"
     }

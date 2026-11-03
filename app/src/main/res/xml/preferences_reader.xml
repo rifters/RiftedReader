@@ -121,7 +121,7 @@
         <ListPreference
             android:key="reader_theme"
             android:title="@string/settings_reader_theme"
-            android:defaultValue="LIGHT"
+            android:defaultValue="DARK"
             app:entries="@array/reader_theme_entries"
             app:entryValues="@array/reader_theme_values"
             app:useSimpleSummaryProvider="true" />

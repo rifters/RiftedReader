@@ -237,6 +237,6 @@
         android:layout_marginTop="8dp"
         android:text="@string/reader_pagination_continuous_hint"
         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-        android:textColor="@color/reader_text_light" />
+        android:textColor="?attr/colorOnSurfaceVariant" />
 
 </LinearLayout>

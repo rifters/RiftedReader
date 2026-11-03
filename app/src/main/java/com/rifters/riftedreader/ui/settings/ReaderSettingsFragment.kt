@@ -398,6 +398,13 @@ class ReaderSettingsFragment : PreferenceFragmentCompat() {
         }
     }
 
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        val backgroundColor = androidx.core.content.ContextCompat.getColor(requireContext(), R.color.app_background)
+        view.setBackgroundColor(backgroundColor)
+        listView.setBackgroundColor(backgroundColor)
+    }
+
     companion object {
         private const val PREF_CONTENT_SERVER_ENABLED = "calibre_content_server_enabled"
         private const val PREF_CONTENT_SERVER_URL = "calibre_content_server_url"

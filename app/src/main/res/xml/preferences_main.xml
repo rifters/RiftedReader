@@ -3,6 +3,20 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <PreferenceCategory
+        android:title="@string/settings_section_appearance">
+
+        <ListPreference
+            android:key="app_theme"
+            android:title="@string/settings_app_theme_title"
+            android:summary="@string/settings_app_theme_summary"
+            android:defaultValue="DARK"
+            app:entries="@array/app_theme_entries"
+            app:entryValues="@array/app_theme_values"
+            app:useSimpleSummaryProvider="true"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
         android:title="@string/settings_section_reader">
 
         <Preference

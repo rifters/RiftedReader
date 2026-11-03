@@ -29,7 +29,9 @@ import androidx.activity.OnBackPressedCallback
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
@@ -87,7 +89,7 @@ class CalibreWebFragment : Fragment() {
         configureWebView()
         setupOverlay()
         setupActions()
-        loadConfiguredUrl()
+        observeConfig()
     }
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
@@ -182,22 +184,54 @@ class CalibreWebFragment : Fragment() {
         binding.settingsButton.setOnClickListener {
             findNavController().navigate(R.id.action_calibreWebFragment_to_readerSettingsFragment)
         }
+        binding.setupSettingsButton.setOnClickListener {
+            findNavController().navigate(R.id.action_calibreWebFragment_to_readerSettingsFragment)
+        }
     }
 
-    private fun loadConfiguredUrl() {
+    private fun observeConfig() {
         viewLifecycleOwner.lifecycleScope.launch {
-            val config = connectionRepository.loadConfig()
-            if (!config.calibreWebEnabled || config.calibreWebUrl.isBlank()) {
-                showNotConfigured(config)
-                return@launch
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                connectionRepository.configFlow().collect { config ->
+                    handleConfig(config)
+                }
             }
-            calibreWebUrl = config.calibreWebUrl
-            binding.calibreWebView.loadUrl(calibreWebUrl)
         }
+    }
+
+    private fun handleConfig(config: CalibreConnectionConfig) {
+        if (!config.calibreWebEnabled) {
+            showSetupState()
+            return
+        }
+        binding.setupView.isVisible = false
+        if (config.calibreWebUrl.isBlank()) {
+            showNotConfigured(config)
+            return
+        }
+        val shouldLoad = calibreWebUrl != config.calibreWebUrl || binding.calibreWebView.url.isNullOrBlank()
+        calibreWebUrl = config.calibreWebUrl
+        if (shouldLoad) {
+            binding.errorCard.isVisible = false
+            binding.calibreWebView.isVisible = true
+            binding.calibreWebView.loadUrl(calibreWebUrl)
+        } else if (!binding.errorCard.isVisible) {
+            binding.calibreWebView.isVisible = true
+        }
+    }
+
+    private fun showSetupState() {
+        calibreWebUrl = ""
+        binding.calibreWebView.isVisible = false
+        binding.navigationOverlay.isVisible = false
+        binding.pageProgress.isVisible = false
+        binding.errorCard.isVisible = false
+        binding.setupView.isVisible = true
     }
 
     private fun showNotConfigured(config: CalibreConnectionConfig) {
         calibreWebUrl = config.calibreWebUrl
+        binding.setupView.isVisible = false
         binding.calibreWebView.isVisible = false
         binding.navigationOverlay.isVisible = false
         binding.pageProgress.isVisible = false
@@ -209,6 +243,7 @@ class CalibreWebFragment : Fragment() {
     }
 
     private fun showReachabilityError(url: String, description: String) {
+        binding.setupView.isVisible = false
         binding.calibreWebView.isVisible = false
         binding.navigationOverlay.isVisible = false
         binding.pageProgress.isVisible = false

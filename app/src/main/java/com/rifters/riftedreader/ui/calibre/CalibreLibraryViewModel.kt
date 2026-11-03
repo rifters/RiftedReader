@@ -129,12 +129,13 @@ class CalibreLibraryViewModel(
     private fun observeConfig() {
         viewModelScope.launch {
             connectionRepository.configFlow().collect { config ->
+                val wasDisabled = _libraryState.value is CalibreLibraryState.Disabled
                 currentConfig = config
                 preferredFormat = config.preferredFormat
                 if (!config.contentServerEnabled) {
                     _libraryState.value = CalibreLibraryState.Disabled
-                } else if (_libraryState.value is CalibreLibraryState.Disabled) {
-                    _libraryState.value = CalibreLibraryState.Idle
+                } else if (wasDisabled) {
+                    loadLibrary()
                 }
             }
         }

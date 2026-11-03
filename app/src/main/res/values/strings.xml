@@ -84,6 +84,11 @@
     <string name="library_smart_chip_format">%1$s (%2$d)</string>
 
     <string name="calibre_library_title">Calibre Library</string>
+    <string name="calibre_setup_button">Set up Calibre</string>
+    <string name="calibre_library_setup_title">Calibre Content Server</string>
+    <string name="calibre_library_setup_description">Connect to your Calibre Content Server to browse, search, and download books directly to your device.</string>
+    <string name="calibre_web_setup_title">Calibre-Web</string>
+    <string name="calibre_web_setup_description">Access your Calibre-Web library through an integrated browser to read and download your books.</string>
     <string name="calibre_search_books">Search Calibre books…</string>
     <string name="calibre_content_server_not_configured">Content Server not configured</string>
     <string name="calibre_library_error_generic">Could not load Calibre library</string>
@@ -408,4 +413,11 @@ Page %4$d/%5$d (%6$d%%)</string>
     <string name="settings_tts_engine_summary">Select speech synthesis engine</string>
     <string name="tts_engine_system">System TTS (Android)</string>
     <string name="tts_engine_sherpa_onnx">Sherpa ONNX (Neural offline - experimental)</string>
+    <!-- App Theme / Appearance -->
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_app_theme_title">App theme</string>
+    <string name="settings_app_theme_summary">Choose dark, light, or follow system theme</string>
+    <string name="app_theme_dark">Dark</string>
+    <string name="app_theme_light">Light</string>
+    <string name="app_theme_system">Follow system</string>
 </resources>

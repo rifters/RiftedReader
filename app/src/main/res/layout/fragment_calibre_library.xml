@@ -106,18 +106,28 @@
                     android:visibility="gone">
 
                     <TextView
+                        android:id="@+id/setupTitle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/calibre_content_server_not_configured"
+                        android:text="@string/calibre_library_setup_title"
                         android:textAlignment="center"
                         android:textAppearance="@style/TextAppearance.Material3.HeadlineSmall" />
+
+                    <TextView
+                        android:id="@+id/setupDescription"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/calibre_library_setup_description"
+                        android:textAlignment="center"
+                        android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/openSettingsButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="16dp"
-                        android:text="@string/nav_settings" />
+                        android:text="@string/calibre_setup_button" />
                 </LinearLayout>
             </FrameLayout>
         </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
