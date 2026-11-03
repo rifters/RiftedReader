@@ -372,6 +372,8 @@ Page %4$d/%5$d (%6$d%%)</string>
     <string name="settings_tts_pitch">Default pitch</string>
     <string name="settings_tts_highlight">Highlight sentences during playback</string>
     <string name="settings_tts_auto_scroll">Auto-scroll with speech</string>
+    <string name="settings_tts_read_footnotes">Read footnotes</string>
+    <string name="settings_tts_read_footnotes_summary">Include footnotes and endnotes when reading aloud</string>
     <string name="settings_tts_manage_replacements">Pronunciation rules</string>
     <string name="reader_streaming_failed_toast">Continuous pagination couldn\'t load the next chapter. Falling back to chapter jumps. You can disable streaming in Reader settings.</string>
 

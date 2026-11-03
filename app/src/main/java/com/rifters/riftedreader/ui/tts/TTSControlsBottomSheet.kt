@@ -89,7 +89,12 @@ class TTSControlsBottomSheet : BottomSheetDialogFragment() {
             if (currentText.isNotBlank()) {
                 val configuration = currentConfiguration()
                 requestNotificationPermissionIfNeeded {
-                    TTSService.start(requireContext(), currentText, configuration)
+                    val textToSpeak = if (!preferences.readFootnotes) {
+                        com.rifters.riftedreader.domain.tts.TtsChunkPreparer.filterFootnotesFromText(currentText)
+                    } else {
+                        currentText
+                    }
+                    TTSService.start(requireContext(), textToSpeak, configuration)
                 }
             } else {
                 binding.statusText.text = ""

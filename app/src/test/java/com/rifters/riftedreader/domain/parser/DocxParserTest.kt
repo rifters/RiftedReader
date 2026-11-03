@@ -2,6 +2,7 @@ package com.rifters.riftedreader.domain.parser
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -23,7 +24,9 @@ class DocxParserTest {
         title: String? = null,
         author: String? = null,
         description: String? = null,
-        documentBodyXml: String
+        documentBodyXml: String,
+        footnotesXml: String? = null,
+        endnotesXml: String? = null
     ) {
         ZipOutputStream(file.outputStream().buffered()).use { zip ->
             // docProps/core.xml
@@ -53,6 +56,32 @@ class DocxParserTest {
             }
             zip.write(docXml.toByteArray(Charsets.UTF_8))
             zip.closeEntry()
+
+            // word/footnotes.xml
+            if (footnotesXml != null) {
+                zip.putNextEntry(ZipEntry("word/footnotes.xml"))
+                val xml = buildString {
+                    append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
+                    append("""<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">""")
+                    append(footnotesXml)
+                    append("</w:footnotes>")
+                }
+                zip.write(xml.toByteArray(Charsets.UTF_8))
+                zip.closeEntry()
+            }
+
+            // word/endnotes.xml
+            if (endnotesXml != null) {
+                zip.putNextEntry(ZipEntry("word/endnotes.xml"))
+                val xml = buildString {
+                    append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
+                    append("""<w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">""")
+                    append(endnotesXml)
+                    append("</w:endnotes>")
+                }
+                zip.write(xml.toByteArray(Charsets.UTF_8))
+                zip.closeEntry()
+            }
         }
     }
 
@@ -232,6 +261,134 @@ class DocxParserTest {
         assertTrue(page.text.contains("Strikethrough Underline"))
         assertTrue(page.text.contains("After Tab"))
         assertTrue(page.text.contains("Link Text"))
+    }
+
+    @Test
+    fun parsesDocumentWithFootnotesAndSkipsSeparators() = runBlocking {
+        val file = tempFolder.newFile("footnotes.docx")
+        val footnotesXml = """
+            <w:footnote w:type="separator" w:id="-1">
+                <w:p><w:r><w:separator/></w:r></w:p>
+            </w:footnote>
+            <w:footnote w:type="continuationSeparator" w:id="0">
+                <w:p><w:r><w:continuationSeparator/></w:r></w:p>
+            </w:footnote>
+            <w:footnote w:type="continuationNotice" w:id="99">
+                <w:p><w:r><w:t>Layout Continuation Notice</w:t></w:r></w:p>
+            </w:footnote>
+            <w:footnote w:id="1">
+                <w:p>
+                    <w:r><w:footnoteRef/></w:r>
+                    <w:r><w:t>This is an important footnote.</w:t></w:r>
+                </w:p>
+            </w:footnote>
+            <w:footnote w:id="2">
+                <w:p>
+                    <w:r>
+                        <w:rPr><w:b/></w:rPr>
+                        <w:t>Bold note</w:t>
+                    </w:r>
+                </w:p>
+            </w:footnote>
+        """.trimIndent()
+
+        val bodyXml = """
+            <w:p>
+                <w:r><w:t>Sentence referencing first note.</w:t></w:r>
+                <w:r><w:footnoteReference w:id="1"/></w:r>
+            </w:p>
+            <w:p>
+                <w:r><w:t>Sentence referencing second note.</w:t></w:r>
+                <w:r><w:footnoteReference w:id="2"/></w:r>
+            </w:p>
+        """.trimIndent()
+
+        createDocxFile(file = file, documentBodyXml = bodyXml, footnotesXml = footnotesXml)
+
+        val page = parser.getPageContent(file, 0)
+        // Verify footnote content placed at end of paragraph
+        assertTrue(page.text.contains("Sentence referencing first note. [Note: This is an important footnote.]"))
+        assertTrue(page.text.contains("Sentence referencing second note. [Note: Bold note]"))
+        assertTrue(page.html?.contains("""<span class="footnote">[Note: This is an important footnote.]</span>""") == true)
+        assertTrue(page.html?.contains("""<span class="footnote">[Note: <b>Bold note</b>]</span>""") == true)
+
+        // Verify layout artifacts are skipped and never appear
+        assertFalse(page.text.contains("Layout Continuation Notice"))
+        assertFalse(page.html?.contains("Layout Continuation Notice") == true)
+        assertFalse(page.text.contains("separator"))
+    }
+
+    @Test
+    fun parsesDocumentWithEndnotes() = runBlocking {
+        val file = tempFolder.newFile("endnotes.docx")
+        val endnotesXml = """
+            <w:endnote w:type="separator" w:id="-1">
+                <w:p><w:r><w:separator/></w:r></w:p>
+            </w:endnote>
+            <w:endnote w:id="1">
+                <w:p>
+                    <w:r><w:endnoteRef/></w:r>
+                    <w:r><w:t>This is the referenced endnote.</w:t></w:r>
+                </w:p>
+            </w:endnote>
+        """.trimIndent()
+
+        val bodyXml = """
+            <w:p>
+                <w:r><w:t>Here is a sentence with an endnote.</w:t></w:r>
+                <w:r><w:endnoteReference w:id="1"/></w:r>
+            </w:p>
+        """.trimIndent()
+
+        createDocxFile(file = file, documentBodyXml = bodyXml, endnotesXml = endnotesXml)
+
+        val page = parser.getPageContent(file, 0)
+        assertTrue(page.text.contains("Here is a sentence with an endnote. [Note: This is the referenced endnote.]"))
+        assertTrue(page.html?.contains("""<span class="footnote">[Note: This is the referenced endnote.]</span>""") == true)
+    }
+
+    @Test
+    fun ignoresMissingNoteIdGracefully() = runBlocking {
+        val file = tempFolder.newFile("missing_note.docx")
+        val bodyXml = """
+            <w:p>
+                <w:r><w:t>Referencing missing notes.</w:t></w:r>
+                <w:r><w:footnoteReference w:id="999"/></w:r>
+                <w:r><w:endnoteReference w:id="888"/></w:r>
+            </w:p>
+        """.trimIndent()
+
+        createDocxFile(file = file, documentBodyXml = bodyXml)
+
+        val page = parser.getPageContent(file, 0)
+        assertEquals("Referencing missing notes.", page.text)
+        assertTrue(page.html?.contains("<p>Referencing missing notes.</p>") == true)
+        assertFalse(page.text.contains("[Note:"))
+    }
+
+    @Test
+    fun confirmationDocumentsWithoutFootnotesParseExactlyAsBefore() = runBlocking {
+        val file = tempFolder.newFile("plain_no_notes.docx")
+        val bodyXml = """
+            <w:p>
+                <w:pPr><w:pStyle w:val="Heading1"/></w:pPr>
+                <w:r><w:t>Book Title</w:t></w:r>
+            </w:p>
+            <w:p>
+                <w:r><w:t>First line of story.</w:t></w:r>
+            </w:p>
+        """.trimIndent()
+
+        createDocxFile(file = file, documentBodyXml = bodyXml)
+
+        val metadata = parser.extractMetadata(file)
+        assertEquals("Book Title", metadata.title)
+
+        val page = parser.getPageContent(file, 0)
+        assertEquals("Book Title", page.title)
+        assertTrue(page.text.contains("Book Title\nFirst line of story."))
+        assertTrue(page.html?.contains("<h1>Book Title</h1><p>First line of story.</p>") == true)
+        assertFalse(page.html?.contains("footnote") == true)
     }
 
     @Test

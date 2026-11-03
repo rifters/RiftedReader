@@ -29,6 +29,9 @@ class TTSSettingsFragment : PreferenceFragmentCompat() {
         bindSwitchPreference("tts_auto_scroll", ttsPreferences.autoScroll) { checked ->
             ttsPreferences.autoScroll = checked
         }
+        bindSwitchPreference("tts_read_footnotes", ttsPreferences.readFootnotes) { checked ->
+            ttsPreferences.readFootnotes = checked
+        }
         findPreference<Preference>(PREF_REPLACEMENTS)?.setOnPreferenceClickListener {
             findNavController().navigate(R.id.action_ttsSettingsFragment_to_ttsReplacementsFragment)
             true

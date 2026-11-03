@@ -4,16 +4,26 @@ import android.content.Context
 import android.content.SharedPreferences
 import java.io.File
 
-class TTSPreferences(private val context: Context) {
+class TTSPreferences(
+    private val prefs: SharedPreferences,
+    private val context: Context? = null
+) {
 
-    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    private val rulesDir: File = File(context.filesDir, RULES_DIR_NAME)
+    constructor(context: Context) : this(
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE),
+        context
+    )
+
+    private val rulesDir: File = context?.filesDir?.let { File(it, RULES_DIR_NAME) }
+        ?: File(System.getProperty("java.io.tmpdir") ?: ".", RULES_DIR_NAME)
 
     init {
         if (!rulesDir.exists()) {
             rulesDir.mkdirs()
         }
-        ensureDefaultRules()
+        if (context != null) {
+            ensureDefaultRules()
+        }
     }
 
     var speed: Float
@@ -31,6 +41,10 @@ class TTSPreferences(private val context: Context) {
     var highlightSentence: Boolean
         get() = prefs.getBoolean(KEY_HIGHLIGHT, true)
         set(value) = prefs.edit().putBoolean(KEY_HIGHLIGHT, value).apply()
+
+    var readFootnotes: Boolean
+        get() = prefs.getBoolean(KEY_READ_FOOTNOTES, true)
+        set(value) = prefs.edit().putBoolean(KEY_READ_FOOTNOTES, value).apply()
 
     var languageTag: String?
         get() = prefs.getString(KEY_LANGUAGE_TAG, null)
@@ -57,10 +71,11 @@ class TTSPreferences(private val context: Context) {
 
     private fun ensureDefaultRules() {
         val file = getReplacementRulesFile()
+        val ctx = context ?: return
         if (file.exists()) return
 
         runCatching {
-            context.assets.open(DEFAULT_RULES_ASSET).use { input ->
+            ctx.assets.open(DEFAULT_RULES_ASSET).use { input ->
                 file.outputStream().use { output ->
                     input.copyTo(output)
                 }
@@ -75,6 +90,7 @@ class TTSPreferences(private val context: Context) {
         private const val KEY_AUTO_SCROLL = "tts_auto_scroll"
         private const val KEY_HIGHLIGHT = "tts_highlight"
         private const val KEY_LANGUAGE_TAG = "tts_language_tag"
+        const val KEY_READ_FOOTNOTES = "tts_read_footnotes"
 
         private const val RULES_DIR_NAME = "tts_rules"
         private const val DEFAULT_RULES_FILE = "default_rules.txt"

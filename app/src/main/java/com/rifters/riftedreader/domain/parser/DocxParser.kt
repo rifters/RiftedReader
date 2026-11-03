@@ -28,6 +28,11 @@ private data class DocxPackageMetadata(
     val description: String? = null
 )
 
+private data class NoteContent(
+    val text: String,
+    val html: String
+)
+
 private data class RawRun(
     val text: String,
     val isBold: Boolean,
@@ -107,12 +112,15 @@ class DocxParser : BookParser {
                 val toc = mutableListOf<TocEntry>()
                 val packageMetadata = readPackageMetadata(zip)
 
+                val footnotes = parseNotesXml(zip, "word/footnotes.xml", "footnote")
+                val endnotes = parseNotesXml(zip, "word/endnotes.xml", "endnote")
+
                 val documentEntry = zip.findEntry("word/document.xml")
                 if (documentEntry != null) {
                     zip.getInputStream(documentEntry).buffered().use { input ->
                         val root = parseXmlTree(newXmlPullParser(input))
                         val body = root?.findChild("body") ?: root?.findDescendant("body")
-                        body?.let { renderBodyContainer(it, html, text, toc) }
+                        body?.let { renderBodyContainer(it, html, text, toc, footnotes, endnotes) }
                     }
                 }
 
@@ -137,23 +145,69 @@ class DocxParser : BookParser {
         }.getOrNull()
     }
 
+    private fun parseNotesXml(
+        zip: ZipFile,
+        path: String,
+        entryTag: String
+    ): Map<String, NoteContent> {
+        val entry = zip.findEntry(path) ?: return emptyMap()
+        return runCatching {
+            zip.getInputStream(entry).buffered().use { input ->
+                val root = parseXmlTree(newXmlPullParser(input)) ?: return@use emptyMap()
+                val notesMap = mutableMapOf<String, NoteContent>()
+                root.children.filter { it.name == entryTag }.forEach { noteNode ->
+                    val type = noteNode.attributes["type"]
+                    if (type == "separator" || type == "continuationSeparator" || type == "continuationNotice") {
+                        return@forEach
+                    }
+                    val id = noteNode.attributes["id"] ?: return@forEach
+                    val paragraphs = noteNode.children.filter { it.name == "p" }
+                    val notePlainTexts = mutableListOf<String>()
+                    val noteHtmls = mutableListOf<String>()
+
+                    for (pNode in paragraphs) {
+                        val runs = extractRuns(pNode)
+                        val pText = runs.joinToString("") { it.text }.normalizeWhitespace()
+                        val pHtml = runs.joinToString("") { renderRun(it) }
+                            .ifBlank { pText.escapeHtml() }
+                        if (pText.isNotBlank()) {
+                            notePlainTexts.add(pText)
+                        }
+                        if (pHtml.isNotBlank()) {
+                            noteHtmls.add(pHtml)
+                        }
+                    }
+
+                    val fullText = notePlainTexts.joinToString(" ")
+                    val fullHtml = noteHtmls.joinToString(" ")
+                    if (fullText.isNotBlank() || fullHtml.isNotBlank()) {
+                        notesMap[id] = NoteContent(text = fullText, html = fullHtml)
+                    }
+                }
+                notesMap
+            }
+        }.getOrNull() ?: emptyMap()
+    }
+
     private fun renderBodyContainer(
         container: XmlNode,
         html: StringBuilder,
         text: StringBuilder,
-        toc: MutableList<TocEntry>
+        toc: MutableList<TocEntry>,
+        footnotes: Map<String, NoteContent> = emptyMap(),
+        endnotes: Map<String, NoteContent> = emptyMap()
     ) {
         container.children.forEach { child ->
             when (child.name) {
-                "p" -> renderParagraph(child, html, text, toc)
-                "tbl" -> renderTable(child, html, text, toc)
+                "p" -> renderParagraph(child, html, text, toc, footnotes, endnotes)
+                "tbl" -> renderTable(child, html, text, toc, footnotes, endnotes)
                 "sdt" -> {
                     val sdtContent = child.findDescendant("sdtContent")
                     if (sdtContent != null) {
-                        renderBodyContainer(sdtContent, html, text, toc)
+                        renderBodyContainer(sdtContent, html, text, toc, footnotes, endnotes)
                     }
                 }
-                "txbxContent" -> renderBodyContainer(child, html, text, toc)
+                "txbxContent" -> renderBodyContainer(child, html, text, toc, footnotes, endnotes)
             }
         }
     }
@@ -162,25 +216,82 @@ class DocxParser : BookParser {
         tableNode: XmlNode,
         html: StringBuilder,
         text: StringBuilder,
-        toc: MutableList<TocEntry>
+        toc: MutableList<TocEntry>,
+        footnotes: Map<String, NoteContent> = emptyMap(),
+        endnotes: Map<String, NoteContent> = emptyMap()
     ) {
         tableNode.children.filter { it.name == "tr" }.forEach { row ->
             row.children.filter { it.name == "tc" }.forEach { cell ->
-                renderBodyContainer(cell, html, text, toc)
+                renderBodyContainer(cell, html, text, toc, footnotes, endnotes)
             }
         }
+    }
+
+    private fun extractNoteReferences(
+        paragraphNode: XmlNode,
+        footnotes: Map<String, NoteContent>,
+        endnotes: Map<String, NoteContent>
+    ): List<NoteContent> {
+        val result = mutableListOf<NoteContent>()
+        fun walk(node: XmlNode) {
+            when (node.name) {
+                "footnoteReference" -> {
+                    val id = node.attributes["id"]
+                    if (id != null) {
+                        footnotes[id]?.let { result.add(it) }
+                    }
+                }
+                "endnoteReference" -> {
+                    val id = node.attributes["id"]
+                    if (id != null) {
+                        endnotes[id]?.let { result.add(it) }
+                    }
+                }
+                "pPr", "tbl", "tc", "txbxContent" -> return
+                else -> {
+                    node.children.forEach { walk(it) }
+                }
+            }
+        }
+        paragraphNode.children.forEach { walk(it) }
+        return result
     }
 
     private fun renderParagraph(
         paragraphNode: XmlNode,
         html: StringBuilder,
         text: StringBuilder,
-        toc: MutableList<TocEntry>
+        toc: MutableList<TocEntry>,
+        footnotes: Map<String, NoteContent> = emptyMap(),
+        endnotes: Map<String, NoteContent> = emptyMap()
     ) {
         val runs = extractRuns(paragraphNode)
-        val plainText = runs.joinToString(separator = "") { it.text }.normalizeWhitespace()
-        val inlineHtml = runs.joinToString(separator = "") { renderRun(it) }
-            .ifBlank { plainText.escapeHtml() }
+        val rawPlainText = runs.joinToString(separator = "") { it.text }.normalizeWhitespace()
+        val baseInlineHtml = runs.joinToString(separator = "") { renderRun(it) }
+            .ifBlank { rawPlainText.escapeHtml() }
+
+        val referencedNotes = extractNoteReferences(paragraphNode, footnotes, endnotes)
+        val (plainText, inlineHtml) = if (referencedNotes.isNotEmpty()) {
+            val noteTextSuffix = referencedNotes.joinToString("") { " [Note: ${it.text}]" }
+            val noteHtmlSuffix = referencedNotes.joinToString("") { note ->
+                val prefix = if (baseInlineHtml.isNotBlank()) " " else ""
+                """$prefix<span class="footnote">[Note: ${note.html}]</span>"""
+            }
+            val combinedText = if (rawPlainText.isNotBlank()) {
+                rawPlainText + noteTextSuffix
+            } else {
+                noteTextSuffix.trimStart()
+            }
+            val combinedHtml = if (baseInlineHtml.isNotBlank()) {
+                baseInlineHtml + noteHtmlSuffix
+            } else {
+                referencedNotes.joinToString("") { """<span class="footnote">[Note: ${it.html}]</span>""" }
+            }
+            combinedText to combinedHtml
+        } else {
+            rawPlainText to baseInlineHtml
+        }
+
         val headingLevel = paragraphNode.headingLevel()
         val tag = if (headingLevel != null) "h${(headingLevel + 1).coerceAtMost(6)}" else "p"
 
@@ -201,7 +312,7 @@ class DocxParser : BookParser {
         // Render text boxes nested within paragraph drawings if present
         val txbx = paragraphNode.findDescendant("txbxContent")
         if (txbx != null) {
-            renderBodyContainer(txbx, html, text, toc)
+            renderBodyContainer(txbx, html, text, toc, footnotes, endnotes)
         }
     }
 
