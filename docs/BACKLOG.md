@@ -117,7 +117,8 @@ voices via sherpa-onnx, downloaded on demand.*
 reader view during playback.*
 
 - **Pros:** The signature feature of premium TTS readers. Sentence tracking
-  already exists; word level is the visible upgrade, especially for language
+  already exists; word level is the visible upgrade. Its audience is the
+  read-along listener — a cohort this app demonstrably has — plus language
   learners and reluctant readers.
 - **Cons:** The platform catch: word-range callbacks (`onRangeStart`) need
   API 26+, and this app's floor is API 24 — deliberately. Options are a
@@ -178,14 +179,36 @@ one-tap Resume.*
 visual focus aid. (Its sibling from the same entry, custom font import,
 already shipped.)*
 
-- **Pros:** Cheap to build, highly visible, some readers swear by it.
-- **Cons:** The benefit evidence is thin and marketing-driven. It is a
-  *visual speed-reading* aid in a *listening-first* app — the audience
-  overlap is small. Must be applied only to the visual layer so markup never
-  leaks into TTS text.
+- **Pros:** Cheap to build, highly visible. The real case for it here is
+  *read-along listening*: listeners commonly follow the text visually while
+  TTS plays — including at 1.5–2x speed, where the eye has to track fast and
+  cheaply or it falls behind the voice. Reducing the visual effort of
+  keeping place at speed is a genuine aid for exactly that cohort (the
+  app's own primary user reads this way). Published benefit evidence is
+  thin, but the first-person use case is concrete.
+- **Cons:** Must be applied only to the visual layer so markup never leaks
+  into TTS text or throws off chunk alignment.
 - **Difficulty:** Low, with one fiddly boundary (TTS separation).
-- **Weight:** Low for this app's identity. Skip unless users ask for it by
-  name.
+- **Weight:** Medium. Originally scored a skip on generic-audience
+  reasoning; the read-along evidence outweighs that. A legitimate small
+  candidate, especially paired with per-book speed memory below — both
+  serve the fast-listener workflow.
+
+## Per-Book TTS Speed Memory
+
+*Source: usage observation (Nov 2026). Listening speed is per-book in
+practice — ~1.6x for most books, slower for dry or dense ones — but the app
+stores one global `tts_speed`, so switching books means re-dialing.*
+
+- **Pros:** Matches how listening actually works; removes a small friction
+  paid at every book switch by exactly the app's core users. Falls back to
+  the global speed for books never adjusted.
+- **Cons:** One more per-book value to store and apply on open; scope
+  discipline needed (speed only — do not let it creep into per-book pitch /
+  voice without a separate decision).
+- **Difficulty:** Low. A stored value per book plus apply-on-open.
+- **Weight:** High for its size. Belongs in the quick-win tier with Reading
+  Time Tracking.
 
 ---
 
@@ -193,9 +216,11 @@ already shipped.)*
 
 1. **Error Recovery** — safety net under the now-default engine (bundle the
    Settings Lock with this hardening pass).
-2. **Reading Time Tracking** — the quick win, any time a small slot opens.
+2. **Reading Time Tracking** and **Per-Book TTS Speed Memory** — the quick
+   wins, any time a small slot opens. **Bionic Reading** is a legitimate
+   small add-on in the same tier, serving the read-along-at-speed workflow.
 3. **Backup & Restore** — before any public release.
 4. **Neural TTS Voices** — the flagship; give it a dedicated planning pass.
 5. **Gutenberg + Standard Ebooks** — second act; OPDS runway for Stage 8.
 6. Then, opportunistically: Progress Overlay, Dictionary, Widget.
-   Bionic Reading only on user demand. Karaoke waits on the API floor.
+   Karaoke waits on the API floor.
